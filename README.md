@@ -1,5 +1,5 @@
 
-###Welcome to CVXPYGEN - the code generator for CVXPY!###
+### Welcome to CVXPYGEN - the code generator for CVXPY!
 
 Define a CVXPY problem and generate C code to solve it:
 
