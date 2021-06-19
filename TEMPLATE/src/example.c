@@ -1,5 +1,6 @@
 
-#include "../include/example.h"
-#include "../include/work.h"
-#include "../include/update.h"
-#include "../include/solve.h"
+#include "example.h"
+#include "work.h"
+#include "update.h"
+#include "solve.h"
+

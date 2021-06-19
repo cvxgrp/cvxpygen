@@ -42,7 +42,7 @@ def replace_inf(v):
     return v
 
 
-def generate_code(problem, compile_code=False):
+def generate_code(problem, code_dir='cpg_code', compile=True):
     """
     Generate C code for CVXPY problem and optionally compile example program
     """
@@ -50,10 +50,9 @@ def generate_code(problem, compile_code=False):
     print('Generating code ...')
 
     # copy TEMPLATE
-    c_folder = 'cpg_code'
-    if os.path.isdir(c_folder):
-        shutil.rmtree(c_folder)
-    shutil.copytree('TEMPLATE', c_folder)
+    if os.path.isdir(code_dir):
+        shutil.rmtree(code_dir)
+    shutil.copytree('TEMPLATE', code_dir)
 
     # get problem data
     data, _, _ = problem.get_problem_data(solver='OSQP', gp=False, enforce_dpp=True, verbose=False)
@@ -180,24 +179,36 @@ def generate_code(problem, compile_code=False):
             matrix[:, -1] = mapping.toarray().squeeze()
         OSQP_p_decomposed[OSQP_p_id+'_decomposed'] = matrix
 
+    # 'types' prototypes
+    with open(os.path.join(code_dir, 'include/types.h'), 'a') as f:
+        utils.write_types(f, user_p_names)
+
     # 'work' prototypes
-    with open('cpg_code/include/work.h', 'a') as f:
+    with open(os.path.join(code_dir, 'include/work.h'), 'a') as f:
+        for name, value in user_p_writable.items():
+            osqp_utils.write_vec_extern(f, value, name, 'c_float')
+        utils.write_struct_extern(f, 'Workspace', 'Workspace_t')
+
         for name, matrix in OSQP_p_decomposed.items():
             utils.write_dense_mat_extern(f, matrix, name)
         for OSQP_p_id in OSQP_p_ids:
             utils.write_osqp_extern(f, OSQP_p[OSQP_p_id], OSQP_p_id)
-        utils.write_struct_extern(f, 'CPGWorkspace', 'Workspace')
+        utils.write_struct_extern(f, 'OSQP_Workspace', 'OSQP_Workspace_t')
 
     # 'work' definitions
-    with open('cpg_code/src/work.c', 'a') as f:
+    with open(os.path.join(code_dir, 'src/work.c'), 'a') as f:
+        for name, value in user_p_writable.items():
+            osqp_utils.write_vec(f, value, name, 'c_float')
+        utils.write_struct(f, user_p_names, user_p_names, 'Workspace', 'Workspace_t')
+
         for name, matrix in OSQP_p_decomposed.items():
             utils.write_dense_mat(f, matrix, name)
         for OSQP_p_id in OSQP_p_ids:
             utils.write_osqp(f, replace_inf(OSQP_p[OSQP_p_id]), OSQP_p_id)
-        utils.write_struct(f, OSQP_p_ids+OSQP_p_ids_dec, OSQP_p_ids+OSQP_p_ids_dec, 'CPGWorkspace', 'Workspace')
+        utils.write_struct(f, OSQP_p_ids+OSQP_p_ids_dec, OSQP_p_ids+OSQP_p_ids_dec, 'OSQP_Workspace', 'OSQP_Workspace_t')
 
     # 'update' prototypes
-    with open('cpg_code/include/update.h', 'a') as f:
+    with open(os.path.join(code_dir, 'include/update.h'), 'a') as f:
         # update decomposed parameters
         for user_p_name in user_p_names:
             utils.write_update_decomposed_extern(f, user_p_name)
@@ -205,10 +216,10 @@ def generate_code(problem, compile_code=False):
         for user_p_name in user_p_names:
             utils.write_update_extern(f, user_p_name)
         # init
-        utils.write_init_extern(f, user_p_names)
+        utils.write_init_extern(f)
 
     # 'update' definitions
-    with open('cpg_code/src/update.c', 'a') as f:
+    with open(os.path.join(code_dir, 'src/update.c'), 'a') as f:
         rows_to_sum = dict()
         # update decomposed parameters
         for j, (user_p_id, user_p_name) in enumerate(zip(user_p_ids, user_p_names)):
@@ -244,28 +255,23 @@ def generate_code(problem, compile_code=False):
         utils.write_init(f, OSQP_p_ids, user_p_names, shapes)
 
     # 'solve' prototypes
-    with open('cpg_code/include/solve.h', 'a') as f:
+    with open(os.path.join(code_dir, 'include/solve.h'), 'a') as f:
         utils.write_solve_extern(f)
 
     # 'solve' definitions
-    with open('cpg_code/src/solve.c', 'a') as f:
+    with open(os.path.join(code_dir, 'src/solve.c'), 'a') as f:
         utils.write_solve(f)
 
     # 'example' prototypes
-    with open('cpg_code/include/example.h', 'a') as f:
-        for name, value in user_p_writable.items():
-            osqp_utils.write_vec_extern(f, value, name, 'c_float')
 
     # 'example' definitions
-    with open('cpg_code/src/example.c', 'a') as f:
-        for name, value in user_p_writable.items():
-            osqp_utils.write_vec(f, value, name, 'c_float')
-        utils.write_main(f, user_p_names)
+    with open(os.path.join(code_dir, 'src/example.c'), 'a') as f:
+        utils.write_main(f, user_p_writable)
 
     print('Done.')
 
     # compile code if wished
-    if compile_code:
+    if compile:
         print('Compiling code ...')
-        os.system('cd cpg_code/build && cmake .. && make')
+        os.system('cd ' + os.path.join(code_dir, 'build') + ' && cmake .. && make')
         print('Done.')

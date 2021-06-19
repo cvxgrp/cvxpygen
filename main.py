@@ -18,7 +18,7 @@ constraints = [cp.abs(x) <= e]
 prob = cp.Problem(cp.Minimize(objective), constraints)
 
 # generate code
-cpg.generate_code(prob, compile_code=True)
+cpg.generate_code(prob, code_dir='cpg_code', compile=True)
 
 
 

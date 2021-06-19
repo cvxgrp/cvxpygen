@@ -28,6 +28,5 @@ typedef struct {
     c_float     *A_decomposed;   ///< decomposition of OSQP data vector
     c_float     *l_decomposed;   ///< decomposition of OSQP data vector
     c_float     *u_decomposed;   ///< decomposition of OSQP data vector
-} Workspace;
+} OSQP_Workspace_t;
 
-#endif // ifndef CPG_TYPES_H
