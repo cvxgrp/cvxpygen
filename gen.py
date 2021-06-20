@@ -5,6 +5,7 @@ import numpy as np
 from scipy import sparse
 from cvxpy.cvxcore.python import canonInterface as cI
 from osqp.codegen import utils as osqp_utils
+import osqp
 import utils
 
 
@@ -55,11 +56,21 @@ def generate_code(problem, code_dir='cpg_code', compile=True):
     shutil.copytree('TEMPLATE', code_dir)
 
     # get problem data
-    data, _, _ = problem.get_problem_data(solver='OSQP', gp=False, enforce_dpp=True, verbose=False)
+    data, solving_chain, inverse_data = problem.get_problem_data(solver='OSQP', gp=False, enforce_dpp=True, verbose=False)
     n_var = data['n_var']
     n_eq = data['n_eq']
     n_ineq = data['n_ineq']
     p_prob = data['param_prob']
+
+    # get variable information
+    var_names = [var.name() for var in problem.variables()]
+    var_ids = list(inverse_data[1].id_map.keys())
+    var_offsets = [inverse_data[2].var_offsets[var_id] for var_id in var_ids]
+    var_sizes = [np.prod(inverse_data[2].var_shapes[var_id]) for var_id in var_ids]
+    var_name_to_indices = {var_name: np.arange(offset, offset+size)
+                           for var_name, offset, size in zip(var_names, var_offsets, var_sizes)}
+    var_name_to_size = {name: size for name, size in zip(var_names, var_sizes)}
+    var_init = {var.name(): np.zeros(shape=var.shape) for var in problem.variables()}
 
     # extract csc values for individual OSQP parameters (Alu -> A, lu)
     (indices_P, indptr_P, shape_P) = p_prob.problem_data_index_P
@@ -73,7 +84,6 @@ def generate_code(problem, code_dir='cpg_code', compile=True):
 
     # OSQP parameters
     OSQP_p_ids = ['P', 'q', 'd', 'A', 'l', 'u']
-    OSQP_p_ids_dec = [p_id + '_decomposed' for p_id in OSQP_p_ids]
     OSQP_p_ids_lu = OSQP_p_ids[:-2] + ['lu']
     OSQP_p_id_to_i = {k: v for v, k in enumerate(OSQP_p_ids)}
     OSQP_p_num = len(OSQP_p_ids)
@@ -89,6 +99,7 @@ def generate_code(problem, code_dir='cpg_code', compile=True):
     user_p_names = [par.name() for par in p_prob.parameters]
     user_p_ids = list(p_prob.param_id_to_col.keys())
     user_p_id_to_col = p_prob.param_id_to_col
+    user_p_col_to_name = {k: v for k, v in zip(user_p_id_to_col.values(), user_p_names)}
     user_p_id_to_size = p_prob.param_id_to_size
     user_p_id_to_param = p_prob.id_to_param
     user_p_total_size = p_prob.total_param_size
@@ -148,11 +159,13 @@ def generate_code(problem, code_dir='cpg_code', compile=True):
     MAP = sparse.vstack([p_prob.reduced_P, p_prob.q, p_prob.reduced_A])
     OSQP_p_flat = MAP @ user_p_flat
     data_P = OSQP_p_flat[OSQP_p_id_to_col_lu['P']:OSQP_p_id_to_col_lu['P'] + OSQP_p_id_to_size_lu['P']]
-    OSQP_p['P'] = csc_to_dict(sparse.csc_matrix((data_P, indices_P, indptr_P), shape=shape_P))
+    OSQP_p['P_csc'] = sparse.csc_matrix((data_P, indices_P, indptr_P), shape=shape_P)
+    OSQP_p['P'] = csc_to_dict(OSQP_p['P_csc'])
     OSQP_p['q'] = OSQP_p_flat[OSQP_p_id_to_col_lu['q']:OSQP_p_id_to_col_lu['q'] + OSQP_p_id_to_size_lu['q']]
     OSQP_p['d'] = OSQP_p_flat[OSQP_p_id_to_col_lu['d']:OSQP_p_id_to_col_lu['d'] + OSQP_p_id_to_size_lu['d']]
     data_A = OSQP_p_flat[OSQP_p_id_to_col_lu['A']:OSQP_p_id_to_col_lu['A'] + OSQP_p_id_to_size_lu['A']]
-    OSQP_p['A'] = csc_to_dict(sparse.csc_matrix((data_A, indices_A, indptr_A), shape=shape_A))
+    OSQP_p['A_csc'] = sparse.csc_matrix((data_A, indices_A, indptr_A), shape=shape_A)
+    OSQP_p['A'] = csc_to_dict(OSQP_p['A_csc'])
     data_lu = OSQP_p_flat[OSQP_p_id_to_col_lu['lu']:OSQP_p_id_to_col_lu['lu'] + OSQP_p_id_to_size_lu['lu']]
     lu = sparse.csc_matrix((data_lu, indices_lu, indptr_lu), shape=shape_lu).toarray().squeeze()
     OSQP_p['l'] = np.concatenate((-lu[:n_eq], -np.inf * np.ones((n_ineq))))
@@ -180,93 +193,75 @@ def generate_code(problem, code_dir='cpg_code', compile=True):
         OSQP_p_decomposed[OSQP_p_id+'_decomposed'] = matrix
 
     # 'types' prototypes
-    with open(os.path.join(code_dir, 'include/types.h'), 'a') as f:
+    with open(os.path.join(code_dir, 'include/cpg_types.h'), 'a') as f:
         utils.write_types(f, user_p_names)
 
     # 'work' prototypes
-    with open(os.path.join(code_dir, 'include/work.h'), 'a') as f:
+    with open(os.path.join(code_dir, 'include/cpg_workspace.h'), 'a') as f:
         for name, value in user_p_writable.items():
             osqp_utils.write_vec_extern(f, value, name, 'c_float')
-        utils.write_struct_extern(f, 'Workspace', 'Workspace_t')
+        utils.write_struct_extern(f, 'CPG_Workspace', 'CPG_Workspace_t')
+        for name, value in var_init.items():
+            osqp_utils.write_vec_extern(f, value, name, 'c_float')
 
-        for name, matrix in OSQP_p_decomposed.items():
-            utils.write_dense_mat_extern(f, matrix, name)
         for OSQP_p_id in OSQP_p_ids:
             utils.write_osqp_extern(f, OSQP_p[OSQP_p_id], OSQP_p_id)
         utils.write_struct_extern(f, 'OSQP_Workspace', 'OSQP_Workspace_t')
 
     # 'work' definitions
-    with open(os.path.join(code_dir, 'src/work.c'), 'a') as f:
+    with open(os.path.join(code_dir, 'src/cpg_workspace.c'), 'a') as f:
         for name, value in user_p_writable.items():
             osqp_utils.write_vec(f, value, name, 'c_float')
-        utils.write_struct(f, user_p_names, user_p_names, 'Workspace', 'Workspace_t')
+        utils.write_struct(f, user_p_names, user_p_names, 'CPG_Workspace', 'CPG_Workspace_t')
+        for name, value in var_init.items():
+            osqp_utils.write_vec(f, value, name, 'c_float')
 
-        for name, matrix in OSQP_p_decomposed.items():
-            utils.write_dense_mat(f, matrix, name)
         for OSQP_p_id in OSQP_p_ids:
             utils.write_osqp(f, replace_inf(OSQP_p[OSQP_p_id]), OSQP_p_id)
-        utils.write_struct(f, OSQP_p_ids+OSQP_p_ids_dec, OSQP_p_ids+OSQP_p_ids_dec, 'OSQP_Workspace', 'OSQP_Workspace_t')
+        utils.write_struct(f, OSQP_p_ids, OSQP_p_ids, 'OSQP_Workspace', 'OSQP_Workspace_t')
 
     # 'update' prototypes
-    with open(os.path.join(code_dir, 'include/update.h'), 'a') as f:
-        # update decomposed parameters
-        for user_p_name in user_p_names:
-            utils.write_update_decomposed_extern(f, user_p_name)
-        # update parameters (update decomposed and compose)
-        for user_p_name in user_p_names:
-            utils.write_update_extern(f, user_p_name)
-        # init
-        utils.write_init_extern(f)
+    with open(os.path.join(code_dir, 'include/cpg_update.h'), 'a') as f:
+        utils.write_update_extern(f)
 
     # 'update' definitions
-    with open(os.path.join(code_dir, 'src/update.c'), 'a') as f:
-        rows_to_sum = dict()
-        # update decomposed parameters
-        for j, (user_p_id, user_p_name) in enumerate(zip(user_p_ids, user_p_names)):
-            OSQP_names = []
-            mappings = []
-            offsets = []
-            for i in list(np.nonzero(adjacency[:, j])[0]):
-                if i >= 4:
-                    OSQP_p_id_lu = 'lu'
-                else:
-                    OSQP_p_id_lu = OSQP_p_ids_lu[i]
-                row_slice = slice(OSQP_p_id_to_col_lu[OSQP_p_id_lu],
-                                  OSQP_p_id_to_col_lu[OSQP_p_id_lu] + OSQP_p_id_to_size_lu[OSQP_p_id_lu])
-                column_slice = slice(user_p_id_to_col[user_p_id],
-                                     user_p_id_to_col[user_p_id] + user_p_id_to_size[user_p_id])
-                OSQP_names.append(OSQP_p_ids[i])
-                mappings.append(MAP[row_slice, column_slice])
-                offsets.append(np.count_nonzero(adjacency[i, :j]) * OSQP_p_sizes[i])
-            rows_to_sum[user_p_name] = utils.write_update_decomposed(f, OSQP_names, mappings, offsets, user_p_name,
-                                                                     n_eq, p_prob.problem_data_index_A)
-        # update parameters (update decomposed and compose)
-        for j, user_p_name in enumerate(user_p_names):
-            OSQP_names = []
-            shapes = []
-            for i in list(np.nonzero(adjacency[:, j])[0]):
-                OSQP_names.append(OSQP_p_ids[i])
-                shapes.append(OSQP_p_decomposed[OSQP_p_ids_dec[i]].shape)
-            utils.write_update(f, OSQP_names, rows_to_sum[user_p_name], shapes, user_p_name)
-        # init
-        shapes = []
+    with open(os.path.join(code_dir, 'src/cpg_update.c'), 'a') as f:
+        mappings = []
         for i in range(OSQP_p_num):
-            shapes.append(OSQP_p_decomposed[OSQP_p_ids_dec[i]].shape)
-        utils.write_init(f, OSQP_p_ids, user_p_names, shapes)
+            if i >= 4:
+                OSQP_p_id_lu = 'lu'
+            else:
+                OSQP_p_id_lu = OSQP_p_ids_lu[i]
+            row_slice = slice(OSQP_p_id_to_col_lu[OSQP_p_id_lu],
+                              OSQP_p_id_to_col_lu[OSQP_p_id_lu] + OSQP_p_id_to_size_lu[OSQP_p_id_lu])
+            mappings.append(MAP[row_slice, :])
+        nonconstant_OSQP_names = [n for (n, b) in zip(OSQP_p_ids, np.sum(adjacency, axis=1) > 0) if b]
+        utils.write_update(f, OSQP_p_ids, nonconstant_OSQP_names, mappings, user_p_col_to_name,
+                           list(user_p_id_to_size.values()), n_eq, p_prob.problem_data_index_A, var_name_to_indices)
 
     # 'solve' prototypes
-    with open(os.path.join(code_dir, 'include/solve.h'), 'a') as f:
+    with open(os.path.join(code_dir, 'include/cpg_solve.h'), 'a') as f:
         utils.write_solve_extern(f)
 
     # 'solve' definitions
-    with open(os.path.join(code_dir, 'src/solve.c'), 'a') as f:
+    with open(os.path.join(code_dir, 'src/cpg_solve.c'), 'a') as f:
         utils.write_solve(f)
 
-    # 'example' prototypes
-
     # 'example' definitions
-    with open(os.path.join(code_dir, 'src/example.c'), 'a') as f:
-        utils.write_main(f, user_p_writable)
+    with open(os.path.join(code_dir, 'src/cpg_example.c'), 'a') as f:
+        utils.write_main(f, user_p_writable, var_name_to_size)
+
+    # OSQP codegen
+    if os.path.isfile('emosqp.cpython-38-darwin.so'):
+        os.remove('emosqp.cpython-38-darwin.so')
+
+    myOSQP = osqp.OSQP()
+    myOSQP.setup(P=OSQP_p['P_csc'], q=OSQP_p['q'], A=OSQP_p['A_csc'], l=OSQP_p['l'], u=OSQP_p['u'])
+    myOSQP.codegen(os.path.join(code_dir, 'OSQP_code'), parameters='matrices', force_rewrite=True)
+
+    # adapt OSQP CMakeLists.txt
+    with open(os.path.join(code_dir, 'OSQP_code/CMakeLists.txt'), 'a') as f:
+        utils.write_OSQP_CMakeLists(f)
 
     print('Done.')
 

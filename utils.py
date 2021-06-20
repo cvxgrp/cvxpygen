@@ -3,24 +3,6 @@ import numpy as np
 from osqp.codegen import utils as osqp_utils
 
 
-def write_row_sum(f, OSQP_name, rows_to_sum_OSQP, shape):
-    """
-    Write row summation of decomposed OSQP param matrix to file
-    """
-
-    if OSQP_name in ['P', 'A']:
-        s = '->x'
-    else:
-        s = ''
-
-    for row in rows_to_sum_OSQP:
-        expr = ''
-        for col in range(shape[1]):
-            expr += 'OSQP_work->%s_decomposed[%d]+' % (OSQP_name, col*shape[0]+row)
-        expr = expr[:-1]
-        f.write('OSQP_work->%s%s[%d] = %s;\n' % (OSQP_name, s, row, expr))
-
-
 def write_types(f, names):
     """
     Write user parameters as struct type to file
@@ -31,7 +13,7 @@ def write_types(f, names):
     for name in names:
         f.write('    c_float     *%s;\n' % name)
 
-    f.write('} Workspace_t;\n\n')
+    f.write('} CPG_Workspace_t;\n\n')
 
     f.write('#endif // ifndef CPG_TYPES_H\n')
 
@@ -105,18 +87,22 @@ def write_struct_extern(f, name, typ):
     f.write("extern %s %s;\n" % (typ, name))
 
 
-def write_update_decomposed(f, OSQP_names, mappings, offsets, user_name, n_eq, problem_data_index_A):
+def write_update(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_name, sizes, n_eq, problem_data_index_A, var_id_to_indices):
     """
-    Write decomposed parameter update function to file
+    Write parameter initialization function to file
     """
 
-    # remember which rows of decomposed OSQP matrices need to be summed
-    rows_to_sum = []
+    f.write('void canonicalize_params(){\n')
 
-    f.write('void update_decomposed_%s(Workspace_t *work, OSQP_Workspace_t *OSQP_work){\n' % user_name)
+    base_cols = list(user_p_col_to_name.keys())
 
-    # consider all OSQP parameters that user parameter maps to
-    for (OSQP_name, mapping, offset) in zip(OSQP_names, mappings, offsets):
+    for OSQP_name, mapping in zip(OSQP_p_ids, mappings):
+
+        if OSQP_name in ['P', 'A']:
+            s = '->x'
+        else:
+            s = ''
+
         if OSQP_name in ['l', 'u']:
             sign = -1
             (Alu_indices, Alu_indptr, _) = problem_data_index_A
@@ -129,77 +115,76 @@ def write_update_decomposed(f, OSQP_names, mappings, offsets, user_name, n_eq, p
             sign = 1
             n_rows = len(mapping.indptr)-1
             OSQP_rows = np.arange(n_rows)
-        rows_to_sum_OSQP = []
+
         for row in range(n_rows):
             expr = ''
             data = mapping.data[mapping.indptr[row]:mapping.indptr[row+1]]
             columns = mapping.indices[mapping.indptr[row]:mapping.indptr[row+1]]
             for (datum, col) in zip(data, columns):
-                expr += '(%.20f*work->%s[%d])+' % (sign*datum, user_name, col)
+                ex = '(%.20f)+' % (sign*datum)
+                for i, user_p_col in enumerate(base_cols):
+                    if user_p_col + sizes[i] > col:
+                        user_name = user_p_col_to_name[user_p_col]
+                        ex = '(%.20f*CPG_Workspace.%s[%d])+' % (sign*datum, user_name, col-user_p_col)
+                        break
+                expr += ex
             expr = expr[:-1]
             if data.size > 0:
                 OSQP_row = OSQP_rows[row]
-                f.write('OSQP_work->%s_decomposed[%d] = %s;\n' % (OSQP_name, offset+OSQP_row, expr))
-                rows_to_sum_OSQP.append(OSQP_row)
-        rows_to_sum.append(rows_to_sum_OSQP)
+                f.write('OSQP_Workspace.%s%s[%d] = %s;\n' % (OSQP_name, s, OSQP_row, expr))
+
+    f.write('}\n\n')
+
+    f.write('void init_params(){\n')
+
+    f.write('canonicalize_params();\n')
+    f.write('osqp_update_P(&workspace, OSQP_Workspace.P->x, 0, 0);\n')
+    f.write('osqp_update_lin_cost(&workspace, OSQP_Workspace.q);\n')
+    f.write('osqp_update_A(&workspace, OSQP_Workspace.A->x, 0, 0);\n')
+    f.write('osqp_update_bounds(&workspace, OSQP_Workspace.l, OSQP_Workspace.u);\n')
+
+    f.write('}\n\n')
+
+    f.write('void update_params(){\n')
+
+    f.write('canonicalize_params();\n')
+
+    if 'P' in nonconstant_OSQP_p_ids:
+        f.write('osqp_update_P(&workspace, OSQP_Workspace.P->x, 0, 0);\n')
+
+    if 'q' in nonconstant_OSQP_p_ids:
+        f.write('osqp_update_lin_cost(&workspace, OSQP_Workspace.q);\n')
+
+    if 'A' in nonconstant_OSQP_p_ids:
+        f.write('osqp_update_A(&workspace, OSQP_Workspace.A->x, 0, 0);\n')
+
+    if 'l' in nonconstant_OSQP_p_ids and 'u' in nonconstant_OSQP_p_ids:
+        f.write('osqp_update_bounds(&workspace, OSQP_Workspace.l, OSQP_Workspace.u);\n')
+    elif 'l' in nonconstant_OSQP_p_ids:
+        f.write('osqp_update_lower_bound(&workspace, OSQP_Workspace.l);\n')
+    elif 'u' in nonconstant_OSQP_p_ids:
+        f.write('osqp_update_upper_bound(&workspace, OSQP_Workspace.u);\n')
+
+    f.write('}\n\n')
+
+    f.write('void retrieve_solution(){\n')
+
+    for var_id, indices in var_id_to_indices.items():
+        for i, idx in enumerate(indices):
+            f.write('%s[%d] = workspace.solution->x[%d];\n' % (var_id, i, idx))
 
     f.write('}\n')
 
-    return rows_to_sum
 
-
-def write_update_decomposed_extern(f, name):
-    """
-    Write decomposed parameter update function to file
-    """
-
-    f.write('extern void update_decomposed_%s(Workspace_t *work, OSQP_Workspace_t *OSQP_work);\n' % name)
-
-
-def write_update(f, OSQP_names, rows_to_sum, shapes, name):
-    """
-    Write parameter update function to file
-    """
-
-    f.write('void update_%s(Workspace_t *work, OSQP_Workspace_t *OSQP_work){\n' % name)
-    f.write('update_decomposed_%s(work, OSQP_work);\n' % name)
-
-    for (OSQP_name, rows_to_sum_OSQP, shape) in zip(OSQP_names, rows_to_sum, shapes):
-        write_row_sum(f, OSQP_name, rows_to_sum_OSQP, shape)
-
-    f.write('}\n')
-
-
-def write_update_extern(f, name):
-    """
-    Write parameter update function to file
-    """
-
-    f.write('extern void update_%s(Workspace_t *work, OSQP_Workspace_t *OSQP_work);\n' % name)
-
-
-def write_init(f, OSQP_names, user_names, shapes):
+def write_update_extern(f):
     """
     Write parameter initialization function to file
     """
 
-    f.write('void init_params(Workspace_t *work, OSQP_Workspace_t *OSQP_work){\n')
-
-    for user_name in user_names:
-        f.write('update_decomposed_%s(work, OSQP_work);\n' % user_name)
-
-    for (OSQP_name, shape) in zip(OSQP_names, shapes):
-        write_row_sum(f, OSQP_name, range(shape[0]), shape)
-
-    f.write('}\n')
-
-
-def write_init_extern(f):
-    """
-    Write parameter initialization function to file
-    """
-
-    f.write('extern void init_params(Workspace_t *work, OSQP_Workspace_t *OSQP_work);\n')
+    f.write('extern void canonicalize_params();\n')
+    f.write('extern void init_params();\n')
+    f.write('extern void update_params();\n')
+    f.write('extern void retrieve_solution();\n')
 
 
 def write_solve(f):
@@ -207,8 +192,10 @@ def write_solve(f):
     Write solve function to file
     """
 
-    f.write('void solve(OSQP_Workspace_t *work){\n')
-    f.write('printf("Hello World!\\n");\n')
+    f.write('void solve(){\n')
+    f.write('update_params();\n')
+    f.write('osqp_solve(&workspace);\n')
+    f.write('retrieve_solution();\n')
     f.write('}\n')
 
 
@@ -217,10 +204,10 @@ def write_solve_extern(f):
     Write solve function to file
     """
 
-    f.write('extern void solve(OSQP_Workspace_t *work);\n')
+    f.write('extern void solve();\n')
 
 
-def write_main(f, user_p_writable):
+def write_main(f, user_p_writable, var_name_to_size):
     """
     Write main function to file
     """
@@ -229,9 +216,25 @@ def write_main(f, user_p_writable):
 
     for name, value in user_p_writable.items():
         for i in range(len(value)):
-            f.write('Workspace.%s[%d] = %.20f;\n' % (name, i, value[i]))
+            f.write('CPG_Workspace.%s[%d] = %.20f;\n' % (name, i, value[i]))
 
-    f.write('init_params(&Workspace, &OSQP_Workspace);\n')
-    f.write('solve(&OSQP_Workspace);\n')
+    f.write('init_params();\n')
+    f.write('solve();\n')
+
+    f.write('// printing solution\n')
+
+    for name, size in var_name_to_size.items():
+        f.write('for(int i = 0; i < %d; i++) {\n' % size)
+        f.write('printf("%s[%%d] = %%f \\n", i, %s[i]);\n' % (name, name))
+        f.write('}\n')
+
     f.write('return 0;\n')
     f.write('}\n')
+
+
+def write_OSQP_CMakeLists(f):
+    """
+    Pass sources to parent scope in OSQP_code/CMakeLists.txt
+    """
+
+    f.write('\nset(osqp_src "${osqp_src}" PARENT_SCOPE)')
