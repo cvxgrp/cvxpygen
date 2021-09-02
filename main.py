@@ -28,7 +28,7 @@ g.value = np.random.rand(m, 1)
 e.value = np.random.rand(n, 1)
 
 # solve problem conventionally
-prob.solve()
+obj = prob.solve()
 
 # generate code
 cpg.generate_code(prob, code_dir='cpg_code', compile=True)
@@ -36,11 +36,12 @@ cpg.generate_code(prob, code_dir='cpg_code', compile=True)
 # solve problem via generated code
 ''''''
 
-print('Python solution:')
+print('Python result:')
+print('f =', obj)
 print('x =', x.value)
 print('y =', y.value)
 
-print('Codegen solution:')
+print('Codegen result:')
 os.system('cd ' + os.path.join('cpg_code', 'build') + ' && ./cpg_example')
 
 

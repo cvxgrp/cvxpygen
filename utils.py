@@ -167,6 +167,10 @@ def write_update(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_
 
     f.write('}\n\n')
 
+    f.write('void retrieve_value(){\n')
+    f.write('objective_value[0] = workspace.info->obj_val;\n')
+    f.write('}\n')
+
     f.write('void retrieve_solution(){\n')
 
     for var_id, indices in var_id_to_indices.items():
@@ -184,6 +188,7 @@ def write_update_extern(f):
     f.write('extern void canonicalize_params();\n')
     f.write('extern void init_params();\n')
     f.write('extern void update_params();\n')
+    f.write('extern void retrieve_value();\n')
     f.write('extern void retrieve_solution();\n')
 
 
@@ -195,6 +200,7 @@ def write_solve(f):
     f.write('void solve(){\n')
     f.write('update_params();\n')
     f.write('osqp_solve(&workspace);\n')
+    f.write('retrieve_value();\n')
     f.write('retrieve_solution();\n')
     f.write('}\n')
 
@@ -220,6 +226,9 @@ def write_main(f, user_p_writable, var_name_to_size):
 
     f.write('init_params();\n')
     f.write('solve();\n')
+
+    f.write('// printing objective value\n')
+    f.write('printf("f = %f \\n", objective_value[0]);\n')
 
     f.write('// printing solution\n')
 
