@@ -168,8 +168,8 @@ def write_solve(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_n
     f.write('}\n\n')
 
     f.write('void retrieve_value(){\n')
-    f.write('objective_value[0] = workspace.info->obj_val;\n')
-    f.write('}\n')
+    f.write('objective_value[0] = workspace.info->obj_val + *OSQP_Params.d;\n')
+    f.write('}\n\n')
 
     f.write('void retrieve_solution(){\n')
 
@@ -177,7 +177,7 @@ def write_solve(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_n
         for i, idx in enumerate(indices):
             f.write('%s[%d] = workspace.solution->x[%d];\n' % (var_id, i, idx))
 
-    f.write('}\n')
+    f.write('}\n\n')
 
     f.write('void solve(){\n')
     f.write('update_params();\n')
