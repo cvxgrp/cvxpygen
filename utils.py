@@ -87,7 +87,7 @@ def write_struct_extern(f, name, typ):
     f.write("extern %s %s;\n" % (typ, name))
 
 
-def write_update(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_name, sizes, n_eq, problem_data_index_A, var_id_to_indices):
+def write_solve(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_name, sizes, n_eq, problem_data_index_A, var_id_to_indices):
     """
     Write parameter initialization function to file
     """
@@ -179,24 +179,6 @@ def write_update(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_
 
     f.write('}\n')
 
-
-def write_update_extern(f):
-    """
-    Write parameter initialization function to file
-    """
-
-    f.write('extern void canonicalize_params();\n')
-    f.write('extern void init_params();\n')
-    f.write('extern void update_params();\n')
-    f.write('extern void retrieve_value();\n')
-    f.write('extern void retrieve_solution();\n')
-
-
-def write_solve(f):
-    """
-    Write solve function to file
-    """
-
     f.write('void solve(){\n')
     f.write('update_params();\n')
     f.write('osqp_solve(&workspace);\n')
@@ -207,9 +189,14 @@ def write_solve(f):
 
 def write_solve_extern(f):
     """
-    Write solve function to file
+    Write parameter initialization function to file
     """
 
+    f.write('extern void canonicalize_params();\n')
+    f.write('extern void init_params();\n')
+    f.write('extern void update_params();\n')
+    f.write('extern void retrieve_value();\n')
+    f.write('extern void retrieve_solution();\n')
     f.write('extern void solve();\n')
 
 

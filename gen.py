@@ -222,12 +222,12 @@ def generate_code(problem, code_dir='cpg_code', compile=True):
             utils.write_osqp(f, replace_inf(OSQP_p[OSQP_p_id]), OSQP_p_id)
         utils.write_struct(f, OSQP_p_ids, OSQP_p_ids, 'OSQP_Params', 'OSQP_Params_t')
 
-    # 'update' prototypes
-    with open(os.path.join(code_dir, 'include/cpg_update.h'), 'a') as f:
-        utils.write_update_extern(f)
+    # 'solve' prototypes
+    with open(os.path.join(code_dir, 'include/cpg_solve.h'), 'a') as f:
+        utils.write_solve_extern(f)
 
-    # 'update' definitions
-    with open(os.path.join(code_dir, 'src/cpg_update.c'), 'a') as f:
+    # 'solve' definitions
+    with open(os.path.join(code_dir, 'src/cpg_solve.c'), 'a') as f:
         mappings = []
         for i in range(OSQP_p_num):
             if i >= 4:
@@ -238,16 +238,8 @@ def generate_code(problem, code_dir='cpg_code', compile=True):
                               OSQP_p_id_to_col_lu[OSQP_p_id_lu] + OSQP_p_id_to_size_lu[OSQP_p_id_lu])
             mappings.append(MAP[row_slice, :])
         nonconstant_OSQP_names = [n for (n, b) in zip(OSQP_p_ids, np.sum(adjacency, axis=1) > 0) if b]
-        utils.write_update(f, OSQP_p_ids, nonconstant_OSQP_names, mappings, user_p_col_to_name,
+        utils.write_solve(f, OSQP_p_ids, nonconstant_OSQP_names, mappings, user_p_col_to_name,
                            list(user_p_id_to_size.values()), n_eq, p_prob.problem_data_index_A, var_name_to_indices)
-
-    # 'solve' prototypes
-    with open(os.path.join(code_dir, 'include/cpg_solve.h'), 'a') as f:
-        utils.write_solve_extern(f)
-
-    # 'solve' definitions
-    with open(os.path.join(code_dir, 'src/cpg_solve.c'), 'a') as f:
-        utils.write_solve(f)
 
     # 'example' definitions
     with open(os.path.join(code_dir, 'src/cpg_example.c'), 'a') as f:
