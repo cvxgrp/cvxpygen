@@ -192,12 +192,19 @@ def generate_code(problem, code_dir='cpg_code', compile=True):
             matrix[:, -1] = mapping.toarray().squeeze()
         OSQP_p_decomposed[OSQP_p_id+'_decomposed'] = matrix
 
-    # 'types' prototypes
-    with open(os.path.join(code_dir, 'include/cpg_types.h'), 'a') as f:
-        utils.write_types(f, user_p_names)
-
     # 'work' prototypes
     with open(os.path.join(code_dir, 'include/cpg_workspace.h'), 'a') as f:
+
+        f.write('typedef struct {\n')
+
+        # single user parameters
+        for name in user_p_names:
+            f.write('    c_float     *%s;\n' % name)
+
+        f.write('} CPG_Params_t;\n\n')
+
+        f.write('#endif // ifndef CPG_TYPES_H\n\n')
+
         osqp_utils.write_vec_extern(f, [0], 'objective_value', 'c_float')
         for name, value in user_p_writable.items():
             osqp_utils.write_vec_extern(f, value, name, 'c_float')
