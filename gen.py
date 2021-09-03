@@ -201,26 +201,26 @@ def generate_code(problem, code_dir='cpg_code', compile=True):
         osqp_utils.write_vec_extern(f, [0], 'objective_value', 'c_float')
         for name, value in user_p_writable.items():
             osqp_utils.write_vec_extern(f, value, name, 'c_float')
-        utils.write_struct_extern(f, 'CPG_Workspace', 'CPG_Workspace_t')
+        utils.write_struct_extern(f, 'CPG_Params', 'CPG_Params_t')
         for name, value in var_init.items():
             osqp_utils.write_vec_extern(f, value, name, 'c_float')
 
         for OSQP_p_id in OSQP_p_ids:
             utils.write_osqp_extern(f, OSQP_p[OSQP_p_id], OSQP_p_id)
-        utils.write_struct_extern(f, 'OSQP_Workspace', 'OSQP_Workspace_t')
+        utils.write_struct_extern(f, 'OSQP_Params', 'OSQP_Params_t')
 
     # 'work' definitions
     with open(os.path.join(code_dir, 'src/cpg_workspace.c'), 'a') as f:
         osqp_utils.write_vec(f, [0], 'objective_value', 'c_float')
         for name, value in user_p_writable.items():
             osqp_utils.write_vec(f, value, name, 'c_float')
-        utils.write_struct(f, user_p_names, user_p_names, 'CPG_Workspace', 'CPG_Workspace_t')
+        utils.write_struct(f, user_p_names, user_p_names, 'CPG_Params', 'CPG_Params_t')
         for name, value in var_init.items():
             osqp_utils.write_vec(f, value, name, 'c_float')
 
         for OSQP_p_id in OSQP_p_ids:
             utils.write_osqp(f, replace_inf(OSQP_p[OSQP_p_id]), OSQP_p_id)
-        utils.write_struct(f, OSQP_p_ids, OSQP_p_ids, 'OSQP_Workspace', 'OSQP_Workspace_t')
+        utils.write_struct(f, OSQP_p_ids, OSQP_p_ids, 'OSQP_Params', 'OSQP_Params_t')
 
     # 'update' prototypes
     with open(os.path.join(code_dir, 'include/cpg_update.h'), 'a') as f:

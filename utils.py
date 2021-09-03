@@ -13,7 +13,7 @@ def write_types(f, names):
     for name in names:
         f.write('    c_float     *%s;\n' % name)
 
-    f.write('} CPG_Workspace_t;\n\n')
+    f.write('} CPG_Params_t;\n\n')
 
     f.write('#endif // ifndef CPG_TYPES_H\n')
 
@@ -125,23 +125,23 @@ def write_update(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_
                 for i, user_p_col in enumerate(base_cols):
                     if user_p_col + sizes[i] > col:
                         user_name = user_p_col_to_name[user_p_col]
-                        ex = '(%.20f*CPG_Workspace.%s[%d])+' % (sign*datum, user_name, col-user_p_col)
+                        ex = '(%.20f*CPG_Params.%s[%d])+' % (sign*datum, user_name, col-user_p_col)
                         break
                 expr += ex
             expr = expr[:-1]
             if data.size > 0:
                 OSQP_row = OSQP_rows[row]
-                f.write('OSQP_Workspace.%s%s[%d] = %s;\n' % (OSQP_name, s, OSQP_row, expr))
+                f.write('OSQP_Params.%s%s[%d] = %s;\n' % (OSQP_name, s, OSQP_row, expr))
 
     f.write('}\n\n')
 
     f.write('void init_params(){\n')
 
     f.write('canonicalize_params();\n')
-    f.write('osqp_update_P(&workspace, OSQP_Workspace.P->x, 0, 0);\n')
-    f.write('osqp_update_lin_cost(&workspace, OSQP_Workspace.q);\n')
-    f.write('osqp_update_A(&workspace, OSQP_Workspace.A->x, 0, 0);\n')
-    f.write('osqp_update_bounds(&workspace, OSQP_Workspace.l, OSQP_Workspace.u);\n')
+    f.write('osqp_update_P(&workspace, OSQP_Params.P->x, 0, 0);\n')
+    f.write('osqp_update_lin_cost(&workspace, OSQP_Params.q);\n')
+    f.write('osqp_update_A(&workspace, OSQP_Params.A->x, 0, 0);\n')
+    f.write('osqp_update_bounds(&workspace, OSQP_Params.l, OSQP_Params.u);\n')
 
     f.write('}\n\n')
 
@@ -150,20 +150,20 @@ def write_update(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_
     f.write('canonicalize_params();\n')
 
     if 'P' in nonconstant_OSQP_p_ids:
-        f.write('osqp_update_P(&workspace, OSQP_Workspace.P->x, 0, 0);\n')
+        f.write('osqp_update_P(&workspace, OSQP_Params.P->x, 0, 0);\n')
 
     if 'q' in nonconstant_OSQP_p_ids:
-        f.write('osqp_update_lin_cost(&workspace, OSQP_Workspace.q);\n')
+        f.write('osqp_update_lin_cost(&workspace, OSQP_Params.q);\n')
 
     if 'A' in nonconstant_OSQP_p_ids:
-        f.write('osqp_update_A(&workspace, OSQP_Workspace.A->x, 0, 0);\n')
+        f.write('osqp_update_A(&workspace, OSQP_Params.A->x, 0, 0);\n')
 
     if 'l' in nonconstant_OSQP_p_ids and 'u' in nonconstant_OSQP_p_ids:
-        f.write('osqp_update_bounds(&workspace, OSQP_Workspace.l, OSQP_Workspace.u);\n')
+        f.write('osqp_update_bounds(&workspace, OSQP_Params.l, OSQP_Params.u);\n')
     elif 'l' in nonconstant_OSQP_p_ids:
-        f.write('osqp_update_lower_bound(&workspace, OSQP_Workspace.l);\n')
+        f.write('osqp_update_lower_bound(&workspace, OSQP_Params.l);\n')
     elif 'u' in nonconstant_OSQP_p_ids:
-        f.write('osqp_update_upper_bound(&workspace, OSQP_Workspace.u);\n')
+        f.write('osqp_update_upper_bound(&workspace, OSQP_Params.u);\n')
 
     f.write('}\n\n')
 
@@ -222,7 +222,7 @@ def write_main(f, user_p_writable, var_name_to_size):
 
     for name, value in user_p_writable.items():
         for i in range(len(value)):
-            f.write('CPG_Workspace.%s[%d] = %.20f;\n' % (name, i, value[i]))
+            f.write('CPG_Params.%s[%d] = %.20f;\n' % (name, i, value[i]))
 
     f.write('init_params();\n')
     f.write('solve();\n')
