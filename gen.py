@@ -224,8 +224,9 @@ def generate_code(problem, code_dir='CPG_code', compile=True):
 
     print('Done.')
 
-    # compile code if wished
+    # generate python module
     if compile:
+        # for development purposes, compile example program executable
         print('Compiling code ...')
         os.system('cd ' + os.path.join(code_dir, 'build') + ' && cmake .. && make')
         print('Done.')

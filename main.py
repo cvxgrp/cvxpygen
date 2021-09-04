@@ -41,6 +41,7 @@ print('f =', obj)
 print('x =', x.value)
 print('y =', y.value)
 
+# for development purpose, run example program executable (to be replaced by pybind module)
 print('Codegen result:')
 os.system('cd ' + os.path.join('CPG_code', 'build') + ' && ./cpg_example')
 
