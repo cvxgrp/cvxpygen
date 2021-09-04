@@ -31,7 +31,7 @@ e.value = np.random.rand(n, 1)
 obj = prob.solve()
 
 # generate code
-cpg.generate_code(prob, code_dir='cpg_code', compile=True)
+cpg.generate_code(prob, code_dir='CPG_code', compile=True)
 
 # solve problem via generated code
 ''''''
@@ -42,7 +42,7 @@ print('x =', x.value)
 print('y =', y.value)
 
 print('Codegen result:')
-os.system('cd ' + os.path.join('cpg_code', 'build') + ' && ./cpg_example')
+os.system('cd ' + os.path.join('CPG_code', 'build') + ' && ./cpg_example')
 
 
 # TODO: increase code quality
