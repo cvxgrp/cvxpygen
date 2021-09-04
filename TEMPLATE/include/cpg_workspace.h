@@ -11,11 +11,5 @@ typedef struct {
     csc         *A;              ///< OSQP parameter A
     c_float     *l;              ///< OSQP parameter l
     c_float     *u;              ///< OSQP parameter u
-    c_float     *P_decomposed;   ///< decomposition of OSQP data vector
-    c_float     *q_decomposed;   ///< decomposition of OSQP data vector
-    c_float     *d_decomposed;   ///< decomposition of OSQP data vector
-    c_float     *A_decomposed;   ///< decomposition of OSQP data vector
-    c_float     *l_decomposed;   ///< decomposition of OSQP data vector
-    c_float     *u_decomposed;   ///< decomposition of OSQP data vector
 } OSQP_Params_t;
 
