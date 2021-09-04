@@ -182,10 +182,6 @@ def generate_code(problem, code_dir='CPG_code', compile=True):
     with open(os.path.join(code_dir, 'src/cpg_workspace.c'), 'a') as f:
         utils.write_workspace(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP_p)
 
-    # 'solve' prototypes
-    with open(os.path.join(code_dir, 'include/cpg_solve.h'), 'a') as f:
-        utils.write_solve_extern(f)
-
     # 'solve' definitions
     with open(os.path.join(code_dir, 'src/cpg_solve.c'), 'a') as f:
         mappings = []

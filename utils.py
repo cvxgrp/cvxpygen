@@ -250,19 +250,6 @@ def write_solve(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_n
     f.write('}\n')
 
 
-def write_solve_extern(f):
-    """
-    Write parameter initialization function to file
-    """
-
-    f.write('extern void canonicalize_params();\n')
-    f.write('extern void init_params();\n')
-    f.write('extern void update_params();\n')
-    f.write('extern void retrieve_value();\n')
-    f.write('extern void retrieve_solution();\n')
-    f.write('extern void solve();\n')
-
-
 def write_main(f, user_p_writable, var_name_to_size):
     """
     Write main function to file
