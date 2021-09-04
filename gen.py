@@ -213,6 +213,15 @@ def generate_code(problem, code_dir='CPG_code', compile=True):
     with open(os.path.join(code_dir, 'OSQP_code/CMakeLists.txt'), 'a') as f:
         utils.write_OSQP_CMakeLists(f)
 
+    # html documentation file
+    with open(os.path.join(code_dir, 'README.html'), 'r') as f:
+        html_data = f.read()
+
+    html_data = utils.replace_html(html_data, user_p_names, user_p_writable, var_init)
+
+    with open(os.path.join(code_dir, 'README.html'), 'w') as f:
+        f.write(html_data)
+
     print('Done.')
 
     # compile code if wished

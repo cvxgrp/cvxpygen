@@ -155,6 +155,7 @@ def write_solve(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_n
     Write parameter initialization function to file
     """
 
+    f.write('// map user-defined to OSQP-accepted parameters\n')
     f.write('void canonicalize_params(){\n')
 
     base_cols = list(user_p_col_to_name.keys())
@@ -198,6 +199,7 @@ def write_solve(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_n
 
     f.write('}\n\n')
 
+    f.write('// initialize all OSQP-accepted parameters\n')
     f.write('void init_params(){\n')
 
     f.write('canonicalize_params();\n')
@@ -208,8 +210,8 @@ def write_solve(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_n
 
     f.write('}\n\n')
 
+    f.write('// update OSQP-accepted parameters that depend on user-defined parameters\n')
     f.write('void update_params(){\n')
-
     f.write('canonicalize_params();\n')
 
     if 'P' in nonconstant_OSQP_p_ids:
@@ -230,10 +232,12 @@ def write_solve(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_n
 
     f.write('}\n\n')
 
+    f.write('// retrieve user-defined objective function value\n')
     f.write('void retrieve_value(){\n')
     f.write('objective_value[0] = workspace.info->obj_val + *OSQP_Params.d;\n')
     f.write('}\n\n')
 
+    f.write('// retrieve solution in terms of user-defined variables\n')
     f.write('void retrieve_solution(){\n')
 
     for var_id, indices in var_id_to_indices.items():
@@ -242,6 +246,7 @@ def write_solve(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_n
 
     f.write('}\n\n')
 
+    f.write('// perform one ASA sequence to solve a problem instance\n')
     f.write('void solve(){\n')
     f.write('update_params();\n')
     f.write('osqp_solve(&workspace);\n')
@@ -255,19 +260,23 @@ def write_main(f, user_p_writable, var_name_to_size):
     Write main function to file
     """
 
-    f.write('int main(int argc, char *argv[]){\n')
+    f.write('int main(int argc, char *argv[]){\n\n')
 
+    f.write('// initialize user-defined parameter values\n')
     for name, value in user_p_writable.items():
         for i in range(len(value)):
             f.write('CPG_Params.%s[%d] = %.20f;\n' % (name, i, value[i]))
 
-    f.write('init_params();\n')
-    f.write('solve();\n')
+    f.write('\n// initialize OSQP-accepted parameter values, this must be done once before solving for the first time\n')
+    f.write('init_params();\n\n')
 
-    f.write('// printing objective value\n')
-    f.write('printf("f = %f \\n", objective_value[0]);\n')
+    f.write('// solve the problem instance\n')
+    f.write('solve();\n\n')
 
-    f.write('// printing solution\n')
+    f.write('// printing objective function value for demonstration purpose\n')
+    f.write('printf("f = %f \\n", objective_value[0]);\n\n')
+
+    f.write('// printing solution for demonstration purpose\n')
 
     for name, size in var_name_to_size.items():
         f.write('for(int i = 0; i < %d; i++) {\n' % size)
@@ -284,3 +293,31 @@ def write_OSQP_CMakeLists(f):
     """
 
     f.write('\nset(osqp_src "${osqp_src}" PARENT_SCOPE)')
+
+
+def replace_html(text, user_p_names, user_p_writable, var_init):
+    """
+    Replace placeholder strings in html documentation file
+    """
+
+    # type definition of CPG_Params_t
+    CPGPARAMSTYPEDEF = 'typedef struct {\n'
+    for name in user_p_names:
+        CPGPARAMSTYPEDEF += ('    c_float     *%s;' % name).ljust(33) + ('///< Your parameter %s\n' % name)
+    CPGPARAMSTYPEDEF += '} CPG_Params_t;'
+
+    text = text.replace('$CPGPARAMSTYPEDEF', CPGPARAMSTYPEDEF)
+
+    # parameter delarations
+    CPGPARAMDECLARATIONS = ''
+    for name, value in user_p_writable.items():
+        CPGPARAMDECLARATIONS += 'c_float %s[%d];\n' % (name, value.size)
+
+    text = text.replace('$CPGPARAMDECLARATIONS', CPGPARAMDECLARATIONS[:-2])
+
+    # variable declarations
+    CPGVARIABLEDECLARATIONS = ''
+    for name, value in var_init.items():
+        CPGVARIABLEDECLARATIONS += 'c_float %s[%d];\n' % (name, value.size)
+
+    return text.replace('$CPGVARIABLEDECLARATIONS', CPGVARIABLEDECLARATIONS[:-2])

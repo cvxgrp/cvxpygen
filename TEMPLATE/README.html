@@ -1,0 +1,134 @@
+
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>CPG Code Documentation</title>
+    <meta name="author" content="">
+    <meta name="description" content="">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {background-color: white; padding-left: 260px; padding-right: 260px;}
+        h1, h2, h3, h4, h5, h6   {color: darkslateblue; font-family: sans-serif;}
+        p, dl {color: black; font-family: sans-serif;}
+        code {color: black; background-color: #f1f1f1;}
+        pre {background-color: #f1f1f1; padding-left: 20px; padding-right: 20px;}
+    </style>
+</head>
+
+<body>
+  <h1>C code to solve your CVXPY problem</h1>
+  <h3>File tree</h3>
+  <p>
+    Your generated code is structured as follows inside your chosen <code>&lt;code_dir&gt;</code> directory:
+  </p>
+  <pre><code><!-- language: lang-c -->
+&lt;code_dir&gt;
+    OSQP_code
+      ...
+    include
+      cpg_workspace.h
+      cpg_solve.h
+    src
+      cpg_workspace.c
+      cpg_solve.c
+      cpg_example.c
+    build
+    CMakeLists.txt
+  </code></pre>
+  <p>
+    The <code>OSQP_code</code> subdirectory contains all code produced by the code generation feature of the chosen
+    numerical solver (OSQP). For documentation on this part, please have a look <a href="https://osqp.org/docs/codegen/python.html" target="_blank">here</a>.
+  </p>
+  <p>
+    To make this solver usable, your problem needs to be converted to the standard form accepted by OSQP.
+      This is done by all the other source files inside the <code>&lt;code_dir&gt;</code> directory.
+  </p>
+  <h3>Types, declarations & definitions</h3>
+
+  <p>
+    <dl>
+      <dt><code>include/cpg_workspace.h</code> contains type definitions and C variable declarations:</dt>
+        <dd>
+          <pre><code><!-- language: lang-c -->
+// struct with OSQP-accepted parameters as fields
+typedef struct {
+    csc         *P;              ///< OSQP parameter P
+    c_float     *q;              ///< OSQP parameter q
+    c_float     *d;              ///< OSQP parameter d
+    csc         *A;              ///< OSQP parameter A
+    c_float     *l;              ///< OSQP parameter l
+    c_float     *u;              ///< OSQP parameter u
+} OSQP_Params_t;
+
+// struct with user-defined parameters as fields
+$CPGPARAMSTYPEDEF
+
+// value of the objective function
+c_float objective_value[1];
+
+// User-defined parameters
+$CPGPARAMDECLARATIONS
+
+// Struct containing all user-defined parameters
+CPG_Params_t CPG_Params;
+
+// User-defined variables
+$CPGVARIABLEDECLARATIONS
+
+// Parameters accepted by OSQP
+csc P;
+c_float q[11];
+c_float d[1];
+csc A;
+c_float l[15];
+c_float u[15];
+
+// Struct containing parameters accepted by OSQP
+OSQP_Params_t OSQP_Params;
+          </code></pre>
+        </dd>
+      <dt><code>include/cpg_solve.h</code> contains function prototypes:</dt>
+        <dd>
+          <pre><code><!-- language: lang-c -->
+// map user-defined to OSQP-accepted parameters
+void canonicalize_params();
+
+// initialize all OSQP-accepted parameters
+void init_params();
+
+// update OSQP-accepted parameters that depend on user-defined parameters
+void update_params();
+
+// retrieve user-defined objective function value
+void retrieve_value();
+
+// retrieve solution in terms of user-defined variables
+void retrieve_solution();
+
+// perform one ASA sequence to solve a problem instance
+void solve();
+          </code></pre>
+        </dd>
+      <dt><code>src/cpg_workspace.c</code> contains the static allocation of the C variables declared in <code>include/cpg_workspace.h</code>.</dt>
+      <dt><code>src/cpg_solve.c</code> contains the definition of functions declared in <code>include/cpg_solve.h</code>.</dt>
+      <dt><code>src/cpg_example.c</code> contains example code that initializes the problem data and solves a problem instance.</dt>
+    <dt><code>CMakeLists.txt</code> contains instructions for build file generation inside the <code>build</code> directory with CMake.</dt>
+    </dl>
+  </p>
+
+  <h3>Compilation</h3>
+
+  <p>
+    To compile and run the example program, execute the following:
+    <pre><code>
+cd &lt;code_dir&gt;/build
+cmake ..
+make
+    </code></pre>
+  </p>
+
+</body>
+
+</html>
