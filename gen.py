@@ -25,24 +25,6 @@ def csc_to_dict(m):
     return d
 
 
-def replace_inf(v):
-    """
-    Replace infinity by large number
-    """
-
-    # check if dealing with csc dict or numpy array
-    if type(v) == dict:
-        sign = np.sign(v['x'])
-        idx = np.isinf(v['x'])
-        v['x'][idx] = 1e30 * sign[idx]
-    else:
-        sign = np.sign(v)
-        idx = np.isinf(v)
-        v[idx] = 1e30 * sign[idx]
-
-    return v
-
-
 def generate_code(problem, code_dir='cpg_code', compile=True):
     """
     Generate C code for CVXPY problem and optionally compile example program
@@ -192,42 +174,13 @@ def generate_code(problem, code_dir='cpg_code', compile=True):
             matrix[:, -1] = mapping.toarray().squeeze()
         OSQP_p_decomposed[OSQP_p_id+'_decomposed'] = matrix
 
-    # 'work' prototypes
+    # 'workspace' prototypes
     with open(os.path.join(code_dir, 'include/cpg_workspace.h'), 'a') as f:
+        utils.write_workspace_extern(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP_p)
 
-        f.write('typedef struct {\n')
-
-        # single user parameters
-        for name in user_p_names:
-            f.write('    c_float     *%s;\n' % name)
-
-        f.write('} CPG_Params_t;\n\n')
-
-        f.write('#endif // ifndef CPG_TYPES_H\n\n')
-
-        osqp_utils.write_vec_extern(f, [0], 'objective_value', 'c_float')
-        for name, value in user_p_writable.items():
-            osqp_utils.write_vec_extern(f, value, name, 'c_float')
-        utils.write_struct_extern(f, 'CPG_Params', 'CPG_Params_t')
-        for name, value in var_init.items():
-            osqp_utils.write_vec_extern(f, value, name, 'c_float')
-
-        for OSQP_p_id in OSQP_p_ids:
-            utils.write_osqp_extern(f, OSQP_p[OSQP_p_id], OSQP_p_id)
-        utils.write_struct_extern(f, 'OSQP_Params', 'OSQP_Params_t')
-
-    # 'work' definitions
+    # 'workspace' definitions
     with open(os.path.join(code_dir, 'src/cpg_workspace.c'), 'a') as f:
-        osqp_utils.write_vec(f, [0], 'objective_value', 'c_float')
-        for name, value in user_p_writable.items():
-            osqp_utils.write_vec(f, value, name, 'c_float')
-        utils.write_struct(f, user_p_names, user_p_names, 'CPG_Params', 'CPG_Params_t')
-        for name, value in var_init.items():
-            osqp_utils.write_vec(f, value, name, 'c_float')
-
-        for OSQP_p_id in OSQP_p_ids:
-            utils.write_osqp(f, replace_inf(OSQP_p[OSQP_p_id]), OSQP_p_id)
-        utils.write_struct(f, OSQP_p_ids, OSQP_p_ids, 'OSQP_Params', 'OSQP_Params_t')
+        utils.write_workspace(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP_p)
 
     # 'solve' prototypes
     with open(os.path.join(code_dir, 'include/cpg_solve.h'), 'a') as f:

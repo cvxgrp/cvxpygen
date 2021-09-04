@@ -3,19 +3,22 @@ import numpy as np
 from osqp.codegen import utils as osqp_utils
 
 
-def write_types(f, names):
+def replace_inf(v):
     """
-    Write user parameters as struct type to file
+    Replace infinity by large number
     """
-    f.write('typedef struct {\n')
 
-    # single user parameters
-    for name in names:
-        f.write('    c_float     *%s;\n' % name)
+    # check if dealing with csc dict or numpy array
+    if type(v) == dict:
+        sign = np.sign(v['x'])
+        idx = np.isinf(v['x'])
+        v['x'][idx] = 1e30 * sign[idx]
+    else:
+        sign = np.sign(v)
+        idx = np.isinf(v)
+        v[idx] = 1e30 * sign[idx]
 
-    f.write('} CPG_Params_t;\n\n')
-
-    f.write('#endif // ifndef CPG_TYPES_H\n')
+    return v
 
 
 def write_osqp(f, param, name):
@@ -85,6 +88,66 @@ def write_struct_extern(f, name, typ):
     """
 
     f.write("extern %s %s;\n" % (typ, name))
+
+
+def write_workspace(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP_p):
+    f.write('// value of the objective function\n')
+    osqp_utils.write_vec(f, [0], 'objective_value', 'c_float')
+
+    f.write('\n// User-defined parameters\n')
+    for name, value in user_p_writable.items():
+        osqp_utils.write_vec(f, value, name, 'c_float')
+
+    f.write('\n// Struct containing all user-defined parameters\n')
+    write_struct(f, user_p_names, user_p_names, 'CPG_Params', 'CPG_Params_t')
+
+    f.write('\n// User-defined variables\n')
+    for name, value in var_init.items():
+        osqp_utils.write_vec(f, value, name, 'c_float')
+
+    f.write('\n// Parameters accepted by OSQP\n')
+    for OSQP_p_id in OSQP_p_ids:
+        write_osqp(f, replace_inf(OSQP_p[OSQP_p_id]), OSQP_p_id)
+
+    f.write('\n// Struct containing parameters accepted by OSQP\n')
+    write_struct(f, OSQP_p_ids, OSQP_p_ids, 'OSQP_Params', 'OSQP_Params_t')
+
+
+def write_workspace_extern(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP_p):
+    """"
+    Write workspace initialization to file
+    """
+
+    f.write('typedef struct {\n')
+
+    # single user parameters
+    for name in user_p_names:
+        f.write('    c_float     *%s;              ///< Your parameter %s\n' % (name, name))
+
+    f.write('} CPG_Params_t;\n\n')
+
+    f.write('#endif // ifndef CPG_TYPES_H\n\n')
+
+    f.write('// value of the objective function\n')
+    osqp_utils.write_vec_extern(f, [0], 'objective_value', 'c_float')
+
+    f.write('\n// User-defined parameters\n')
+    for name, value in user_p_writable.items():
+        osqp_utils.write_vec_extern(f, value, name, 'c_float')
+
+    f.write('\n// Struct containing all user-defined parameters\n')
+    write_struct_extern(f, 'CPG_Params', 'CPG_Params_t')
+
+    f.write('\n// User-defined variables\n')
+    for name, value in var_init.items():
+        osqp_utils.write_vec_extern(f, value, name, 'c_float')
+
+    f.write('\n// Parameters accepted by OSQP\n')
+    for OSQP_p_id in OSQP_p_ids:
+        write_osqp_extern(f, OSQP_p[OSQP_p_id], OSQP_p_id)
+
+    f.write('\n// Struct containing parameters accepted by OSQP\n')
+    write_struct_extern(f, 'OSQP_Params', 'OSQP_Params_t')
 
 
 def write_solve(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_name, sizes, n_eq, problem_data_index_A, var_id_to_indices):
