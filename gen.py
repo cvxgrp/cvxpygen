@@ -25,7 +25,7 @@ def csc_to_dict(m):
     return d
 
 
-def generate_code(problem, code_dir='cpg_code', compile=True):
+def generate_code(problem, code_dir='CPG_code', compile=True):
     """
     Generate C code for CVXPY problem and optionally compile example program
     """
