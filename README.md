@@ -1,29 +1,106 @@
 
-### Welcome to CVXPYGEN - code generation with CVXPY!
+## Welcome to CVXPYGEN - code generation with CVXPY!
 
-Define a CVXPY problem and generate C code to solve it:
+### Installation
 
-```bash
+*Note: When the first release is available, installation will consist of a single pip / conda package including all dependencies.*
+
+1. Clone this repository via SSH,
+   ```
+   git clone git@github.com:cvxgrp/codegen.git
+   ```
+   or via HTTPS
+    ```
+   git clone https://github.com/cvxgrp/codegen.git
+    ```
+
+
+2. Install [conda](https://docs.conda.io/en/latest/) and create a new environment,
+    ```
+    conda create --name cpg_env
+    conda activate cpg_env
+    ```
+    or activate an existing one. Make sure to use the python interpreter of this environment.
+   
+
+3. Install ``cvxpy``
+    ```
+   conda install -c conda-forge cvxpy
+   ```
+   
+
+4. Install ``CMake``
+    ```
+   conda install -c anaconda cmake
+    ```
+   
+### Example
+
+*Note: The example will be simpler. For development purposes, more variables, parameters etc. are chosen.*
+
+Define a convex optimization problem the way you are used to with CVXPY.
+
+```python
 import cvxpy as cp
-import cvxpygen as cpg
+import gen as cpg  # 'gen' will be 'cvxpygen'
+import numpy as np
+import os
 
 # define dimensions, variables, parameters
 m, n = 3, 2
 x = cp.Variable((n, 1), name='x')
+y = cp.Variable((n, 1), name='y')
 F = cp.Parameter((m, n), name='F')
 g = cp.Parameter((m, 1), name='g')
 e = cp.Parameter((n, 1), name='e')
 delta = cp.Parameter(nonneg=True, name='delta')
 
 # define objective & constraints
-objective = cp.sum_squares(F @ x - g) + gamma * cp.sum_squares(x)
-constraints = [cp.abs(x) <= e]
+objective = cp.sum_squares(F @ (x-2*y) - g) + delta * cp.sum_squares(x)
+constraints = [cp.abs(x) <= e, cp.abs(y) <= 2*e]
 
 # define problem
 prob = cp.Problem(cp.Minimize(objective), constraints)
-
-# generate code
-cpg.generate_code(prob, code_dir='cpg_code', compile=True)
 ```
 
-TODO: add more explanations, dependencies, installation instructions, etc.
+Generating C code for this problem is as simple as,
+
+```python
+cpg.generate_code(prob, code_dir='CPG_code')
+```
+
+where ``code_dir`` specifies the directory that the generated code is stored in.
+
+To compile the code, you can execute the following in your terminal.
+
+```bash
+cd CPG_code/build
+cmake ..
+make
+```
+
+Assign parameter values and solve the problem both by conventional CVXPY and via the generated code.
+
+```python
+# assign parameter values
+np.random.seed(26)
+delta.value = np.random.rand()
+F.value = np.random.rand(m, n)
+g.value = np.random.rand(m, 1)
+e.value = np.random.rand(n, 1)
+
+# solve problem conventionally
+obj = prob.solve()
+print('Python result:')
+print('f =', obj)
+print('x =', x.value)
+print('y =', y.value)
+
+# for development purpose, run example program executable (to be replaced by custom solve method)
+print('C result:')
+os.system('cd CPG_code/build && ./cpg_example')
+```
+
+Observe that both the objective values and solutions are close, comparing python and C results.
+
+The above steps are summarized in ``main.py``.

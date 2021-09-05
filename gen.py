@@ -25,7 +25,7 @@ def csc_to_dict(m):
     return d
 
 
-def generate_code(problem, code_dir='CPG_code', compile=True):
+def generate_code(problem, code_dir='CPG_code'):
     """
     Generate C code for CVXPY problem and optionally compile example program
     """
@@ -223,10 +223,3 @@ def generate_code(problem, code_dir='CPG_code', compile=True):
         f.write(html_data)
 
     print('Done.')
-
-    # generate python module
-    if compile:
-        # for development purposes, compile example program executable
-        print('Compiling code ...')
-        os.system('cd ' + os.path.join(code_dir, 'build') + ' && cmake .. && make')
-        print('Done.')

@@ -20,6 +20,12 @@ constraints = [cp.abs(x) <= e, cp.abs(y) <= 2*e]
 # define problem
 prob = cp.Problem(cp.Minimize(objective), constraints)
 
+# generate code
+cpg.generate_code(prob, code_dir='CPG_code')
+
+# compile example executable
+os.system('cd CPG_code/build && cmake .. && make')
+
 # assign parameter values
 np.random.seed(26)
 delta.value = np.random.rand()
@@ -29,21 +35,14 @@ e.value = np.random.rand(n, 1)
 
 # solve problem conventionally
 obj = prob.solve()
-
-# generate code
-cpg.generate_code(prob, code_dir='CPG_code', compile=True)
-
-# solve problem via generated code
-''''''
-
 print('Python result:')
 print('f =', obj)
 print('x =', x.value)
 print('y =', y.value)
 
-# for development purpose, run example program executable (to be replaced by pybind module)
-print('Codegen result:')
-os.system('cd ' + os.path.join('CPG_code', 'build') + ' && ./cpg_example')
+# for development purpose, run example program executable (to be replaced by custom solve method)
+print('C result:')
+os.system('cd CPG_code/build && ./cpg_example')
 
 
 # TODO: increase code quality
