@@ -71,6 +71,8 @@ cpg.generate_code(prob, code_dir='CPG_code')
 
 where ``code_dir`` specifies the directory that the generated code is stored in.
 
+To get an overview of the code generation result, have a look at `CPG_code/README.html`.
+
 To compile the code, you can execute the following in your terminal.
 
 ```bash
