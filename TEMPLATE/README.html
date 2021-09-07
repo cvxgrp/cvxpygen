@@ -39,6 +39,7 @@
       cpg_module.cpp
     build
     CMakeLists.txt
+    problem.pickle
   </code></pre>
   <p>
       The <code>pybind11</code> <a href="https://github.com/pybind/pybind11" target="_blank">submodule</a> is used to generate a python wrapper around the generated code.
@@ -120,6 +121,7 @@ void solve();
       <dt><code>src/cpg_example.c</code> contains example code that initializes the problem data and solves a problem instance.</dt>
       <dt><code>src/cpg_module.cpp</code> contains binding code for the python wrapper generated with <a href="https://github.com/pybind/pybind11" target="_blank">pybind11</a>.</dt>
       <dt><code>CMakeLists.txt</code> contains instructions for build file generation inside the <code>build</code> directory with CMake.</dt>
+      <dt>Finally, <code>problem.pickle</code> is the serialized version of your CVXPY problem object.</dt>
     </dl>
   </p>
 

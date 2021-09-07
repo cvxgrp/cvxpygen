@@ -1,7 +1,7 @@
 
-## Welcome to CVXPYGEN - code generation with CVXPY!
+# Welcome to CVXPYGEN - code generation with CVXPY!
 
-### Installation
+## Installation
 
 *Note: When the first release is available, installation will consist of a single pip / conda package including all dependencies.*
 
@@ -20,28 +20,22 @@
     or activate an existing one. Make sure to use the python interpreter of this environment.
    
 
-3. Install ``cvxpy``
+3. Install ``cvxpy`` and ``CMake``
     ```
    conda install -c conda-forge cvxpy
+   conda install -c anaconda cmake
    ```
    
-
-4. Install ``CMake``
-    ```
-   conda install -c anaconda cmake
-    ```
-   
-### Example
+## Example
 
 *Note: The example will be simpler. For development purposes, more variables, parameters etc. are chosen.*
+
+### Generate Code
 
 Define a convex optimization problem the way you are used to with CVXPY.
 
 ```python
 import cvxpy as cp
-import gen as cpg  # 'gen' will be 'cvxpygen'
-import numpy as np
-import os
 
 # define dimensions, variables, parameters
 m, n = 3, 2
@@ -63,12 +57,16 @@ prob = cp.Problem(cp.Minimize(objective), constraints)
 Generating C code for this problem is as simple as,
 
 ```python
+import gen as cpg  # 'gen' will be 'cvxpygen'
 cpg.generate_code(prob, code_dir='CPG_code')
 ```
 
 where ``code_dir`` specifies the directory that the generated code is stored in.
+The above steps are summarized in ``main.py``.
 
 To get an overview of the code generation result, have a look at `CPG_code/README.html`.
+
+### Compile Code
 
 To compile the code, you can execute the following in your terminal.
 
@@ -79,22 +77,34 @@ make
 cp cpg_module.cpython-39-darwin.so ../..
 ```
 
-Assign parameter values and solve the problem both by conventional CVXPY and via the generated code.
+The last command copies the generated python wrapper to the top-level directory.
+
+### Solve & Compare
+
+As summarized in ``test.py``, you can assign parameter values and solve the problem both by conventional CVXPY and via the generated code, which is wrapped inside ``cpg_module``.
 
 ```python
+import cpg_module
+import pickle
+import numpy as np
+
+# load the serialized problem formulation
+with open('CPG_code/problem.pickle', 'rb') as f:
+    prob = pickle.load(f)
+
 # assign parameter values
 np.random.seed(26)
-delta.value = np.random.rand()
-F.value = np.random.rand(m, n)
-g.value = np.random.rand(m, 1)
-e.value = np.random.rand(n, 1)
+prob.param_dict['delta'].value = np.random.rand()
+prob.param_dict['F'].value = np.random.rand(3, 2)
+prob.param_dict['g'].value = np.random.rand(3, 1)
+prob.param_dict['e'].value = np.random.rand(2, 1)
 
 # solve problem conventionally
 obj = prob.solve()
 print('Python result:')
 print('f =', obj)
-print('x =', x.value)
-print('y =', y.value)
+print('x =', prob.var_dict['x'].value)
+print('y =', prob.var_dict['y'].value)
 
 # solve problem with C code via python wrapper (to be replaced with custom solve method)
 print('C result:')
@@ -102,5 +112,3 @@ cpg_module.run_example()
 ```
 
 Observe that both the objective values and solutions are close, comparing python and C results.
-
-The above steps are summarized in ``main.py``.

@@ -4,9 +4,9 @@ import shutil
 import numpy as np
 from scipy import sparse
 from cvxpy.cvxcore.python import canonInterface as cI
-from osqp.codegen import utils as osqp_utils
 import osqp
 import utils
+import pickle
 
 
 def csc_to_dict(m):
@@ -221,5 +221,9 @@ def generate_code(problem, code_dir='CPG_code'):
 
     with open(os.path.join(code_dir, 'README.html'), 'w') as f:
         f.write(html_data)
+
+    # dump problem formulation
+    with open(os.path.join(code_dir, 'problem.pickle'), 'wb') as f:
+        pickle.dump(problem, f)
 
     print('Done.')
