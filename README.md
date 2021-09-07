@@ -30,7 +30,7 @@
 
 *Note: The example will be simpler. For development purposes, more variables, parameters etc. are chosen.*
 
-### Generate Code
+### 1. Generate Code
 
 Define a convex optimization problem the way you are used to with CVXPY.
 
@@ -66,7 +66,7 @@ The above steps are summarized in ``main.py``.
 
 To get an overview of the code generation result, have a look at `CPG_code/README.html`.
 
-### Compile Code
+### 2. Compile Code
 
 To compile the code, you can execute the following in your terminal.
 
@@ -79,7 +79,7 @@ cp cpg_module.cpython-39-darwin.so ../..
 
 The last command copies the generated python wrapper to the top-level directory.
 
-### Solve & Compare
+### 3. Solve & Compare
 
 As summarized in ``test.py``, you can assign parameter values and solve the problem both by conventional CVXPY and via the generated code, which is wrapped inside ``cpg_module``.
 
