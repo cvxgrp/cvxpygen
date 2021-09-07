@@ -62,7 +62,7 @@ cpg.generate_code(prob, code_dir='CPG_code')
 ```
 
 where ``code_dir`` specifies the directory that the generated code is stored in.
-The above steps are summarized in ``main.py``.
+The above steps are summarized in ``example_main.py``.
 
 To get an overview of the code generation result, have a look at `CPG_code/README.html`.
 
@@ -74,17 +74,14 @@ To compile the code, you can execute the following in your terminal.
 cd CPG_code/build
 cmake ..
 make
-cp cpg_module.cpython-39-darwin.so ../..
 ```
-
-The last command copies the generated python wrapper to the top-level directory.
 
 ### 3. Solve & Compare
 
-As summarized in ``test.py``, you can assign parameter values and solve the problem both by conventional CVXPY and via the generated code, which is wrapped inside ``cpg_module``.
+As summarized in ``example_test.py``, you can assign parameter values and solve the problem both by conventional CVXPY and via the generated code, which is wrapped inside the custom CVXPY solve method ``cpg_solve``.
 
 ```python
-import cpg_module
+from CPG_code.cpg_solver import cpg_solve
 import pickle
 import numpy as np
 
@@ -106,9 +103,13 @@ print('f =', obj)
 print('x =', prob.var_dict['x'].value)
 print('y =', prob.var_dict['y'].value)
 
-# solve problem with C code via python wrapper (to be replaced with custom solve method)
+# solve problem with C code via python wrapper
+prob.register_solve('CPG', cpg_solve)
+obj = prob.solve(method='CPG')
 print('C result:')
-cpg_module.run_example()
+print('f =', obj)
+print('x =', prob.var_dict['x'].value)
+print('y =', prob.var_dict['y'].value)
 ```
 
 Observe that both the objective values and solutions are close, comparing python and C results.

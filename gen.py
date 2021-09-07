@@ -52,6 +52,7 @@ def generate_code(problem, code_dir='CPG_code'):
     var_name_to_indices = {var_name: np.arange(offset, offset+size)
                            for var_name, offset, size in zip(var_names, var_offsets, var_sizes)}
     var_name_to_size = {name: size for name, size in zip(var_names, var_sizes)}
+    var_name_to_shape = {var.name(): var.shape for var in problem.variables()}
     var_init = {var.name(): np.zeros(shape=var.shape) for var in problem.variables()}
 
     # extract csc values for individual OSQP parameters (Alu -> A, lu)
@@ -85,6 +86,7 @@ def generate_code(problem, code_dir='CPG_code'):
     user_p_id_to_size = p_prob.param_id_to_size
     user_p_id_to_param = p_prob.id_to_param
     user_p_total_size = p_prob.total_param_size
+    user_p_name_to_size = {name: size for name, size in zip(user_p_names, user_p_id_to_size.values())}
 
     # adjacency matrix describing OSQP_params - user_params dependencies
     adjacency = np.zeros(shape=(OSQP_p_num, user_p_num), dtype=np.bool)
@@ -216,13 +218,19 @@ def generate_code(problem, code_dir='CPG_code'):
     # html documentation file
     with open(os.path.join(code_dir, 'README.html'), 'r') as f:
         html_data = f.read()
-
-    html_data = utils.replace_html(html_data, user_p_names, user_p_writable, var_init)
-
+    html_data = utils.replace_html(code_dir, html_data, user_p_names, user_p_writable, var_name_to_size)
     with open(os.path.join(code_dir, 'README.html'), 'w') as f:
         f.write(html_data)
 
-    # dump problem formulation
+    # binding module
+    with open(os.path.join(code_dir, 'src/cpg_module.cpp'), 'a') as f:
+        utils.write_module(f, user_p_name_to_size, var_name_to_size)
+
+    # custom CVXPY solve method
+    with open(os.path.join(code_dir, 'cpg_solver.py'), 'a') as f:
+        utils.write_method(f, code_dir, user_p_name_to_size, var_name_to_shape)
+
+    # serialize problem formulation
     with open(os.path.join(code_dir, 'problem.pickle'), 'wb') as f:
         pickle.dump(problem, f)
 

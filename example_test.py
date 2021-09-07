@@ -1,5 +1,5 @@
 
-import cpg_module
+from CPG_code.cpg_solver import cpg_solve
 import pickle
 import numpy as np
 
@@ -21,6 +21,10 @@ print('f =', obj)
 print('x =', prob.var_dict['x'].value)
 print('y =', prob.var_dict['y'].value)
 
-# solve problem with C code via python wrapper (to be replaced with custom solve method)
+# solve problem with C code via python wrapper
+prob.register_solve('CPG', cpg_solve)
+obj = prob.solve(method='CPG')
 print('C result:')
-cpg_module.run_example()
+print('f =', obj)
+print('x =', prob.var_dict['x'].value)
+print('y =', prob.var_dict['y'].value)

@@ -21,10 +21,10 @@
   <h1>C code to solve your CVXPY problem</h1>
   <h3>File tree</h3>
   <p>
-    Your generated code is structured as follows inside your chosen <code>&lt;code_dir&gt;</code> directory:
+    Your generated code is structured as follows inside your chosen <code>$CODEDIR</code> directory:
   </p>
   <pre><code><!-- language: lang-c -->
-&lt;code_dir&gt;
+$CODEDIR
     pybind11
       ...
     OSQP_code
@@ -40,6 +40,7 @@
     build
     CMakeLists.txt
     problem.pickle
+    cpg_solver.py
   </code></pre>
   <p>
       The <code>pybind11</code> <a href="https://github.com/pybind/pybind11" target="_blank">submodule</a> is used to generate a python wrapper around the generated code.
@@ -48,16 +49,16 @@
   </p>
   <p>
     To make this solver usable, your problem needs to be converted to the standard form accepted by OSQP.
-      This is done by all the other source files inside the <code>&lt;code_dir&gt;</code> directory.
+      This is done by all the other source files inside the <code>$CODEDIR</code> directory.
   </p>
   <h3>Types, declarations & definitions</h3>
 
   <p>
     <dl>
-      <dt><code>include/cpg_workspace.h</code> contains type definitions and C variable declarations:</dt>
+      <dt><code>include/cpg_workspace.h</code> contains type definitions,</dt>
         <dd>
           <pre><code><!-- language: lang-c -->
-// struct with OSQP-accepted parameters as fields
+// Struct type with OSQP-accepted parameters as fields
 typedef struct {
     csc         *P;              ///< OSQP parameter P
     c_float     *q;              ///< OSQP parameter q
@@ -67,21 +68,18 @@ typedef struct {
     c_float     *u;              ///< OSQP parameter u
 } OSQP_Params_t;
 
-// struct with user-defined parameters as fields
+// Struct type with user-defined parameters as fields
 $CPGPARAMSTYPEDEF
 
-// value of the objective function
-c_float objective_value[1];
-
-// User-defined parameters
-$CPGPARAMDECLARATIONS
-
-// Struct containing all user-defined parameters
-CPG_Params_t CPG_Params;
-
-// User-defined variables
-$CPGVARIABLEDECLARATIONS
-
+// Struct type with user-defined objective value and solution as fields
+$CPGRESULTTYPEDEF
+          </code></pre>
+        </dd>
+        <dd>
+             and C variable declarations:
+        </dd>
+        <dd>
+          <pre><code><!-- language: lang-c -->
 // Parameters accepted by OSQP
 csc P;
 c_float q[11];
@@ -92,7 +90,23 @@ c_float u[15];
 
 // Struct containing parameters accepted by OSQP
 OSQP_Params_t OSQP_Params;
+
+// User-defined parameters
+$CPGPARAMDECLARATIONS
+
+// Struct containing all user-defined parameters
+CPG_Params_t CPG_Params;
+
+// Value of the objective function
+c_float objective_value[1];
+
+// User-defined variables
+$CPGVARIABLEDECLARATIONS
+
+// Struct containing user-defined objective value and solution
+CPG_Result_t CPG_Result;
           </code></pre>
+        </dd>
         </dd>
       <dt><code>include/cpg_solve.h</code> contains function prototypes:</dt>
         <dd>
@@ -121,7 +135,8 @@ void solve();
       <dt><code>src/cpg_example.c</code> contains example code that initializes the problem data and solves a problem instance.</dt>
       <dt><code>src/cpg_module.cpp</code> contains binding code for the python wrapper generated with <a href="https://github.com/pybind/pybind11" target="_blank">pybind11</a>.</dt>
       <dt><code>CMakeLists.txt</code> contains instructions for build file generation inside the <code>build</code> directory with CMake.</dt>
-      <dt>Finally, <code>problem.pickle</code> is the serialized version of your CVXPY problem object.</dt>
+      <dt><code>problem.pickle</code> is the serialized version of your CVXPY problem object.</dt>
+      <dt>Finally, <code>cpg_solver.py</code> contains a custom CVXPY solve method that uses the python wrapper to solve your problem.</dt>
     </dl>
   </p>
 
@@ -129,25 +144,38 @@ void solve();
 
   <p>
     To compile the example executable and the python wrapper, run the following:
+  </p>
     <pre><code>
-cd &lt;code_dir&gt;/build
+cd $CODEDIR/build
 cmake ..
 make
     </code></pre>
-  </p>
 
   <p>
     To run the example executable, type:
-    <pre><code>
-&lt;code_dir&gt;/build/cpg_example
-    </code></pre>
   </p>
-  <p>
-      To use the python module, copy <code>&lt;code_dir&gt;/build/cpg.cpython-39-darwin.so</code> into your python working directory and run:
     <pre><code>
-import cpg
-cpg.run_example()
+$CODEDIR/build/cpg_example
     </code></pre>
+  <p>
+      To use the python module, run exemplarily,
+  </p>
+    <pre><code>
+import pickle
+from $CDPYTHON.cpg_solver import cpg_solve
+
+with open('$CODEDIR/problem.pickle', 'rb') as f:
+    prob = pickle.load(f)
+
+prob.param_dict['&lt;p_name&gt;'].value = &lt;p_value&gt;
+prob.register_solve('CPG', cpg_solve)
+
+obj = prob.solve(method='CPG')
+print(prob.var_dict['&lt;v_name&gt;'].value)
+    </code></pre>
+  <p>where <code>&lt;p_name&gt;</code> and <code>&lt;p_value&gt;</code> are parameter name and value, respectively.
+  After registering <code>&lt;cpg_solve&gt;</code> as custom solve method, the problem can be solved and the objective value
+  <code>obj</code> and solution in terms of variable <code>&lt;v_name&gt;</code> can be inspected.
   </p>
 
 </body>

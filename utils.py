@@ -91,8 +91,13 @@ def write_struct_extern(f, name, typ):
 
 
 def write_workspace(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP_p):
-    f.write('// value of the objective function\n')
-    osqp_utils.write_vec(f, [0], 'objective_value', 'c_float')
+
+    f.write('// Parameters accepted by OSQP\n')
+    for OSQP_p_id in OSQP_p_ids:
+        write_osqp(f, replace_inf(OSQP_p[OSQP_p_id]), OSQP_p_id)
+
+    f.write('\n// Struct containing parameters accepted by OSQP\n')
+    write_struct(f, OSQP_p_ids, OSQP_p_ids, 'OSQP_Params', 'OSQP_Params_t')
 
     f.write('\n// User-defined parameters\n')
     for name, value in user_p_writable.items():
@@ -101,16 +106,16 @@ def write_workspace(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP
     f.write('\n// Struct containing all user-defined parameters\n')
     write_struct(f, user_p_names, user_p_names, 'CPG_Params', 'CPG_Params_t')
 
+    f.write('\n// Value of the objective function\n')
+    osqp_utils.write_vec(f, [0], 'objective_value', 'c_float')
+
     f.write('\n// User-defined variables\n')
     for name, value in var_init.items():
         osqp_utils.write_vec(f, value, name, 'c_float')
 
-    f.write('\n// Parameters accepted by OSQP\n')
-    for OSQP_p_id in OSQP_p_ids:
-        write_osqp(f, replace_inf(OSQP_p[OSQP_p_id]), OSQP_p_id)
-
-    f.write('\n// Struct containing parameters accepted by OSQP\n')
-    write_struct(f, OSQP_p_ids, OSQP_p_ids, 'OSQP_Params', 'OSQP_Params_t')
+    f.write('\n// Struct containing CPG objective value and solution\n')
+    CPG_Result_fields = ['objective_value'] + list(var_init.keys())
+    write_struct(f, CPG_Result_fields, CPG_Result_fields, 'CPG_Result', 'CPG_Result_t')
 
 
 def write_workspace_extern(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP_p):
@@ -126,10 +131,22 @@ def write_workspace_extern(f, user_p_names, user_p_writable, var_init, OSQP_p_id
 
     f.write('} CPG_Params_t;\n\n')
 
-    f.write('#endif // ifndef CPG_TYPES_H\n\n')
+    f.write('typedef struct {\n')
+    f.write('    c_float     *objective_value;     ///< Objective function value\n')
 
-    f.write('// value of the objective function\n')
-    osqp_utils.write_vec_extern(f, [0], 'objective_value', 'c_float')
+    for name in var_init.keys():
+        f.write('    c_float     *%s;              ///< Your variable %s\n' % (name, name))
+
+    f.write('} CPG_Result_t;\n\n')
+
+    f.write('#endif // ifndef CPG_TYPES_H\n')
+
+    f.write('\n// Parameters accepted by OSQP\n')
+    for OSQP_p_id in OSQP_p_ids:
+        write_osqp_extern(f, OSQP_p[OSQP_p_id], OSQP_p_id)
+
+    f.write('\n// Struct containing parameters accepted by OSQP\n')
+    write_struct_extern(f, 'OSQP_Params', 'OSQP_Params_t')
 
     f.write('\n// User-defined parameters\n')
     for name, value in user_p_writable.items():
@@ -138,16 +155,15 @@ def write_workspace_extern(f, user_p_names, user_p_writable, var_init, OSQP_p_id
     f.write('\n// Struct containing all user-defined parameters\n')
     write_struct_extern(f, 'CPG_Params', 'CPG_Params_t')
 
+    f.write('\n// Value of the objective function\n')
+    osqp_utils.write_vec_extern(f, [0], 'objective_value', 'c_float')
+
     f.write('\n// User-defined variables\n')
     for name, value in var_init.items():
         osqp_utils.write_vec_extern(f, value, name, 'c_float')
 
-    f.write('\n// Parameters accepted by OSQP\n')
-    for OSQP_p_id in OSQP_p_ids:
-        write_osqp_extern(f, OSQP_p[OSQP_p_id], OSQP_p_id)
-
-    f.write('\n// Struct containing parameters accepted by OSQP\n')
-    write_struct_extern(f, 'OSQP_Params', 'OSQP_Params_t')
+    f.write('\n// Struct containing CPG objective value and solution\n')
+    write_struct_extern(f, 'CPG_Result', 'CPG_Result_t')
 
 
 def write_solve(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_name, sizes, n_eq, problem_data_index_A, var_id_to_indices):
@@ -295,10 +311,100 @@ def write_OSQP_CMakeLists(f):
     f.write('\nset(osqp_src "${osqp_src}" PARENT_SCOPE)')
 
 
-def replace_html(text, user_p_names, user_p_writable, var_init):
+def write_module(f, user_p_name_to_size, var_name_to_size):
+    """
+    Write c++ file for pbind11 wrapper
+    """
+
+    # cpp struct containing user-defined parameters
+    f.write('struct CPG_Params_cpp_t {\n')
+    for name, size in user_p_name_to_size.items():
+        f.write('    std::array<double, %d> %s;\n' % (size, name))
+    f.write('};\n\n')
+
+    # cpp struct containing objective value and user-defined variables
+    f.write('struct CPG_Result_cpp_t {\n')
+    f.write('    double objective_value;\n')
+    for name, size in var_name_to_size.items():
+        f.write('    std::array<double, %d> %s;\n' % (size, name))
+    f.write('};\n\n')
+
+    # cpp function that maps parameters to results
+    f.write('CPG_Result_cpp_t solve_cpp(struct CPG_Params_cpp_t& CPG_Params_cpp){\n\n')
+    f.write('    // pass parameter values to C variables\n')
+    for name, size in user_p_name_to_size.items():
+        f.write('    for(int i = 0; i < %d; i++) {\n' % size)
+        f.write('        %s[i] = CPG_Params_cpp.%s[i];\n' % (name, name))
+        f.write('    }\n')
+
+    # perform ASA procedure
+    f.write('\n    // ASA\n')
+    f.write('    init_params();\n')
+    f.write('    solve();\n\n')
+
+    # arrange and return results
+    f.write('    // arrange and return results\n')
+    f.write('    CPG_Result_cpp_t CPG_Result_cpp {};\n')
+    f.write('    CPG_Result_cpp.objective_value = objective_value[0];\n')
+    for name, size in var_name_to_size.items():
+        f.write('    for(int i = 0; i < %d; i++) {\n' % size)
+        f.write('        CPG_Result_cpp.%s[i] = %s[i];\n' % (name, name))
+        f.write('    }\n')
+
+    # return
+    f.write('    return CPG_Result_cpp;\n\n')
+    f.write('}\n\n')
+
+    # module
+    f.write('PYBIND11_MODULE(cpg_module, m) {\n\n')
+    f.write('    py::class_<CPG_Params_cpp_t>(m, "cpg_params")\n')
+    f.write('            .def(py::init<>())\n')
+    for name in user_p_name_to_size.keys():
+        f.write('            .def_readwrite("%s", &CPG_Params_cpp_t::%s)\n' % (name, name))
+    f.write('            ;\n\n')
+
+    f.write('    py::class_<CPG_Result_cpp_t>(m, "cpg_result")\n')
+    f.write('            .def(py::init<>())\n')
+    f.write('            .def_readwrite("objective_value", &CPG_Result_cpp_t::objective_value)\n')
+    for name in var_name_to_size.keys():
+        f.write('            .def_readwrite("%s", &CPG_Result_cpp_t::%s)\n' % (name, name))
+    f.write('            ;\n\n')
+
+    f.write('    m.def("solve", &solve_cpp);\n\n')
+    f.write('}')
+
+
+def write_method(f, code_dir, user_p_name_to_size, var_name_to_shape):
+    """
+    Write function to be registered as custom CVXPY solve method
+    """
+
+    f.write('from %s.build import cpg_module\n\n\n' % code_dir.replace('/', '.'))
+    f.write('def cpg_solve(prob):\n\n')
+    f.write('    par = cpg_module.cpg_params()\n')
+
+    for name, size in user_p_name_to_size.items():
+        if size == 1:
+            f.write('    par.%s = [prob.param_dict[\'%s\'].value]\n' % (name, name))
+        else:
+            f.write('    par.%s = list(prob.param_dict[\'%s\'].value.flatten(order=\'F\'))\n' % (name, name))
+
+    f.write('\n    res = cpg_module.solve(par)\n\n')
+
+    for name, shape in var_name_to_shape.items():
+        f.write('    prob.var_dict[\'%s\'].value = np.array(res.%s).reshape(%d, %d)\n' % (name, name, shape[0], shape[1]))
+
+    f.write('\n    return res.objective_value\n')
+
+
+def replace_html(code_dir, text, user_p_names, user_p_writable, var_name_to_size):
     """
     Replace placeholder strings in html documentation file
     """
+
+    # code_dir
+    text = text.replace('$CODEDIR', code_dir)
+    text = text.replace('$CDPYTHON', code_dir.replace('/', '.'))
 
     # type definition of CPG_Params_t
     CPGPARAMSTYPEDEF = 'typedef struct {\n'
@@ -307,6 +413,15 @@ def replace_html(text, user_p_names, user_p_writable, var_init):
     CPGPARAMSTYPEDEF += '} CPG_Params_t;'
 
     text = text.replace('$CPGPARAMSTYPEDEF', CPGPARAMSTYPEDEF)
+
+    # type definition of CPG_Result_t
+    CPGRESULTTYPEDEF = 'typedef struct {\n'
+    CPGRESULTTYPEDEF += '    c_float     *objective_value;///< Objective function value\n'
+    for name in var_name_to_size.keys():
+        CPGRESULTTYPEDEF += ('    c_float     *%s;' % name).ljust(33) + ('///< Your variable %s\n' % name)
+    CPGRESULTTYPEDEF += '} CPG_Result_t;'
+
+    text = text.replace('$CPGRESULTTYPEDEF', CPGRESULTTYPEDEF)
 
     # parameter delarations
     CPGPARAMDECLARATIONS = ''
@@ -317,7 +432,7 @@ def replace_html(text, user_p_names, user_p_writable, var_init):
 
     # variable declarations
     CPGVARIABLEDECLARATIONS = ''
-    for name, value in var_init.items():
-        CPGVARIABLEDECLARATIONS += 'c_float %s[%d];\n' % (name, value.size)
+    for name, size in var_name_to_size.items():
+        CPGVARIABLEDECLARATIONS += 'c_float %s[%d];\n' % (name, size)
 
-    return text.replace('$CPGVARIABLEDECLARATIONS', CPGVARIABLEDECLARATIONS[:-2])
+    return text.replace('$CPGVARIABLEDECLARATIONS', CPGVARIABLEDECLARATIONS[:-1])
