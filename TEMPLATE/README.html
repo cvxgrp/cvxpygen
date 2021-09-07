@@ -25,6 +25,8 @@
   </p>
   <pre><code><!-- language: lang-c -->
 &lt;code_dir&gt;
+    pybind11
+      ...
     OSQP_code
       ...
     include
@@ -34,12 +36,14 @@
       cpg_workspace.c
       cpg_solve.c
       cpg_example.c
+      cpg_module.cpp
     build
     CMakeLists.txt
   </code></pre>
   <p>
-    The <code>OSQP_code</code> subdirectory contains all code produced by the code generation feature of the chosen
-    numerical solver (OSQP). For documentation on this part, please have a look <a href="https://osqp.org/docs/codegen/python.html" target="_blank">here</a>.
+      The <code>pybind11</code> <a href="https://github.com/pybind/pybind11" target="_blank">submodule</a> is used to generate a python wrapper around the generated code.
+      The <code>OSQP_code</code> subdirectory contains all code produced by the code generation feature of the chosen
+      numerical solver (OSQP). For documentation on this part, please have a look <a href="https://osqp.org/docs/codegen/python.html" target="_blank">here</a>.
   </p>
   <p>
     To make this solver usable, your problem needs to be converted to the standard form accepted by OSQP.
@@ -114,18 +118,33 @@ void solve();
       <dt><code>src/cpg_workspace.c</code> contains the static allocation of the C variables declared in <code>include/cpg_workspace.h</code>.</dt>
       <dt><code>src/cpg_solve.c</code> contains the definition of functions declared in <code>include/cpg_solve.h</code>.</dt>
       <dt><code>src/cpg_example.c</code> contains example code that initializes the problem data and solves a problem instance.</dt>
-    <dt><code>CMakeLists.txt</code> contains instructions for build file generation inside the <code>build</code> directory with CMake.</dt>
+      <dt><code>src/cpg_module.cpp</code> contains binding code for the python wrapper generated with <a href="https://github.com/pybind/pybind11" target="_blank">pybind11</a>.</dt>
+      <dt><code>CMakeLists.txt</code> contains instructions for build file generation inside the <code>build</code> directory with CMake.</dt>
     </dl>
   </p>
 
   <h3>Compilation</h3>
 
   <p>
-    To compile and run the example program, execute the following:
+    To compile the example executable and the python wrapper, run the following:
     <pre><code>
 cd &lt;code_dir&gt;/build
 cmake ..
 make
+    </code></pre>
+  </p>
+
+  <p>
+    To run the example executable, type:
+    <pre><code>
+&lt;code_dir&gt;/build/cpg_example
+    </code></pre>
+  </p>
+  <p>
+      To use the python module, copy <code>&lt;code_dir&gt;/build/cpg.cpython-39-darwin.so</code> into your python working directory and run:
+    <pre><code>
+import cpg
+cpg.run_example()
     </code></pre>
   </p>
 

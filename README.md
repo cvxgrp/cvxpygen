@@ -5,13 +5,10 @@
 
 *Note: When the first release is available, installation will consist of a single pip / conda package including all dependencies.*
 
-1. Clone this repository via SSH,
+1. Clone this repository and initialize its submodules.
    ```
    git clone git@github.com:cvxgrp/codegen.git
-   ```
-   or via HTTPS
-    ```
-   git clone https://github.com/cvxgrp/codegen.git
+   git submodule update --init
     ```
 
 
@@ -79,6 +76,7 @@ To compile the code, you can execute the following in your terminal.
 cd CPG_code/build
 cmake ..
 make
+cp cpg_module.cpython-39-darwin.so ../..
 ```
 
 Assign parameter values and solve the problem both by conventional CVXPY and via the generated code.
@@ -98,9 +96,9 @@ print('f =', obj)
 print('x =', x.value)
 print('y =', y.value)
 
-# for development purpose, run example program executable (to be replaced by custom solve method)
+# solve problem with C code via python wrapper (to be replaced with custom solve method)
 print('C result:')
-os.system('cd CPG_code/build && ./cpg_example')
+cpg_module.run_example()
 ```
 
 Observe that both the objective values and solutions are close, comparing python and C results.
