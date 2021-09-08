@@ -8,6 +8,7 @@
 1. Clone this repository and initialize its submodules.
    ```
    git clone git@github.com:cvxgrp/codegen.git
+   cd codegen
    git submodule update --init
     ```
 
