@@ -26,9 +26,11 @@ def write_osqp(f, param, name):
     Use osqp.codegen.utils for writing vectors and matrices
     """
     if name in ['P', 'A']:
-        osqp_utils.write_mat(f, param, name)
+        osqp_utils.write_mat(f, param, 'OSQP_' + name)
+    elif name == 'd':
+        f.write('c_float OSQP_d = %.20f;\n' % param[0])
     else:
-        osqp_utils.write_vec(f, param, name, 'c_float')
+        osqp_utils.write_vec(f, param, 'OSQP_' + name, 'c_float')
 
 
 def write_osqp_extern(f, param, name):
@@ -36,9 +38,11 @@ def write_osqp_extern(f, param, name):
     Use osqp.codegen.utils for writing vectors and matrices
     """
     if name in ['P', 'A']:
-        osqp_utils.write_mat_extern(f, param, name)
+        osqp_utils.write_mat_extern(f, param, 'OSQP_' + name)
+    elif name == 'd':
+        f.write('extern c_float OSQP_d;\n')
     else:
-        osqp_utils.write_vec_extern(f, param, name, 'c_float')
+        osqp_utils.write_vec_extern(f, param, 'OSQP_' + name, 'c_float')
 
 
 def write_dense_mat(f, mat, name):
