@@ -37,6 +37,7 @@ Define a convex optimization problem the way you are used to with CVXPY.
 
 ```python
 import cvxpy as cp
+import numpy as np
 
 # define dimensions, variables, parameters
 # IMPORTANT: specify variable and parameter names to recognize them in the generated C code
@@ -55,6 +56,19 @@ constraints = [0 <= x, x <= 1]
 # define problem
 prob = cp.Problem(objective, constraints)
 ```
+
+Assign parameter values and solve the problem.
+
+```python
+# assign parameter values and solve
+# IMPORTANT: parameter values must be (reasonably) initialized before generating code, and can be updated later on
+np.random.seed(0)
+A.value = np.random.randn(m, n)
+b.value = np.random.randn(m)
+c.value = np.random.rand()
+val = prob.solve()
+print('Solution: x = ', x.value)
+print('Objective function value:', val)
 ```
 
 Generating C code for this problem is as simple as,
