@@ -64,7 +64,7 @@ def write_dense_mat_extern(f, mat, name):
     f.write("extern c_float %s[%d];\n" % (name, mat.size))
 
 
-def write_struct(f, fields, values, name, typ):
+def write_struct(f, fields, casts, values, name, typ):
     """
     Write structure to file
     """
@@ -72,12 +72,8 @@ def write_struct(f, fields, values, name, typ):
     f.write('%s %s = {\n' % (typ, name))
 
     # write structure fields
-    for i in range(len(fields)):
-        if fields[i] in ['P', 'A']:
-            cast = ''
-        else:
-            cast = '(c_float *) '
-        f.write('.%s = %s&%s,\n' % (fields[i], cast, values[i]))
+    for field, cast, value in zip(fields, casts, values):
+        f.write('.%s = %s&%s,\n' % (field, cast, value))
 
     f.write('};\n')
 
@@ -92,30 +88,51 @@ def write_struct_extern(f, name, typ):
 
 def write_workspace(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP_p):
 
+    OSQP_casts = []
+
     f.write('// Parameters accepted by OSQP\n')
     for OSQP_p_id in OSQP_p_ids:
         write_osqp(f, replace_inf(OSQP_p[OSQP_p_id]), OSQP_p_id)
+        if OSQP_p_id in ['P', 'A', 'd']:
+            OSQP_casts.append('')
+        else:
+            OSQP_casts.append('(c_float *) ')
 
     f.write('\n// Struct containing parameters accepted by OSQP\n')
-    write_struct(f, OSQP_p_ids, OSQP_p_ids, 'OSQP_Params', 'OSQP_Params_t')
+
+    write_struct(f, OSQP_p_ids, OSQP_casts, ['OSQP_'+p for p in OSQP_p_ids], 'OSQP_Params', 'OSQP_Params_t')
 
     f.write('\n// User-defined parameters\n')
+
+    user_casts = []
     for name, value in user_p_writable.items():
-        osqp_utils.write_vec(f, value, name, 'c_float')
+        if np.isscalar(value):
+            f.write('c_float %s = %.20f;\n' % (name, value))
+            user_casts.append('')
+        else:
+            osqp_utils.write_vec(f, value, name, 'c_float')
+            user_casts.append('(c_float *) ')
 
     f.write('\n// Struct containing all user-defined parameters\n')
-    write_struct(f, user_p_names, user_p_names, 'CPG_Params', 'CPG_Params_t')
+    write_struct(f, user_p_names, user_casts, user_p_names, 'CPG_Params', 'CPG_Params_t')
 
     f.write('\n// Value of the objective function\n')
-    osqp_utils.write_vec(f, [0], 'objective_value', 'c_float')
+    f.write('c_float objective_value = 0;\n')
+
+    results_cast = ['']
 
     f.write('\n// User-defined variables\n')
     for name, value in var_init.items():
-        osqp_utils.write_vec(f, value, name, 'c_float')
+        if np.isscalar(value):
+            f.write('c_float %s = %.20f;\n' % (name, value))
+            results_cast.append('')
+        else:
+            osqp_utils.write_vec(f, value.flatten(order='F'), name, 'c_float')
+            results_cast.append('(c_float *) ')
 
     f.write('\n// Struct containing CPG objective value and solution\n')
     CPG_Result_fields = ['objective_value'] + list(var_init.keys())
-    write_struct(f, CPG_Result_fields, CPG_Result_fields, 'CPG_Result', 'CPG_Result_t')
+    write_struct(f, CPG_Result_fields, results_cast, CPG_Result_fields, 'CPG_Result', 'CPG_Result_t')
 
 
 def write_workspace_extern(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP_p):
@@ -150,17 +167,23 @@ def write_workspace_extern(f, user_p_names, user_p_writable, var_init, OSQP_p_id
 
     f.write('\n// User-defined parameters\n')
     for name, value in user_p_writable.items():
-        osqp_utils.write_vec_extern(f, value, name, 'c_float')
+        if np.isscalar(value):
+            f.write("extern c_float %s;\n" % name)
+        else:
+            osqp_utils.write_vec_extern(f, value, name, 'c_float')
 
     f.write('\n// Struct containing all user-defined parameters\n')
     write_struct_extern(f, 'CPG_Params', 'CPG_Params_t')
 
     f.write('\n// Value of the objective function\n')
-    osqp_utils.write_vec_extern(f, [0], 'objective_value', 'c_float')
+    f.write('extern c_float objective_value;\n')
 
     f.write('\n// User-defined variables\n')
     for name, value in var_init.items():
-        osqp_utils.write_vec_extern(f, value, name, 'c_float')
+        if np.isscalar(value):
+            f.write("extern c_float %s;\n" % name)
+        else:
+            osqp_utils.write_vec_extern(f, value.flatten(order='F'), name, 'c_float')
 
     f.write('\n// Struct containing CPG objective value and solution\n')
     write_struct_extern(f, 'CPG_Result', 'CPG_Result_t')
@@ -250,15 +273,18 @@ def write_solve(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_n
 
     f.write('// retrieve user-defined objective function value\n')
     f.write('void retrieve_value(){\n')
-    f.write('objective_value[0] = workspace.info->obj_val + *OSQP_Params.d;\n')
+    f.write('objective_value = workspace.info->obj_val + *OSQP_Params.d;\n')
     f.write('}\n\n')
 
     f.write('// retrieve solution in terms of user-defined variables\n')
     f.write('void retrieve_solution(){\n')
 
     for var_id, indices in var_id_to_indices.items():
-        for i, idx in enumerate(indices):
-            f.write('%s[%d] = workspace.solution->x[%d];\n' % (var_id, i, idx))
+        if len(indices) == 1:
+            f.write('%s = workspace.solution->x[%d];\n' % (var_id, indices[0]))
+        else:
+            for i, idx in enumerate(indices):
+                f.write('%s[%d] = workspace.solution->x[%d];\n' % (var_id, i, idx))
 
     f.write('}\n\n')
 
@@ -280,8 +306,11 @@ def write_main(f, user_p_writable, var_name_to_size):
 
     f.write('// initialize user-defined parameter values\n')
     for name, value in user_p_writable.items():
-        for i in range(len(value)):
-            f.write('CPG_Params.%s[%d] = %.20f;\n' % (name, i, value[i]))
+        if np.isscalar(value):
+            f.write('*CPG_Params.%s = %.20f;\n' % (name, value))
+        else:
+            for i in range(len(value)):
+                f.write('CPG_Params.%s[%d] = %.20f;\n' % (name, i, value[i]))
 
     f.write('\n// initialize OSQP-accepted parameter values, this must be done once before solving for the first time\n')
     f.write('init_params();\n\n')
@@ -290,14 +319,17 @@ def write_main(f, user_p_writable, var_name_to_size):
     f.write('solve();\n\n')
 
     f.write('// printing objective function value for demonstration purpose\n')
-    f.write('printf("f = %f \\n", objective_value[0]);\n\n')
+    f.write('printf("f = %f \\n", objective_value);\n\n')
 
     f.write('// printing solution for demonstration purpose\n')
 
     for name, size in var_name_to_size.items():
-        f.write('for(int i = 0; i < %d; i++) {\n' % size)
-        f.write('printf("%s[%%d] = %%f \\n", i, %s[i]);\n' % (name, name))
-        f.write('}\n')
+        if size == 1:
+            f.write('printf("%s = %%f \\n", %s);\n' % (name, name))
+        else:
+            f.write('for(int i = 0; i < %d; i++) {\n' % size)
+            f.write('printf("%s[%%d] = %%f \\n", i, %s[i]);\n' % (name, name))
+            f.write('}\n')
 
     f.write('return 0;\n')
     f.write('}\n')
@@ -319,23 +351,32 @@ def write_module(f, user_p_name_to_size, var_name_to_size):
     # cpp struct containing user-defined parameters
     f.write('struct CPG_Params_cpp_t {\n')
     for name, size in user_p_name_to_size.items():
-        f.write('    std::array<double, %d> %s;\n' % (size, name))
+        if size == 1:
+            f.write('    double %s;\n' % name)
+        else:
+            f.write('    std::array<double, %d> %s;\n' % (size, name))
     f.write('};\n\n')
 
     # cpp struct containing objective value and user-defined variables
     f.write('struct CPG_Result_cpp_t {\n')
     f.write('    double objective_value;\n')
     for name, size in var_name_to_size.items():
-        f.write('    std::array<double, %d> %s;\n' % (size, name))
+        if size == 1:
+            f.write('    double %s;\n' % name)
+        else:
+            f.write('    std::array<double, %d> %s;\n' % (size, name))
     f.write('};\n\n')
 
     # cpp function that maps parameters to results
     f.write('CPG_Result_cpp_t solve_cpp(struct CPG_Params_cpp_t& CPG_Params_cpp){\n\n')
     f.write('    // pass parameter values to C variables\n')
     for name, size in user_p_name_to_size.items():
-        f.write('    for(int i = 0; i < %d; i++) {\n' % size)
-        f.write('        %s[i] = CPG_Params_cpp.%s[i];\n' % (name, name))
-        f.write('    }\n')
+        if size == 1:
+            f.write('    %s = CPG_Params_cpp.%s;\n' % (name, name))
+        else:
+            f.write('    for(int i = 0; i < %d; i++) {\n' % size)
+            f.write('        %s[i] = CPG_Params_cpp.%s[i];\n' % (name, name))
+            f.write('    }\n')
 
     # perform ASA procedure
     f.write('\n    // ASA\n')
@@ -345,11 +386,14 @@ def write_module(f, user_p_name_to_size, var_name_to_size):
     # arrange and return results
     f.write('    // arrange and return results\n')
     f.write('    CPG_Result_cpp_t CPG_Result_cpp {};\n')
-    f.write('    CPG_Result_cpp.objective_value = objective_value[0];\n')
+    f.write('    CPG_Result_cpp.objective_value = objective_value;\n')
     for name, size in var_name_to_size.items():
-        f.write('    for(int i = 0; i < %d; i++) {\n' % size)
-        f.write('        CPG_Result_cpp.%s[i] = %s[i];\n' % (name, name))
-        f.write('    }\n')
+        if size == 1:
+            f.write('    CPG_Result_cpp.%s = %s;\n' % (name, name))
+        else:
+            f.write('    for(int i = 0; i < %d; i++) {\n' % size)
+            f.write('        CPG_Result_cpp.%s[i] = %s[i];\n' % (name, name))
+            f.write('    }\n')
 
     # return
     f.write('    return CPG_Result_cpp;\n\n')
@@ -385,14 +429,17 @@ def write_method(f, code_dir, user_p_name_to_size, var_name_to_shape):
 
     for name, size in user_p_name_to_size.items():
         if size == 1:
-            f.write('    par.%s = [prob.param_dict[\'%s\'].value]\n' % (name, name))
+            f.write('    par.%s = prob.param_dict[\'%s\'].value\n' % (name, name))
         else:
             f.write('    par.%s = list(prob.param_dict[\'%s\'].value.flatten(order=\'F\'))\n' % (name, name))
 
     f.write('\n    res = cpg_module.solve(par)\n\n')
 
     for name, shape in var_name_to_shape.items():
-        f.write('    prob.var_dict[\'%s\'].value = np.array(res.%s).reshape(%d, %d)\n' % (name, name, shape[0], shape[1]))
+        if len(shape) == 2:
+            f.write('    prob.var_dict[\'%s\'].value = np.array(res.%s).reshape((%d, %d), order=\'F\')\n' % (name, name, shape[0], shape[1]))
+        else:
+            f.write('    prob.var_dict[\'%s\'].value = np.array(res.%s)\n' % (name, name))
 
     f.write('\n    return res.objective_value\n')
 
@@ -426,13 +473,19 @@ def replace_html(code_dir, text, user_p_names, user_p_writable, var_name_to_size
     # parameter delarations
     CPGPARAMDECLARATIONS = ''
     for name, value in user_p_writable.items():
-        CPGPARAMDECLARATIONS += 'c_float %s[%d];\n' % (name, value.size)
+        if np.isscalar(value):
+            CPGPARAMDECLARATIONS += 'c_float %s;\n' % name
+        else:
+            CPGPARAMDECLARATIONS += 'c_float %s[%d];\n' % (name, value.size)
 
     text = text.replace('$CPGPARAMDECLARATIONS', CPGPARAMDECLARATIONS[:-2])
 
     # variable declarations
     CPGVARIABLEDECLARATIONS = ''
     for name, size in var_name_to_size.items():
-        CPGVARIABLEDECLARATIONS += 'c_float %s[%d];\n' % (name, size)
+        if size == 1:
+            CPGVARIABLEDECLARATIONS += 'c_float %s;\n' % name
+        else:
+            CPGVARIABLEDECLARATIONS += 'c_float %s[%d];\n' % (name, size)
 
     return text.replace('$CPGVARIABLEDECLARATIONS', CPGVARIABLEDECLARATIONS[:-1])

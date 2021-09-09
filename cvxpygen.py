@@ -54,7 +54,12 @@ def generate_code(problem, code_dir='CPG_code'):
                            for var_name, offset, size in zip(var_names, var_offsets, var_sizes)}
     var_name_to_size = {name: size for name, size in zip(var_names, var_sizes)}
     var_name_to_shape = {var.name(): var.shape for var in problem.variables()}
-    var_init = {var.name(): np.zeros(shape=var.shape) for var in problem.variables()}
+    var_init = dict()
+    for var in problem.variables():
+        if len(var.shape) == 0:
+            var_init[var.name()] = 0
+        else:
+            var_init[var.name()] = np.zeros(shape=var.shape)
 
     # extract csc values for individual OSQP parameters (Alu -> A, lu)
     (indices_P, indptr_P, shape_P) = p_prob.problem_data_index_P
@@ -136,7 +141,7 @@ def generate_code(problem, code_dir='CPG_code'):
     OSQP_p = dict()
 
     def user_p_value(user_p_id):
-        return user_p_id_to_param[user_p_id].value
+        return np.array(user_p_id_to_param[user_p_id].value)
 
     user_p_flat = cI.get_parameter_vector(user_p_total_size, user_p_id_to_col, user_p_id_to_size, user_p_value)
     MAP = sparse.vstack([p_prob.reduced_P, p_prob.q, p_prob.reduced_A])

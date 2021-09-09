@@ -83,7 +83,7 @@ $CPGRESULTTYPEDEF
 // Parameters accepted by OSQP
 csc P;
 c_float q[11];
-c_float d[1];
+c_float d;
 csc A;
 c_float l[15];
 c_float u[15];
@@ -98,7 +98,7 @@ $CPGPARAMDECLARATIONS
 CPG_Params_t CPG_Params;
 
 // Value of the objective function
-c_float objective_value[1];
+c_float objective_value;
 
 // User-defined variables
 $CPGVARIABLEDECLARATIONS
