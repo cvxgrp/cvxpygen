@@ -4,6 +4,7 @@ import shutil
 import numpy as np
 from scipy import sparse
 from cvxpy.cvxcore.python import canonInterface as cI
+from cvxpy import error
 import osqp
 import utils
 import pickle
@@ -117,20 +118,18 @@ def generate_code(problem, code_dir='CPG_code'):
                     adjacency[OSQP_p_id_to_i['l'], j] = True
 
     # default values of user parameters
-    np.random.seed(26)
     user_p_writable = dict()
     for p_name, p in zip(user_p_names, p_prob.parameters):
-        if p.size == 1:
-            # dealing with scalar, treating as vector
-            p.value = np.array(np.random.rand())
-            user_p_writable[p_name] = p.value.reshape((1,))
-        elif np.max(p.shape) == p.size:
-            # dealing with vector
-            p.value = np.random.rand(p.shape[0], 1)
-            user_p_writable[p_name] = p.value.squeeze()
+        if p.value is None:
+            raise error.ParameterError(
+                "A Parameter (whose name is '%s') does not have a value "
+                "associated with it; all Parameter objects must have "
+                "values before generating code for a problem." % p.name())
+        if len(p.shape) < 2:
+            # dealing with scalar or vector
+            user_p_writable[p_name] = p.value
         else:
             # dealing with matrix
-            p.value = np.random.rand(p.shape[0], p.shape[1])
             user_p_writable[p_name] = p.value.flatten(order='F')
 
     # default values of OSQP parameters via one big affine mapping
