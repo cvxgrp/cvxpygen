@@ -1,9 +1,14 @@
 
 # Welcome to CVXPYGEN - code generation with CVXPY!
 
-## Installation
+CVXPYGEN takes a convex optimization problem family modeled with CVXPY and generates a corresponding solver in C.
+This custom solver is specific to the problem family and accepts different parameter values.
+In particular, this solver is suitable for deployment on embedded systems.
 
-*Note: When the first release is available, installation will consist of a single pip / conda package including all dependencies.*
+For now, CVXPYGEN is a separate module, until it will be integrated into CVXPY.
+As of today CVXPYGEN works with linear and quadratic programs.
+
+## Installation
 
 1. Clone this repository and initialize its submodules.
    ```
@@ -21,7 +26,7 @@
     or activate an existing one. Make sure to use the python interpreter of this environment.
    
 
-3. Install ``cvxpy`` and ``CMake``
+3. Install ``CVXPY`` and ``CMake``
     ```
    conda install -c conda-forge cvxpy
    conda install -c anaconda cmake
@@ -29,11 +34,13 @@
    
 ## Example
 
-*Note: The example will be simpler. For development purposes, more variables, parameters etc. are chosen.*
+Let's define a CVXPY problem, generate code for it, and solve the problem with example parameter values.
 
 ### 1. Generate Code
 
 Define a convex optimization problem the way you are used to with CVXPY.
+Everything that is defined as ``cp.Parameter()`` is assumed to be changing between multiple solves.
+For constant properties, use ``cp.Constant()``.
 
 ```python
 import cvxpy as cp
@@ -74,7 +81,7 @@ print('Objective function value:', val)
 Generating C code for this problem is as simple as,
 
 ```python
-import gen as cpg  # 'gen' will be 'cvxpygen'
+import cvxpygen as cpg
 cpg.generate_code(prob, code_dir='CPG_code')
 ```
 
@@ -95,7 +102,7 @@ make
 
 ### 3. Solve & Compare
 
-As summarized in ``example_test.py``, you can assign parameter values and solve the problem both by conventional CVXPY and via the generated code, which is wrapped inside the custom CVXPY solve method ``cpg_solve``.
+As summarized in ``example_test.py``, after assigning parameter values, you can solve the problem both by conventional CVXPY and via the generated code, which is wrapped inside the custom CVXPY solve method ``cpg_solve``.
 
 ```python
 from CPG_code.cpg_solver import cpg_solve
