@@ -39,20 +39,22 @@ Define a convex optimization problem the way you are used to with CVXPY.
 import cvxpy as cp
 
 # define dimensions, variables, parameters
+# IMPORTANT: specify variable and parameter names to recognize them in the generated C code
 m, n = 3, 2
-x = cp.Variable((n, 1), name='x')
-y = cp.Variable((n, 1), name='y')
-F = cp.Parameter((m, n), name='F')
-g = cp.Parameter((m, 1), name='g')
-e = cp.Parameter((n, 1), name='e')
-delta = cp.Parameter(nonneg=True, name='delta')
+W = cp.Variable((n, n), name='W')
+x = cp.Variable(n, name='x')
+y = cp.Variable(name='y')
+A = cp.Parameter((m, n), name='A')
+b = cp.Parameter(m, name='b')
+c = cp.Parameter(nonneg=True, name='c')
 
 # define objective & constraints
-objective = cp.sum_squares(F @ (x-2*y) - g) + delta * cp.sum_squares(x)
-constraints = [cp.abs(x) <= e, cp.abs(y) <= 2*e]
+objective = cp.Minimize(cp.sum_squares(A @ x - b) + c * cp.sum_squares(x) + cp.sum_squares(y) + cp.sum_squares(W))
+constraints = [0 <= x, x <= 1]
 
 # define problem
-prob = cp.Problem(cp.Minimize(objective), constraints)
+prob = cp.Problem(objective, constraints)
+```
 ```
 
 Generating C code for this problem is as simple as,
@@ -83,34 +85,29 @@ As summarized in ``example_test.py``, you can assign parameter values and solve 
 
 ```python
 from CPG_code.cpg_solver import cpg_solve
-import pickle
 import numpy as np
+import pickle
 
 # load the serialized problem formulation
 with open('CPG_code/problem.pickle', 'rb') as f:
     prob = pickle.load(f)
 
 # assign parameter values
-np.random.seed(26)
-prob.param_dict['delta'].value = np.random.rand()
-prob.param_dict['F'].value = np.random.rand(3, 2)
-prob.param_dict['g'].value = np.random.rand(3, 1)
-prob.param_dict['e'].value = np.random.rand(2, 1)
+np.random.seed(0)
+prob.param_dict['A'].value = np.random.randn(3, 2)
+prob.param_dict['b'].value = np.random.randn(3,)
+prob.param_dict['c'].value = np.random.rand()
 
 # solve problem conventionally
-obj = prob.solve()
-print('Python result:')
-print('f =', obj)
-print('x =', prob.var_dict['x'].value)
-print('y =', prob.var_dict['y'].value)
+val = prob.solve()
+print('Python solution: x = ', prob.var_dict['x'].value)
+print('Python objective function value:', val)
 
 # solve problem with C code via python wrapper
 prob.register_solve('CPG', cpg_solve)
-obj = prob.solve(method='CPG')
-print('C result:')
-print('f =', obj)
-print('x =', prob.var_dict['x'].value)
-print('y =', prob.var_dict['y'].value)
+val = prob.solve(method='CPG')
+print('C solution: x = ', prob.var_dict['x'].value)
+print('C objective function value:', val)
 ```
 
 Observe that both the objective values and solutions are close, comparing python and C results.
