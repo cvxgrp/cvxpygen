@@ -5,6 +5,7 @@ import numpy as np
 from scipy import sparse
 from cvxpy.cvxcore.python import canonInterface as cI
 from cvxpy import error
+import cvxpy as cp
 import osqp
 import utils
 import pickle
@@ -236,6 +237,6 @@ def generate_code(problem, code_dir='CPG_code'):
 
     # serialize problem formulation
     with open(os.path.join(code_dir, 'problem.pickle'), 'wb') as f:
-        pickle.dump(problem, f)
+        pickle.dump(cp.Problem(problem.objective, problem.constraints), f)
 
     print('Done.')
