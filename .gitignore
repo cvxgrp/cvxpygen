@@ -1,6 +1,7 @@
 cpg_code
 CPG_code
 code
+examples/*/
 __pycache__
 .idea
 .DS_Store
