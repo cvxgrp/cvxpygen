@@ -48,8 +48,11 @@ def generate_code(problem, code_dir='CPG_code'):
 
     # get variable information
     var_names = [var.name() for var in problem.variables()]
-    var_ids = list(inverse_data[1].id_map.keys())
-    var_offsets = [inverse_data[2].var_offsets[var_id] for var_id in var_ids]
+    for inverse_data_offset, entry in enumerate(inverse_data):
+        if type(entry) == cp.reductions.inverse_data.InverseData:
+            break
+    var_ids = list(inverse_data[inverse_data_offset].id_map.keys())
+    var_offsets = [inverse_data[inverse_data_offset+1].var_offsets[var_id] for var_id in var_ids]
     var_sizes = [np.prod(inverse_data[2].var_shapes[var_id]) for var_id in var_ids]
     var_name_to_indices = {var_name: np.arange(offset, offset+size)
                            for var_name, offset, size in zip(var_names, var_offsets, var_sizes)}
