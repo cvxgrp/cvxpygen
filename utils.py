@@ -193,7 +193,7 @@ def write_workspace_extern(f, user_p_names, user_p_writable, var_init, OSQP_p_id
     write_struct_extern(f, 'CPG_Result', 'CPG_Result_t')
 
 
-def write_solve(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_name, sizes, n_eq, problem_data_index_A, var_id_to_indices):
+def write_solve(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_name, sizes, n_eq, problem_data_index_A, var_id_to_indices, is_maximization):
     """
     Write parameter initialization function to file
     """
@@ -277,7 +277,11 @@ def write_solve(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_n
 
     f.write('// retrieve user-defined objective function value\n')
     f.write('void retrieve_value(){\n')
-    f.write('objective_value = workspace.info->obj_val + *OSQP_Params.d;\n')
+
+    if is_maximization:
+        f.write('objective_value = -(workspace.info->obj_val + *OSQP_Params.d);\n')
+    else:
+        f.write('objective_value = workspace.info->obj_val + *OSQP_Params.d;\n')
     f.write('}\n\n')
 
     f.write('// retrieve solution in terms of user-defined variables\n')

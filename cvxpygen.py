@@ -205,7 +205,8 @@ def generate_code(problem, code_dir='CPG_code'):
             mappings.append(MAP[row_slice, :])
         nonconstant_OSQP_names = [n for (n, b) in zip(OSQP_p_ids, np.sum(adjacency, axis=1) > 0) if b]
         utils.write_solve(f, OSQP_p_ids, nonconstant_OSQP_names, mappings, user_p_col_to_name,
-                           list(user_p_id_to_size.values()), n_eq, p_prob.problem_data_index_A, var_name_to_indices)
+                          list(user_p_id_to_size.values()), n_eq, p_prob.problem_data_index_A, var_name_to_indices,
+                          type(problem.objective) == cp.problems.objective.Maximize)
 
     # 'example' definitions
     with open(os.path.join(code_dir, 'src/cpg_example.c'), 'a') as f:
