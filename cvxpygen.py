@@ -37,7 +37,7 @@ def generate_code(problem, code_dir='CPG_code'):
     # copy TEMPLATE
     if os.path.isdir(code_dir):
         shutil.rmtree(code_dir)
-    shutil.copytree('TEMPLATE', code_dir)
+    shutil.copytree(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'TEMPLATE'), code_dir)
 
     # get problem data
     data, solving_chain, inverse_data = problem.get_problem_data(solver='OSQP', gp=False, enforce_dpp=True, verbose=False)
