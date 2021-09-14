@@ -32,6 +32,14 @@ As of today CVXPYGEN works with linear and quadratic programs.
    conda install -c anaconda cmake
    ```
    
+4. *Optional:* If you wish to use the example notebooks located in ``examples/``, register a new kernel spec with Jupyter.
+    ```
+   conda activate cpg_env
+   conda install ipykernel
+   ipython kernel install --user --name=cpg_env
+   ```
+   In the Jupyter notebook, click on ``Kernel->Change kernel`` and choose ``cpg_env``.
+    
 ## Example
 
 Let's define a CVXPY problem, generate code for it, and solve the problem with example parameter values.
