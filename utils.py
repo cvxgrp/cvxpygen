@@ -431,7 +431,7 @@ def write_method(f, code_dir, user_p_name_to_size, var_name_to_shape):
     Write function to be registered as custom CVXPY solve method
     """
 
-    f.write('from %s.build import cpg_module\n\n\n' % code_dir.replace('/', '.'))
+    f.write('from %s import cpg_module\n\n\n' % code_dir.replace('/', '.'))
     f.write('def cpg_solve(prob):\n\n')
     f.write('    par = cpg_module.cpg_params()\n')
 

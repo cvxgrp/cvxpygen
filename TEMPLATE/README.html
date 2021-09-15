@@ -25,26 +25,26 @@
   </p>
   <pre><code><!-- language: lang-c -->
 $CODEDIR
-    pybind11
-      ...
-    OSQP_code
-      ...
-    include
-      cpg_workspace.h
-      cpg_solve.h
-    src
-      cpg_workspace.c
-      cpg_solve.c
-      cpg_example.c
+    c
+      OSQP_code
+        ...
+      include
+        cpg_workspace.h
+        cpg_solve.h
+      src
+        cpg_workspace.c
+        cpg_solve.c
+        cpg_example.c
+      build
+      CMakeLists.txt
+    cpp
       cpg_module.cpp
-    build
-    CMakeLists.txt
-    problem.pickle
+    setup.py
     cpg_solver.py
+    problem.pickle
   </code></pre>
   <p>
-      The <code>pybind11</code> <a href="https://github.com/pybind/pybind11" target="_blank">submodule</a> is used to generate a python wrapper around the generated code.
-      The <code>OSQP_code</code> subdirectory contains all code produced by the code generation feature of the chosen
+      The <code>c/OSQP_code</code> subdirectory contains all code produced by the code generation feature of the chosen
       numerical solver (OSQP). For documentation on this part, please have a look <a href="https://osqp.org/docs/codegen/python.html" target="_blank">here</a>.
   </p>
   <p>
@@ -55,7 +55,7 @@ $CODEDIR
 
   <p>
     <dl>
-      <dt><code>include/cpg_workspace.h</code> contains type definitions,</dt>
+      <dt><code>c/include/cpg_workspace.h</code> contains type definitions,</dt>
         <dd>
           <pre><code><!-- language: lang-c -->
 // Struct type with OSQP-accepted parameters as fields
@@ -107,7 +107,7 @@ $CPGVARIABLEDECLARATIONS
 CPG_Result_t CPG_Result;
           </code></pre>
         </dd>
-      <dt><code>include/cpg_solve.h</code> contains function prototypes:</dt>
+      <dt><code>c/include/cpg_solve.h</code> contains function prototypes:</dt>
         <dd>
           <pre><code><!-- language: lang-c -->
 // map user-defined to OSQP-accepted parameters
@@ -129,33 +129,18 @@ void retrieve_solution();
 void solve();
           </code></pre>
         </dd>
-      <dt><code>src/cpg_workspace.c</code> contains the static allocation of the C variables declared in <code>include/cpg_workspace.h</code>.</dt>
-      <dt><code>src/cpg_solve.c</code> contains the definition of functions declared in <code>include/cpg_solve.h</code>.</dt>
-      <dt><code>src/cpg_example.c</code> contains example code that initializes the problem data and solves a problem instance.</dt>
-      <dt><code>src/cpg_module.cpp</code> contains binding code for the python wrapper generated with <a href="https://github.com/pybind/pybind11" target="_blank">pybind11</a>.</dt>
-      <dt><code>CMakeLists.txt</code> contains instructions for build file generation inside the <code>build</code> directory with CMake.</dt>
-      <dt><code>problem.pickle</code> is the serialized version of your CVXPY problem object.</dt>
-      <dt>Finally, <code>cpg_solver.py</code> contains a custom CVXPY solve method that uses the python wrapper to solve your problem.</dt>
+      <dt><code>c/src/cpg_workspace.c</code> contains the static allocation of the C variables declared in <code>include/cpg_workspace.h</code>.</dt>
+      <dt><code>c/src/cpg_solve.c</code> contains the definition of functions declared in <code>include/cpg_solve.h</code>.</dt>
+      <dt><code>c/src/cpg_example.c</code> contains example code that initializes the problem data and solves a problem instance.</dt>
+      <dt><code>c/CMakeLists.txt</code> contains instructions for build file generation inside the <code>c/build</code> directory with CMake.</dt>
+      <dt><code>cpp/cpg_module.cpp</code> contains binding code for the python wrapper generated with <a href="https://github.com/pybind/pybind11" target="_blank">pybind11</a> and <code>setup.py</code>.</dt>
+      <dt><code>cpg_solver.py</code> contains a custom CVXPY solve method that uses the python wrapper to solve your problem.</dt>
+      <dt>Finally, <code>problem.pickle</code> is the serialized version of your CVXPY problem object.</dt>
     </dl>
   </p>
 
-  <h3>Compilation</h3>
+  <h3>Using Generated Code</h3>
 
-  <p>
-    To compile the example executable and the python wrapper, run the following:
-  </p>
-    <pre><code>
-cd $CODEDIR/build
-cmake ..
-make
-    </code></pre>
-
-  <p>
-    To run the example executable, type:
-  </p>
-    <pre><code>
-$CODEDIR/build/cpg_example
-    </code></pre>
   <p>
       To use the python module, run exemplarily,
   </p>
@@ -176,6 +161,22 @@ print(prob.var_dict['&lt;v_name&gt;'].value)
   After registering <code>&lt;cpg_solve&gt;</code> as custom solve method, the problem can be solved and the objective value
   <code>obj</code> and solution in terms of variable <code>&lt;v_name&gt;</code> can be inspected.
   </p>
+
+  <p>
+    To compile the example executable, run the following:
+  </p>
+    <pre><code>
+cd $CODEDIR/c/build
+cmake ..
+make
+    </code></pre>
+
+  <p>
+    To run the example executable, type:
+  </p>
+    <pre><code>
+$CODEDIR/c/build/cpg_example
+    </code></pre>
 
 </body>
 

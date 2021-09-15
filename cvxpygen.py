@@ -9,6 +9,8 @@ import cvxpy as cp
 import osqp
 import utils
 import pickle
+import sys
+from subprocess import call
 
 
 def csc_to_dict(m):
@@ -185,15 +187,15 @@ def generate_code(problem, code_dir='CPG_code'):
         OSQP_p_decomposed[OSQP_p_id+'_decomposed'] = matrix
 
     # 'workspace' prototypes
-    with open(os.path.join(code_dir, 'include/cpg_workspace.h'), 'a') as f:
+    with open(os.path.join(code_dir, 'c/include/cpg_workspace.h'), 'a') as f:
         utils.write_workspace_extern(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP_p)
 
     # 'workspace' definitions
-    with open(os.path.join(code_dir, 'src/cpg_workspace.c'), 'a') as f:
+    with open(os.path.join(code_dir, 'c/src/cpg_workspace.c'), 'a') as f:
         utils.write_workspace(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP_p)
 
     # 'solve' definitions
-    with open(os.path.join(code_dir, 'src/cpg_solve.c'), 'a') as f:
+    with open(os.path.join(code_dir, 'c/src/cpg_solve.c'), 'a') as f:
         mappings = []
         for i in range(OSQP_p_num):
             if i >= 4:
@@ -209,7 +211,7 @@ def generate_code(problem, code_dir='CPG_code'):
                           type(problem.objective) == cp.problems.objective.Maximize)
 
     # 'example' definitions
-    with open(os.path.join(code_dir, 'src/cpg_example.c'), 'a') as f:
+    with open(os.path.join(code_dir, 'c/src/cpg_example.c'), 'a') as f:
         utils.write_main(f, user_p_writable, var_name_to_size)
 
     # OSQP codegen
@@ -218,10 +220,10 @@ def generate_code(problem, code_dir='CPG_code'):
 
     myOSQP = osqp.OSQP()
     myOSQP.setup(P=OSQP_p['P_csc'], q=OSQP_p['q'], A=OSQP_p['A_csc'], l=OSQP_p['l'], u=OSQP_p['u'])
-    myOSQP.codegen(os.path.join(code_dir, 'OSQP_code'), parameters='matrices', force_rewrite=True)
+    myOSQP.codegen(os.path.join(code_dir, 'c/OSQP_code'), parameters='matrices', force_rewrite=True)
 
     # adapt OSQP CMakeLists.txt
-    with open(os.path.join(code_dir, 'OSQP_code/CMakeLists.txt'), 'a') as f:
+    with open(os.path.join(code_dir, 'c/OSQP_code/CMakeLists.txt'), 'a') as f:
         utils.write_OSQP_CMakeLists(f)
 
     # html documentation file
@@ -232,7 +234,7 @@ def generate_code(problem, code_dir='CPG_code'):
         f.write(html_data)
 
     # binding module
-    with open(os.path.join(code_dir, 'src/cpg_module.cpp'), 'a') as f:
+    with open(os.path.join(code_dir, 'cpp/cpg_module.cpp'), 'a') as f:
         utils.write_module(f, user_p_name_to_size, var_name_to_size)
 
     # custom CVXPY solve method
@@ -243,4 +245,9 @@ def generate_code(problem, code_dir='CPG_code'):
     with open(os.path.join(code_dir, 'problem.pickle'), 'wb') as f:
         pickle.dump(cp.Problem(problem.objective, problem.constraints), f)
 
-    print('Done.')
+    # create python module
+    sys.stdout.write("Compiling CPG Python wrapper... \t\t\t\t\t")
+    os.chdir(code_dir)
+    call([sys.executable, 'setup.py', '--quiet', 'build_ext', '--inplace'])
+
+    print('CPG Code Generation Done.')

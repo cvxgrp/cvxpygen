@@ -10,11 +10,13 @@ As of today CVXPYGEN works with linear and quadratic programs.
 
 ## Installation
 
-1. Clone this repository and initialize its submodules.
-   ```
-   git clone git@github.com:cvxgrp/codegen.git
-   cd codegen
-   git submodule update --init
+1. Clone this repository via SSH,
+    ```
+    git clone git@github.com:cvxgrp/codegen.git
+    ```
+   or via HTTPS.
+    ```
+    git clone https://github.com/cvxgrp/codegen.git
     ```
 
 
@@ -98,17 +100,7 @@ The above steps are summarized in ``example_main.py``.
 
 To get an overview of the code generation result, have a look at `CPG_code/README.html`.
 
-### 2. Compile Code
-
-To compile the code, you can execute the following in your terminal.
-
-```bash
-cd CPG_code/build
-cmake ..
-make
-```
-
-### 3. Solve & Compare
+### 2. Solve & Compare
 
 As summarized in ``example_test.py``, after assigning parameter values, you can solve the problem both by conventional CVXPY and via the generated code, which is wrapped inside the custom CVXPY solve method ``cpg_solve``.
 
@@ -148,5 +140,22 @@ print('C solution: x = ', prob.var_dict['x'].value)
 print('C objective function value:', val)
 ```
 
-Comparing python and C results, both the solutions and objective values are virtually identical.
-The new solve method ``'CPG'`` is about one order of magnitude faster than solving without CVXPYGEN.
+Comparing python and C results, both the solutions and objective values are almost identical.
+For this example, the new solve method ``'CPG'`` is about one order of magnitude faster than solving without CVXPYGEN.
+
+### 3. Executable
+
+If you wish to compile the example executable, please run the following commands in your terminal.
+
+```bash
+cd CPG_code/c/build
+cmake ..
+make
+```
+
+To run the compiled program, type
+
+```bash
+cd CPG_code/c/build
+./cpg_example
+```
