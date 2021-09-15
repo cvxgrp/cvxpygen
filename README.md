@@ -28,10 +28,11 @@ As of today CVXPYGEN works with linear and quadratic programs.
     or activate an existing one. Make sure to use the python interpreter of this environment.
    
 
-3. Install ``CVXPY`` and ``CMake``
+3. Install ``CVXPY``, ``CMake``, and ``pybind11``
     ```
    conda install -c conda-forge cvxpy
    conda install -c anaconda cmake
+   pip install pybind11
    ```
    
 4. *Optional:* If you wish to use the example notebooks located in ``examples/``, register a new kernel spec with Jupyter.
