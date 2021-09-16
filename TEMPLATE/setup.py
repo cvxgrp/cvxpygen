@@ -23,7 +23,7 @@ class get_pybind_include(object):
 
 
 # Add parameters to cmake_args and define_macros
-cmake_args = ['-G', 'Unix Makefiles']
+cmake_args = ['-DCMAKE_POSITION_INDEPENDENT_CODE=ON', '-G', 'Unix Makefiles']
 lib_name = 'libcpg.a'
 
 # Compile CPG using CMake
