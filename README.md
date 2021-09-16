@@ -5,8 +5,14 @@ CVXPYGEN takes a convex optimization problem family modeled with CVXPY and gener
 This custom solver is specific to the problem family and accepts different parameter values.
 In particular, this solver is suitable for deployment on embedded systems.
 
+CVXPYGEN accepts CVXPY problems that are compliant with [Disciplined Convex Programming (DCP)](https://www.cvxpy.org/tutorial/dcp/index.html).
+DCP is a system for constructing mathematical expressions with known curvature from a given library of base functions. 
+CVXPY uses DCP to ensure that the specified optimization problems are convex.
+In addition, problems need to be modeled according to [Disciplined Parametrized Programming (DPP)](https://www.cvxpy.org/tutorial/advanced/index.html#disciplined-parametrized-programming).
+Solving a DPP-compliant problem repeatedly for different values of the parameters can be much faster than repeatedly solving a new problem.
+
 For now, CVXPYGEN is a separate module, until it will be integrated into CVXPY.
-As of today CVXPYGEN works with linear and quadratic programs.
+As of today, CVXPYGEN works with linear and quadratic programs.
 
 ## Installation
 
