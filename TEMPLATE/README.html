@@ -12,6 +12,7 @@
         body {background-color: white; padding-left: 260px; padding-right: 260px;}
         h1, h2, h3, h4, h5, h6   {color: darkslateblue; font-family: sans-serif;}
         p, dl {color: black; font-family: sans-serif;}
+        dt, dd {margin-top: 10px;}
         code {color: black; background-color: #f1f1f1;}
         pre {background-color: #f1f1f1; padding-left: 20px; padding-right: 20px;}
     </style>
@@ -142,7 +143,16 @@ void solve();
 
 // update user-defined parameter values
 $CPGUPDATEDECLARATIONS
+
+// update OSQP settings
+void set_OSQP_default_settings();
+void set_OSQP_&lt;setting_name&gt;(&lt;setting_type&gt; &lt;setting_value&gt;);
+...
           </code></pre>
+        </dd>
+        <dd>
+            where <code>&lt;setting_name&gt;</code>, <code>&lt;setting_type&gt;</code>, and <code>&lt;setting_value&gt;</code> are
+            the name, type, and value of the OSQP setting to be updated, respectively.
         </dd>
       <dt><code>c/src/cpg_workspace.c</code> contains the static allocation of the C variables declared in <code>include/cpg_workspace.h</code>.</dt>
       <dt><code>c/src/cpg_solve.c</code> contains the definition of functions declared in <code>include/cpg_solve.h</code>.</dt>

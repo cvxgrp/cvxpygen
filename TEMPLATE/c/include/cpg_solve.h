@@ -1,4 +1,6 @@
 
+#include "types.h"
+
 // map user-defined to OSQP-accepted parameters
 extern void canonicalize_OSQP_P();
 extern void canonicalize_OSQP_q();

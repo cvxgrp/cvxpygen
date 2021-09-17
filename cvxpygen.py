@@ -89,6 +89,13 @@ def generate_code(problem, code_dir='CPG_code'):
     OSQP_p_id_to_size_lu = {k: v for k, v in zip(OSQP_p_ids_lu, OSQP_p_sizes_lu)}
     OSQP_p_id_to_col_lu = {k: v for k, v in zip(OSQP_p_ids_lu, np.cumsum([0] + OSQP_p_sizes_lu[:-1] + [0]))}
 
+    # OSQP settings
+    OSQP_settings_names = ['rho', 'max_iter', 'eps_abs', 'eps_rel', 'eps_prim_inf', 'eps_dual_inf', 'alpha',
+                           'scaled_termination', 'check_termination', 'warm_start']
+    OSQP_settings_types = ['c_float', 'c_int', 'c_float', 'c_float', 'c_float', 'c_float', 'c_float',
+                           'c_int', 'c_int', 'c_int']
+    OSQP_settings_names_to_types = {name: typ for name, typ in zip(OSQP_settings_names, OSQP_settings_types)}
+
     # user parameters
     user_p_num = len(p_prob.parameters)
     user_p_names = [par.name() for par in p_prob.parameters]
@@ -196,7 +203,7 @@ def generate_code(problem, code_dir='CPG_code'):
 
     # 'solve' prototypes
     with open(os.path.join(code_dir, 'c/include/cpg_solve.h'), 'a') as f:
-        utils.write_solve_extern(f, user_p_names)
+        utils.write_solve_extern(f, user_p_names, OSQP_settings_names_to_types)
 
     # 'solve' definitions
     with open(os.path.join(code_dir, 'c/src/cpg_solve.c'), 'a') as f:
@@ -214,7 +221,8 @@ def generate_code(problem, code_dir='CPG_code'):
                                    for i, user_p_name in enumerate(user_p_names)}
         utils.write_solve(f, OSQP_p_ids, nonconstant_OSQP_names, mappings, user_p_col_to_name,
                           list(user_p_id_to_size.values()), n_eq, p_prob.problem_data_index_A, var_name_to_indices,
-                          type(problem.objective) == cp.problems.objective.Maximize, user_p_to_OSQP_outdated)
+                          type(problem.objective) == cp.problems.objective.Maximize, user_p_to_OSQP_outdated,
+                          OSQP_settings_names_to_types)
 
     # 'example' definitions
     with open(os.path.join(code_dir, 'c/src/cpg_example.c'), 'a') as f:
@@ -241,7 +249,7 @@ def generate_code(problem, code_dir='CPG_code'):
 
     # binding module
     with open(os.path.join(code_dir, 'cpp/cpg_module.cpp'), 'a') as f:
-        utils.write_module(f, user_p_name_to_size, var_name_to_size)
+        utils.write_module(f, user_p_name_to_size, var_name_to_size, OSQP_settings_names)
 
     # custom CVXPY solve method
     with open(os.path.join(code_dir, 'cpg_solver.py'), 'a') as f:
