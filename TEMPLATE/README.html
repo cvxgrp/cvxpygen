@@ -68,6 +68,16 @@ typedef struct {
     c_float     *u;              ///< OSQP parameter u
 } OSQP_Params_t;
 
+// Struct type with booleans as fields, indicating if respective OSQP parameter is outdated
+typedef struct {
+    int         P;              ///< bool, if OSQP parameter P outdated
+    int         q;              ///< bool, if OSQP parameter q outdated
+    int         d;              ///< bool, if OSQP parameter d outdated
+    int         A;              ///< bool, if OSQP parameter A outdated
+    int         l;              ///< bool, if OSQP parameter l outdated
+    int         u;              ///< bool, if OSQP parameter u outdated
+} OSQP_Outdated_t;
+
 // Struct type with user-defined parameters as fields
 $CPGPARAMSTYPEDEF
 
@@ -80,6 +90,9 @@ $CPGRESULTTYPEDEF
         </dd>
         <dd>
           <pre><code><!-- language: lang-c -->
+// Struct containing flags for outdated OSQP parameters
+OSQP_Outdated_t OSQP_Outdated;
+
 // Parameters accepted by OSQP
 csc P;
 c_float q[11];
@@ -111,13 +124,12 @@ CPG_Result_t CPG_Result;
         <dd>
           <pre><code><!-- language: lang-c -->
 // map user-defined to OSQP-accepted parameters
-void canonicalize_params();
-
-// initialize all OSQP-accepted parameters
-void init_params();
-
-// update OSQP-accepted parameters that depend on user-defined parameters
-void update_params();
+void canonicalize_OSQP_P();
+void canonicalize_OSQP_q();
+void canonicalize_OSQP_d();
+void canonicalize_OSQP_A();
+void canonicalize_OSQP_l();
+void canonicalize_OSQP_u();
 
 // retrieve user-defined objective function value
 void retrieve_value();
@@ -127,6 +139,9 @@ void retrieve_solution();
 
 // perform one ASA sequence to solve a problem instance
 void solve();
+
+// update user-defined parameter values
+$CPGUPDATEDECLARATIONS
           </code></pre>
         </dd>
       <dt><code>c/src/cpg_workspace.c</code> contains the static allocation of the C variables declared in <code>include/cpg_workspace.h</code>.</dt>

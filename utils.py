@@ -138,6 +138,13 @@ def write_workspace(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP
     CPG_Result_fields = ['objective_value'] + list(var_init.keys())
     write_struct(f, CPG_Result_fields, results_cast, CPG_Result_fields, 'CPG_Result', 'CPG_Result_t')
 
+    # Boolean struct for outdated parameter flags
+    f.write('OSQP_Outdated_t OSQP_Outdated = {\n')
+    for OSQP_p_id in OSQP_p_ids:
+        f.write('.%s = 1,\n' % OSQP_p_id)
+
+    f.write('};\n')
+
 
 def write_workspace_extern(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP_p):
     """"
@@ -193,17 +200,27 @@ def write_workspace_extern(f, user_p_names, user_p_writable, var_init, OSQP_p_id
     write_struct_extern(f, 'CPG_Result', 'CPG_Result_t')
 
 
-def write_solve(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_name, sizes, n_eq, problem_data_index_A, var_id_to_indices, is_maximization):
+def write_solve(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_name, sizes, n_eq, problem_data_index_A,
+                var_id_to_indices, is_maximization, user_p_to_OSQP_outdated):
     """
     Write parameter initialization function to file
     """
 
-    f.write('// map user-defined to OSQP-accepted parameters\n')
-    f.write('void canonicalize_params(){\n')
+    f.write('// update user-defined parameters\n')
+
+    for user_p_name, OSQP_outdated_names in user_p_to_OSQP_outdated.items():
+        f.write('void update_%s(){\n' % user_p_name)
+        for OSQP_outdated_name in OSQP_outdated_names:
+            f.write('OSQP_Outdated.%s = 1;\n' % OSQP_outdated_name)
+        f.write('}\n')
+
+    f.write('\n// map user-defined to OSQP-accepted parameters\n')
 
     base_cols = list(user_p_col_to_name.keys())
 
     for OSQP_name, mapping in zip(OSQP_p_ids, mappings):
+
+        f.write('void canonicalize_OSQP_%s(){\n' % OSQP_name)
 
         if OSQP_name in ['P', 'A']:
             s = '->x'
@@ -240,42 +257,9 @@ def write_solve(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_n
                 OSQP_row = OSQP_rows[row]
                 f.write('OSQP_Params.%s%s[%d] = %s;\n' % (OSQP_name, s, OSQP_row, expr))
 
-    f.write('}\n\n')
+        f.write('}\n')
 
-    f.write('// initialize all OSQP-accepted parameters\n')
-    f.write('void init_params(){\n')
-
-    f.write('canonicalize_params();\n')
-    f.write('osqp_update_P(&workspace, OSQP_Params.P->x, 0, 0);\n')
-    f.write('osqp_update_lin_cost(&workspace, OSQP_Params.q);\n')
-    f.write('osqp_update_A(&workspace, OSQP_Params.A->x, 0, 0);\n')
-    f.write('osqp_update_bounds(&workspace, OSQP_Params.l, OSQP_Params.u);\n')
-
-    f.write('}\n\n')
-
-    f.write('// update OSQP-accepted parameters that depend on user-defined parameters\n')
-    f.write('void update_params(){\n')
-    f.write('canonicalize_params();\n')
-
-    if 'P' in nonconstant_OSQP_p_ids:
-        f.write('osqp_update_P(&workspace, OSQP_Params.P->x, 0, 0);\n')
-
-    if 'q' in nonconstant_OSQP_p_ids:
-        f.write('osqp_update_lin_cost(&workspace, OSQP_Params.q);\n')
-
-    if 'A' in nonconstant_OSQP_p_ids:
-        f.write('osqp_update_A(&workspace, OSQP_Params.A->x, 0, 0);\n')
-
-    if 'l' in nonconstant_OSQP_p_ids and 'u' in nonconstant_OSQP_p_ids:
-        f.write('osqp_update_bounds(&workspace, OSQP_Params.l, OSQP_Params.u);\n')
-    elif 'l' in nonconstant_OSQP_p_ids:
-        f.write('osqp_update_lower_bound(&workspace, OSQP_Params.l);\n')
-    elif 'u' in nonconstant_OSQP_p_ids:
-        f.write('osqp_update_upper_bound(&workspace, OSQP_Params.u);\n')
-
-    f.write('}\n\n')
-
-    f.write('// retrieve user-defined objective function value\n')
+    f.write('\n// retrieve user-defined objective function value\n')
     f.write('void retrieve_value(){\n')
 
     if is_maximization:
@@ -298,11 +282,57 @@ def write_solve(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_n
 
     f.write('// perform one ASA sequence to solve a problem instance\n')
     f.write('void solve(){\n')
-    f.write('update_params();\n')
+
+    f.write('if (OSQP_Outdated.P && OSQP_Outdated.A) {\n')
+    f.write('canonicalize_OSQP_P();\n')
+    f.write('canonicalize_OSQP_A();\n')
+    f.write('osqp_update_P_A(&workspace, OSQP_Params.P->x, 0, 0, OSQP_Params.A->x, 0, 0);\n')
+    f.write('} else if (OSQP_Outdated.P) {\n')
+    f.write('canonicalize_OSQP_P();\n')
+    f.write('osqp_update_P(&workspace, OSQP_Params.P->x, 0, 0);\n')
+    f.write('} else if (OSQP_Outdated.P) {\n')
+    f.write('canonicalize_OSQP_A();\n')
+    f.write('osqp_update_A(&workspace, OSQP_Params.A->x, 0, 0);\n')
+    f.write('}\n')
+
+    f.write('if (OSQP_Outdated.q) {\n')
+    f.write('canonicalize_OSQP_q();\n')
+    f.write('osqp_update_lin_cost(&workspace, OSQP_Params.q);\n')
+    f.write('}\n')
+
+    f.write('if (OSQP_Outdated.d) {\n')
+    f.write('canonicalize_OSQP_d();\n')
+    f.write('}\n')
+
+    f.write('if (OSQP_Outdated.l && OSQP_Outdated.u) {\n')
+    f.write('canonicalize_OSQP_l();\n')
+    f.write('canonicalize_OSQP_u();\n')
+    f.write('osqp_update_bounds(&workspace, OSQP_Params.l, OSQP_Params.u);\n')
+    f.write('} else if (OSQP_Outdated.l) {\n')
+    f.write('canonicalize_OSQP_l();\n')
+    f.write('osqp_update_lower_bound(&workspace, OSQP_Params.l);\n')
+    f.write('} else if (OSQP_Outdated.u) {\n')
+    f.write('canonicalize_OSQP_u();\n')
+    f.write('osqp_update_upper_bound(&workspace, OSQP_Params.u);\n')
+    f.write('}\n')
+
     f.write('osqp_solve(&workspace);\n')
     f.write('retrieve_value();\n')
     f.write('retrieve_solution();\n')
+
+    for OSQP_p_id in OSQP_p_ids:
+        f.write('OSQP_Outdated.%s = 0;\n' % OSQP_p_id)
+
     f.write('}\n')
+
+
+def write_solve_extern(f, user_p_names):
+    """
+    Write function declarations to file
+    """
+
+    for name in user_p_names:
+        f.write('extern void update_%s();\n' % name)
 
 
 def write_main(f, user_p_writable, var_name_to_size):
@@ -320,10 +350,11 @@ def write_main(f, user_p_writable, var_name_to_size):
             for i in range(len(value)):
                 f.write('CPG_Params.%s[%d] = %.20f;\n' % (name, i, value[i]))
 
-    f.write('\n// initialize OSQP-accepted parameter values, this must be done once before solving for the first time\n')
-    f.write('init_params();\n\n')
+    f.write('\n// pass changed user-defined parameter values to the solver\n')
+    for name in user_p_writable.keys():
+        f.write('update_%s();\n' % name)
 
-    f.write('// solve the problem instance\n')
+    f.write('\n// solve the problem instance\n')
     f.write('solve();\n\n')
 
     f.write('// printing objective function value for demonstration purpose\n')
@@ -365,6 +396,12 @@ def write_module(f, user_p_name_to_size, var_name_to_size):
             f.write('    std::array<double, %d> %s;\n' % (size, name))
     f.write('};\n\n')
 
+    # cpp struct containing update flags for user-defined parameters
+    f.write('struct CPG_Updated_cpp_t {\n')
+    for name in user_p_name_to_size.keys():
+        f.write('    bool %s;\n' % name)
+    f.write('};\n\n')
+
     # cpp struct containing objective value and user-defined variables
     f.write('struct CPG_Result_cpp_t {\n')
     f.write('    double objective_value;\n')
@@ -376,19 +413,22 @@ def write_module(f, user_p_name_to_size, var_name_to_size):
     f.write('};\n\n')
 
     # cpp function that maps parameters to results
-    f.write('CPG_Result_cpp_t solve_cpp(struct CPG_Params_cpp_t& CPG_Params_cpp){\n\n')
-    f.write('    // pass parameter values to C variables\n')
+    f.write('CPG_Result_cpp_t solve_cpp(struct CPG_Params_cpp_t& CPG_Params_cpp, struct CPG_Updated_cpp_t& CPG_Updated_cpp){\n\n')
+
+    f.write('    // pass changed user-defined parameter values to the solver\n')
     for name, size in user_p_name_to_size.items():
+        f.write('    if (CPG_Updated_cpp.%s) {\n' % name)
         if size == 1:
-            f.write('    %s = CPG_Params_cpp.%s;\n' % (name, name))
+            f.write('        %s = CPG_Params_cpp.%s;\n' % (name, name))
         else:
-            f.write('    for(int i = 0; i < %d; i++) {\n' % size)
-            f.write('        %s[i] = CPG_Params_cpp.%s[i];\n' % (name, name))
-            f.write('    }\n')
+            f.write('        for(int i = 0; i < %d; i++) {\n' % size)
+            f.write('            %s[i] = CPG_Params_cpp.%s[i];\n' % (name, name))
+            f.write('        }\n')
+        f.write('        update_%s();\n' % name)
+        f.write('    }\n')
 
     # perform ASA procedure
     f.write('\n    // ASA\n')
-    f.write('    init_params();\n')
     f.write('    solve();\n\n')
 
     # arrange and return results
@@ -409,10 +449,17 @@ def write_module(f, user_p_name_to_size, var_name_to_size):
 
     # module
     f.write('PYBIND11_MODULE(cpg_module, m) {\n\n')
+
     f.write('    py::class_<CPG_Params_cpp_t>(m, "cpg_params")\n')
     f.write('            .def(py::init<>())\n')
     for name in user_p_name_to_size.keys():
         f.write('            .def_readwrite("%s", &CPG_Params_cpp_t::%s)\n' % (name, name))
+    f.write('            ;\n\n')
+
+    f.write('    py::class_<CPG_Updated_cpp_t>(m, "cpg_updated")\n')
+    f.write('            .def(py::init<>())\n')
+    for name in user_p_name_to_size.keys():
+        f.write('            .def_readwrite("%s", &CPG_Updated_cpp_t::%s)\n' % (name, name))
     f.write('            ;\n\n')
 
     f.write('    py::class_<CPG_Result_cpp_t>(m, "cpg_result")\n')
@@ -432,7 +479,12 @@ def write_method(f, code_dir, user_p_name_to_size, var_name_to_shape):
     """
 
     f.write('from %s import cpg_module\n\n\n' % code_dir.replace('/', '.'))
-    f.write('def cpg_solve(prob):\n\n')
+    f.write('def cpg_solve(prob, updated_params=None):\n\n')
+    f.write('    if updated_params is None:\n')
+    p_list_string = ''
+    for name in user_p_name_to_size.keys():
+        p_list_string += '"%s", ' % name
+    f.write('        updated_params = [%s]\n\n' % p_list_string[:-2])
     f.write('    par = cpg_module.cpg_params()\n')
 
     for name, size in user_p_name_to_size.items():
@@ -441,7 +493,14 @@ def write_method(f, code_dir, user_p_name_to_size, var_name_to_shape):
         else:
             f.write('    par.%s = list(prob.param_dict[\'%s\'].value.flatten(order=\'F\'))\n' % (name, name))
 
-    f.write('\n    res = cpg_module.solve(par)\n\n')
+    f.write('\n    upd = cpg_module.cpg_updated()\n')
+    f.write('    for p in updated_params:\n')
+    f.write('        try:\n')
+    f.write('            setattr(upd, p, True)\n')
+    f.write('        except AttributeError:\n')
+    f.write('            raise(AttributeError("%s is not a parameter." % p))\n\n')
+
+    f.write('    res = cpg_module.solve(par, upd)\n\n')
 
     for name, shape in var_name_to_shape.items():
         if len(shape) == 2:
@@ -496,4 +555,11 @@ def replace_html(code_dir, text, user_p_names, user_p_writable, var_name_to_size
         else:
             CPGVARIABLEDECLARATIONS += 'c_float %s[%d];\n' % (name, size)
 
-    return text.replace('$CPGVARIABLEDECLARATIONS', CPGVARIABLEDECLARATIONS[:-1])
+    text = text.replace('$CPGVARIABLEDECLARATIONS', CPGVARIABLEDECLARATIONS[:-1])
+
+    # update declarations
+    CPGUPDATEDECLARATIONS = ''
+    for name in user_p_names:
+        CPGUPDATEDECLARATIONS += 'void update_%s();\n' % name
+
+    return text.replace('$CPGUPDATEDECLARATIONS', CPGUPDATEDECLARATIONS)

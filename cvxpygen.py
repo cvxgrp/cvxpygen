@@ -194,6 +194,10 @@ def generate_code(problem, code_dir='CPG_code'):
     with open(os.path.join(code_dir, 'c/src/cpg_workspace.c'), 'a') as f:
         utils.write_workspace(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP_p)
 
+    # 'solve' prototypes
+    with open(os.path.join(code_dir, 'c/include/cpg_solve.h'), 'a') as f:
+        utils.write_solve_extern(f, user_p_names)
+
     # 'solve' definitions
     with open(os.path.join(code_dir, 'c/src/cpg_solve.c'), 'a') as f:
         mappings = []
@@ -206,9 +210,11 @@ def generate_code(problem, code_dir='CPG_code'):
                               OSQP_p_id_to_col_lu[OSQP_p_id_lu] + OSQP_p_id_to_size_lu[OSQP_p_id_lu])
             mappings.append(MAP[row_slice, :])
         nonconstant_OSQP_names = [n for (n, b) in zip(OSQP_p_ids, np.sum(adjacency, axis=1) > 0) if b]
+        user_p_to_OSQP_outdated = {user_p_name: [OSQP_p_ids[j] for j in np.nonzero(adjacency[:, i])[0]]
+                                   for i, user_p_name in enumerate(user_p_names)}
         utils.write_solve(f, OSQP_p_ids, nonconstant_OSQP_names, mappings, user_p_col_to_name,
                           list(user_p_id_to_size.values()), n_eq, p_prob.problem_data_index_A, var_name_to_indices,
-                          type(problem.objective) == cp.problems.objective.Maximize)
+                          type(problem.objective) == cp.problems.objective.Maximize, user_p_to_OSQP_outdated)
 
     # 'example' definitions
     with open(os.path.join(code_dir, 'c/src/cpg_example.c'), 'a') as f:

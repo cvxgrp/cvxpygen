@@ -64,7 +64,7 @@ import cvxpy as cp
 import numpy as np
 
 # define dimensions, variables, parameters
-# IMPORTANT: specify variable and parameter names to recognize them in the generated C code
+# IMPORTANT: uniquely specify variable and parameter names for them to be recognized in the generated C code
 m, n = 3, 2
 W = cp.Variable((n, n), name='W')
 x = cp.Variable(n, name='x')
@@ -140,7 +140,10 @@ print('Python objective function value:', val)
 # solve problem with C code via python wrapper
 prob.register_solve('CPG', cpg_solve)
 t0 = time.time()
-val = prob.solve(method='CPG')
+# the argument 'updated_params' specifies which user-defined parameter values are new
+# if the argument is omitted, all values are assumed to be new
+# if only a subset of the user-defined parameters have new values, use this argument to speed up the solver
+val = prob.solve(method='CPG', updated_params=['A', 'b', 'c'])
 t1 = time.time()
 print('\nC solve time:', 1000*(t1-t0), 'ms')
 print('C solution: x = ', prob.var_dict['x'].value)
