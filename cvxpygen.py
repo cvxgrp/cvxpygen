@@ -145,7 +145,7 @@ def generate_code(problem, code_dir='CPG_code'):
             user_p_writable[p_name] = p.value
         else:
             # dealing with matrix
-            user_p_writable[p_name] = p.value.flatten()
+            user_p_writable[p_name] = p.value.flatten(order='F')
 
     # default values of OSQP parameters via one big affine mapping
     OSQP_p = dict()
