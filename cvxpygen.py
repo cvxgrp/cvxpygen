@@ -4,7 +4,7 @@ import shutil
 import numpy as np
 from scipy import sparse
 from cvxpy.cvxcore.python import canonInterface as cI
-from cvxpy import error
+from cvxpy.expressions.variable import upper_tri_to_full
 import cvxpy as cp
 import osqp
 import utils
@@ -49,19 +49,29 @@ def generate_code(problem, code_dir='CPG_code'):
     p_prob = data['param_prob']
 
     # get variable information
-    var_names = [var.name() for var in problem.variables()]
-    for inverse_data_offset, entry in enumerate(inverse_data):
-        if type(entry) == cp.reductions.inverse_data.InverseData:
+    vars = problem.variables()
+    var_names = [var.name() for var in vars]
+    var_ids = [var.id for var in vars]
+    for inverse_data_idx in range(len(inverse_data)-1, -1, -1):
+        if type(inverse_data[inverse_data_idx]) == cp.reductions.inverse_data.InverseData:
             break
-    var_ids = list(inverse_data[inverse_data_offset].id_map.keys())
-    var_offsets = [inverse_data[inverse_data_offset+1].var_offsets[var_id] for var_id in var_ids]
-    var_sizes = [np.prod(inverse_data[2].var_shapes[var_id]) for var_id in var_ids]
-    var_name_to_indices = {var_name: np.arange(offset, offset+size)
-                           for var_name, offset, size in zip(var_names, var_offsets, var_sizes)}
+    var_offsets = [inverse_data[inverse_data_idx].var_offsets[var_id] for var_id in var_ids]
+    var_shapes = [var.shape for var in vars]
+    var_sizes = [var.size for var in vars]
+    var_symm = [var.attributes['symmetric'] or var.attributes['PSD'] or var.attributes['NSD'] for var in vars]
+    var_name_to_indices = {}
+    for var_name, offset, shape, symm in zip(var_names, var_offsets, var_shapes, var_symm):
+        if symm:
+            fill_coeff = upper_tri_to_full(shape[0])
+            (_, col) = fill_coeff.nonzero()
+            var_name_to_indices[var_name] = offset + col
+        else:
+            var_name_to_indices[var_name] = np.arange(offset, offset+np.prod(shape))
+
     var_name_to_size = {name: size for name, size in zip(var_names, var_sizes)}
-    var_name_to_shape = {var.name(): var.shape for var in problem.variables()}
+    var_name_to_shape = {var.name(): var.shape for var in vars}
     var_init = dict()
-    for var in problem.variables():
+    for var in vars:
         if len(var.shape) == 0:
             var_init[var.name()] = 0
         else:
