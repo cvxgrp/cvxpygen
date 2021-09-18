@@ -139,10 +139,7 @@ def generate_code(problem, code_dir='CPG_code'):
     user_p_writable = dict()
     for p_name, p in zip(user_p_names, p_prob.parameters):
         if p.value is None:
-            raise error.ParameterError(
-                "A Parameter (whose name is '%s') does not have a value "
-                "associated with it; all Parameter objects must have "
-                "values before generating code for a problem." % p.name())
+            p.project_and_assign(np.random.randn(*p.shape))
         if len(p.shape) < 2:
             # dealing with scalar or vector
             user_p_writable[p_name] = p.value

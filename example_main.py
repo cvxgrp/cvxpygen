@@ -21,7 +21,6 @@ constraints = [0 <= x, x <= 1]
 prob = cp.Problem(objective, constraints)
 
 # assign parameter values and solve
-# IMPORTANT: parameter values must be (reasonably) initialized before generating code, and can be updated later on
 np.random.seed(0)
 A.value = np.random.randn(m, n)
 b.value = np.random.randn(m)
