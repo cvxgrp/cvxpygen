@@ -131,7 +131,7 @@ def write_workspace(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP
             f.write('c_float %s = %.20f;\n' % (name, value))
             results_cast.append('')
         else:
-            osqp_utils.write_vec(f, value.flatten(order='F'), name, 'c_float')
+            osqp_utils.write_vec(f, value.flatten(), name, 'c_float')
             results_cast.append('(c_float *) ')
 
     f.write('\n// Struct containing CPG objective value and solution\n')
@@ -194,7 +194,7 @@ def write_workspace_extern(f, user_p_names, user_p_writable, var_init, OSQP_p_id
         if np.isscalar(value):
             f.write("extern c_float %s;\n" % name)
         else:
-            osqp_utils.write_vec_extern(f, value.flatten(order='F'), name, 'c_float')
+            osqp_utils.write_vec_extern(f, value.flatten(), name, 'c_float')
 
     f.write('\n// Struct containing CPG objective value and solution\n')
     write_struct_extern(f, 'CPG_Result', 'CPG_Result_t')
@@ -524,13 +524,13 @@ def write_method(f, code_dir, user_p_name_to_size, var_name_to_shape):
         if size == 1:
             f.write('    par.%s = prob.param_dict[\'%s\'].value\n' % (name, name))
         else:
-            f.write('    par.%s = list(prob.param_dict[\'%s\'].value.flatten(order=\'F\'))\n' % (name, name))
+            f.write('    par.%s = list(prob.param_dict[\'%s\'].value.flatten())\n' % (name, name))
 
     f.write('\n    res = cpg_module.solve(upd, par)\n\n')
 
     for name, shape in var_name_to_shape.items():
         if len(shape) == 2:
-            f.write('    prob.var_dict[\'%s\'].value = np.array(res.%s).reshape((%d, %d), order=\'F\')\n' % (name, name, shape[0], shape[1]))
+            f.write('    prob.var_dict[\'%s\'].value = np.array(res.%s).reshape((%d, %d))\n' % (name, name, shape[0], shape[1]))
         else:
             f.write('    prob.var_dict[\'%s\'].value = np.array(res.%s)\n' % (name, name))
 
