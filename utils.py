@@ -418,7 +418,7 @@ def write_module(f, user_p_name_to_size, var_name_to_size, OSQP_settings_names):
 
     # cpp struct containing objective value and user-defined variables
     f.write('struct CPG_Result_cpp_t {\n')
-    f.write('    double objective_value;\n')
+    f.write('    CPG_Info_cpp_t CPG_Info;\n')
     for name, size in var_name_to_size.items():
         if size == 1:
             f.write('    double %s;\n' % name)
@@ -447,8 +447,15 @@ def write_module(f, user_p_name_to_size, var_name_to_size, OSQP_settings_names):
 
     # arrange and return results
     f.write('    // arrange and return results\n')
+    f.write('    CPG_Info_cpp_t CPG_Info_cpp {};\n')
+    f.write('    CPG_Info_cpp.obj_val = objective_value;\n')
+    f.write('    CPG_Info_cpp.iter = (&workspace)->info->iter;\n')
+    f.write('    CPG_Info_cpp.status = (&workspace)->info->status;\n')
+    f.write('    CPG_Info_cpp.pri_res = (&workspace)->info->pri_res;\n')
+    f.write('    CPG_Info_cpp.dua_res = (&workspace)->info->dua_res;\n')
+
     f.write('    CPG_Result_cpp_t CPG_Result_cpp {};\n')
-    f.write('    CPG_Result_cpp.objective_value = objective_value;\n')
+    f.write('    CPG_Result_cpp.CPG_Info = CPG_Info_cpp;\n')
     for name, size in var_name_to_size.items():
         if size == 1:
             f.write('    CPG_Result_cpp.%s = %s;\n' % (name, name))
@@ -476,9 +483,18 @@ def write_module(f, user_p_name_to_size, var_name_to_size, OSQP_settings_names):
         f.write('            .def_readwrite("%s", &CPG_Updated_cpp_t::%s)\n' % (name, name))
     f.write('            ;\n\n')
 
+    f.write('    py::class_<CPG_Info_cpp_t>(m, "cpg_info")\n')
+    f.write('            .def(py::init<>())\n')
+    f.write('            .def_readwrite("obj_val", &CPG_Info_cpp_t::obj_val)\n')
+    f.write('            .def_readwrite("iter", &CPG_Info_cpp_t::iter)\n')
+    f.write('            .def_readwrite("status", &CPG_Info_cpp_t::status)\n')
+    f.write('            .def_readwrite("pri_res", &CPG_Info_cpp_t::pri_res)\n')
+    f.write('            .def_readwrite("dua_res", &CPG_Info_cpp_t::dua_res)\n')
+    f.write('            ;\n')
+
     f.write('    py::class_<CPG_Result_cpp_t>(m, "cpg_result")\n')
     f.write('            .def(py::init<>())\n')
-    f.write('            .def_readwrite("objective_value", &CPG_Result_cpp_t::objective_value)\n')
+    f.write('            .def_readwrite("CPG_Info", &CPG_Result_cpp_t::CPG_Info)\n')
     for name in var_name_to_size.keys():
         f.write('            .def_readwrite("%s", &CPG_Result_cpp_t::%s)\n' % (name, name))
     f.write('            ;\n\n')
@@ -534,7 +550,14 @@ def write_method(f, code_dir, user_p_name_to_size, var_name_to_shape):
         else:
             f.write('    prob.var_dict[\'%s\'].value = np.array(res.%s)\n' % (name, name))
 
-    f.write('\n    return res.objective_value\n')
+    f.write('\n    prob.solver_stats.extra_stats = {}\n')
+    f.write('    prob.solver_stats.extra_stats[\'obj_val\'] = res.CPG_Info.obj_val\n')
+    f.write('    prob.solver_stats.extra_stats[\'status\'] = res.CPG_Info.status\n')
+    f.write('    prob.solver_stats.extra_stats[\'iter\'] = res.CPG_Info.iter\n')
+    f.write('    prob.solver_stats.extra_stats[\'pri_res\'] = res.CPG_Info.pri_res\n')
+    f.write('    prob.solver_stats.extra_stats[\'dua_res\'] = res.CPG_Info.dua_res\n\n')
+
+    f.write('    return res.CPG_Info.obj_val\n')
 
 
 def replace_html(code_dir, text, user_p_names, user_p_writable, var_name_to_size):
