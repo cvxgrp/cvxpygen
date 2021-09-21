@@ -149,7 +149,10 @@ print('C solution: x = ', prob.var_dict['x'].value)
 print('C objective function value:', val)
 ```
 
-Comparing python and C results, both the solutions and objective values are almost identical.
+Comparing python and C results for this example, both the solutions and objective values are almost identical.
+In general, there might be differences due to the different step size dynamics with or without code generation. 
+With codegen, the step size is updated purely based on the number iterations. 
+Without codegen, the step size additionally depends on time.
 For this example, the new solve method ``'CPG'`` is about one order of magnitude faster than solving without CVXPYGEN.
 
 ### 3. Executable
