@@ -545,7 +545,11 @@ def write_method(f, code_dir, user_p_name_to_size, var_name_to_shape):
         else:
             f.write('    par.%s = list(prob.param_dict[\'%s\'].value.flatten(order=\'F\'))\n' % (name, name))
 
-    f.write('\n    res = cpg_module.solve(upd, par)\n\n')
+    f.write('\n    t0 = time.time()\n')
+    f.write('    res = cpg_module.solve(upd, par)\n')
+    f.write('    t1 = time.time()\n\n')
+
+    f.write('    prob._clear_solution()\n\n')
 
     for name, shape in var_name_to_shape.items():
         if len(shape) == 2:
@@ -553,14 +557,23 @@ def write_method(f, code_dir, user_p_name_to_size, var_name_to_shape):
         else:
             f.write('    prob.var_dict[\'%s\'].value = np.array(res.%s)\n' % (name, name))
 
-    f.write('\n    prob.solver_stats.extra_stats = {}\n')
-    f.write('    prob.solver_stats.extra_stats[\'obj_val\'] = res.CPG_Info.obj_val\n')
-    f.write('    prob.solver_stats.extra_stats[\'status\'] = res.CPG_Info.status\n')
-    f.write('    prob.solver_stats.extra_stats[\'iter\'] = res.CPG_Info.iter\n')
-    f.write('    prob.solver_stats.extra_stats[\'pri_res\'] = res.CPG_Info.pri_res\n')
-    f.write('    prob.solver_stats.extra_stats[\'dua_res\'] = res.CPG_Info.dua_res\n\n')
+    f.write('\n    prob._status = res.CPG_Info.status\n')
+    f.write('    prob._value = res.CPG_Info.obj_val\n')
+    f.write('    primal_vars = {var.id: var.value for var in prob.variables()}\n')
+    f.write('    dual_vars = {}\n')
+    f.write('    solver_specific_stats = {\'obj_val\': res.CPG_Info.obj_val,\n')
+    f.write('                             \'status\': res.CPG_Info.status,\n')
+    f.write('                             \'iter\': res.CPG_Info.iter,\n')
+    f.write('                             \'pri_res\': res.CPG_Info.pri_res,\n')
+    f.write('                             \'dua_res\': res.CPG_Info.dua_res}\n')
+    f.write('    attr = {\'solve_time\': t1-t0, \'solver_specific_stats\': solver_specific_stats, \'num_iters\': res.CPG_Info.iter}\n')
+    f.write('    prob._solution = Solution(prob.status, prob.value, primal_vars, dual_vars, attr)\n')
+    f.write('    prob.solver_stats.extra_stats = solver_specific_stats\n')
+    f.write('    prob.solver_stats.num_iters = res.CPG_Info.iter\n')
+    f.write('    prob.solver_stats.solve_time = t1-t0\n')
+    f.write('    prob.solver_stats.solver_name = \'OSQP\'\n\n')
 
-    f.write('    return res.CPG_Info.obj_val\n')
+    f.write('    return prob.value\n')
 
 
 def replace_html(code_dir, text, user_p_name_to_size, user_p_writable, var_name_to_size):
