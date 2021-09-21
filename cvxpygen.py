@@ -210,7 +210,7 @@ def generate_code(problem, code_dir='CPG_code'):
 
     # 'solve' prototypes
     with open(os.path.join(code_dir, 'c/include/cpg_solve.h'), 'a') as f:
-        utils.write_solve_extern(f, user_p_names, OSQP_settings_names_to_types)
+        utils.write_solve_extern(f, user_p_name_to_size, OSQP_settings_names_to_types)
 
     # 'solve' definitions
     with open(os.path.join(code_dir, 'c/src/cpg_solve.c'), 'a') as f:
@@ -223,10 +223,9 @@ def generate_code(problem, code_dir='CPG_code'):
             row_slice = slice(OSQP_p_id_to_col_lu[OSQP_p_id_lu],
                               OSQP_p_id_to_col_lu[OSQP_p_id_lu] + OSQP_p_id_to_size_lu[OSQP_p_id_lu])
             mappings.append(MAP[row_slice, :])
-        nonconstant_OSQP_names = [n for (n, b) in zip(OSQP_p_ids, np.sum(adjacency, axis=1) > 0) if b]
         user_p_to_OSQP_outdated = {user_p_name: [OSQP_p_ids[j] for j in np.nonzero(adjacency[:, i])[0]]
                                    for i, user_p_name in enumerate(user_p_names)}
-        utils.write_solve(f, OSQP_p_ids, nonconstant_OSQP_names, mappings, user_p_col_to_name,
+        utils.write_solve(f, OSQP_p_ids, mappings, user_p_col_to_name,
                           list(user_p_id_to_size.values()), n_eq, p_prob.problem_data_index_A, var_name_to_indices,
                           type(problem.objective) == cp.problems.objective.Maximize, user_p_to_OSQP_outdated,
                           OSQP_settings_names_to_types)
@@ -250,7 +249,7 @@ def generate_code(problem, code_dir='CPG_code'):
     # html documentation file
     with open(os.path.join(code_dir, 'README.html'), 'r') as f:
         html_data = f.read()
-    html_data = utils.replace_html(code_dir, html_data, user_p_names, user_p_writable, var_name_to_size)
+    html_data = utils.replace_html(code_dir, html_data, user_p_name_to_size, user_p_writable, var_name_to_size)
     with open(os.path.join(code_dir, 'README.html'), 'w') as f:
         f.write(html_data)
 

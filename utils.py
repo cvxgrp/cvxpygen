@@ -200,7 +200,7 @@ def write_workspace_extern(f, user_p_names, user_p_writable, var_init, OSQP_p_id
     write_struct_extern(f, 'CPG_Result', 'CPG_Result_t')
 
 
-def write_solve(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_name, sizes, n_eq, problem_data_index_A,
+def write_solve(f, OSQP_p_ids, mappings, user_p_col_to_name, user_p_sizes, n_eq, problem_data_index_A,
                 var_id_to_indices, is_maximization, user_p_to_OSQP_outdated, OSQP_settings_names_to_types):
     """
     Write parameter initialization function to file
@@ -208,8 +208,13 @@ def write_solve(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_n
 
     f.write('// update user-defined parameters\n')
 
-    for user_p_name, OSQP_outdated_names in user_p_to_OSQP_outdated.items():
-        f.write('void update_%s(){\n' % user_p_name)
+    for (user_p_name, OSQP_outdated_names), user_p_size in zip(user_p_to_OSQP_outdated.items(), user_p_sizes):
+        if user_p_size == 1:
+            f.write('void update_%s(c_float val){\n' % user_p_name)
+            f.write('*CPG_Params.%s = val;\n' % user_p_name)
+        else:
+            f.write('void update_%s(c_int idx, c_float val){\n' % user_p_name)
+            f.write('CPG_Params.%s[idx] = val;\n' % user_p_name)
         for OSQP_outdated_name in OSQP_outdated_names:
             f.write('OSQP_Outdated.%s = 1;\n' % OSQP_outdated_name)
         f.write('}\n')
@@ -247,7 +252,7 @@ def write_solve(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_n
             for (datum, col) in zip(data, columns):
                 ex = '(%.20f)+' % (sign*datum)
                 for i, user_p_col in enumerate(base_cols):
-                    if user_p_col + sizes[i] > col:
+                    if user_p_col + user_p_sizes[i] > col:
                         user_name = user_p_col_to_name[user_p_col]
                         ex = '(%.20f*CPG_Params.%s[%d])+' % (sign*datum, user_name, col-user_p_col)
                         break
@@ -335,13 +340,16 @@ def write_solve(f, OSQP_p_ids, nonconstant_OSQP_p_ids, mappings, user_p_col_to_n
         f.write('}\n')
 
 
-def write_solve_extern(f, user_p_names, OSQP_settings_names_to_types):
+def write_solve_extern(f, user_p_name_to_size, OSQP_settings_names_to_types):
     """
     Write function declarations to file
     """
 
-    for name in user_p_names:
-        f.write('extern void update_%s();\n' % name)
+    for name, size in user_p_name_to_size.items():
+        if size == 1:
+            f.write('extern void update_%s(c_float val);\n' % name)
+        else:
+            f.write('extern void update_%s(c_int idx, c_float val);\n' % name)
 
     f.write('\n// update OSQP settings\n')
     f.write('extern void set_OSQP_default_settings();\n')
@@ -359,14 +367,16 @@ def write_main(f, user_p_writable, var_name_to_size):
     f.write('// initialize user-defined parameter values\n')
     for name, value in user_p_writable.items():
         if np.isscalar(value):
-            f.write('*CPG_Params.%s = %.20f;\n' % (name, value))
+            #f.write('*CPG_Params.%s = %.20f;\n' % (name, value))
+            f.write('update_%s(%.20f);\n' % (name, value))
         else:
             for i in range(len(value)):
-                f.write('CPG_Params.%s[%d] = %.20f;\n' % (name, i, value[i]))
+                #f.write('CPG_Params.%s[%d] = %.20f;\n' % (name, i, value[i]))
+                f.write('update_%s(%d, %.20f);\n' % (name, i, value[i]))
 
-    f.write('\n// pass changed user-defined parameter values to the solver\n')
-    for name in user_p_writable.keys():
-        f.write('update_%s();\n' % name)
+    #f.write('\n// pass changed user-defined parameter values to the solver\n')
+    #for name in user_p_writable.keys():
+    #    f.write('update_%s();\n' % name)
 
     f.write('\n// solve the problem instance\n')
     f.write('solve();\n\n')
@@ -433,12 +443,14 @@ def write_module(f, user_p_name_to_size, var_name_to_size, OSQP_settings_names):
     for name, size in user_p_name_to_size.items():
         f.write('    if (CPG_Updated_cpp.%s) {\n' % name)
         if size == 1:
-            f.write('        %s = CPG_Params_cpp.%s;\n' % (name, name))
+            #f.write('        %s = CPG_Params_cpp.%s;\n' % (name, name))
+            f.write('        update_%s(CPG_Params_cpp.%s);\n' % (name, name))
         else:
             f.write('        for(int i = 0; i < %d; i++) {\n' % size)
-            f.write('            %s[i] = CPG_Params_cpp.%s[i];\n' % (name, name))
+            #f.write('            %s[i] = CPG_Params_cpp.%s[i];\n' % (name, name))
+            f.write('            update_%s(i, CPG_Params_cpp.%s[i]);\n' % (name, name))
             f.write('        }\n')
-        f.write('        update_%s();\n' % name)
+        #f.write('        update_%s();\n' % name)
         f.write('    }\n')
 
     # perform ASA procedure
@@ -560,7 +572,7 @@ def write_method(f, code_dir, user_p_name_to_size, var_name_to_shape):
     f.write('    return res.CPG_Info.obj_val\n')
 
 
-def replace_html(code_dir, text, user_p_names, user_p_writable, var_name_to_size):
+def replace_html(code_dir, text, user_p_name_to_size, user_p_writable, var_name_to_size):
     """
     Replace placeholder strings in html documentation file
     """
@@ -571,7 +583,7 @@ def replace_html(code_dir, text, user_p_names, user_p_writable, var_name_to_size
 
     # type definition of CPG_Params_t
     CPGPARAMSTYPEDEF = 'typedef struct {\n'
-    for name in user_p_names:
+    for name in user_p_name_to_size.keys():
         CPGPARAMSTYPEDEF += ('    c_float     *%s;' % name).ljust(33) + ('///< Your parameter %s\n' % name)
     CPGPARAMSTYPEDEF += '} CPG_Params_t;'
 
@@ -608,7 +620,10 @@ def replace_html(code_dir, text, user_p_names, user_p_writable, var_name_to_size
 
     # update declarations
     CPGUPDATEDECLARATIONS = ''
-    for name in user_p_names:
-        CPGUPDATEDECLARATIONS += 'void update_%s();\n' % name
+    for name, size in user_p_name_to_size.items():
+        if size == 1:
+            CPGUPDATEDECLARATIONS += 'void update_%s(c_float value);\n' % name
+        else:
+            CPGUPDATEDECLARATIONS += 'void update_%s(c_int idx, c_float value);\n' % name
 
     return text.replace('$CPGUPDATEDECLARATIONS', CPGUPDATEDECLARATIONS[:-1])
