@@ -1,7 +1,6 @@
-cpg_code
-CPG_code
-code
+*code/
 examples/*/
+*.so
 __pycache__
 .idea
 .DS_Store
