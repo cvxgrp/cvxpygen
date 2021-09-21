@@ -367,16 +367,10 @@ def write_main(f, user_p_writable, var_name_to_size):
     f.write('// initialize user-defined parameter values\n')
     for name, value in user_p_writable.items():
         if np.isscalar(value):
-            #f.write('*CPG_Params.%s = %.20f;\n' % (name, value))
             f.write('update_%s(%.20f);\n' % (name, value))
         else:
             for i in range(len(value)):
-                #f.write('CPG_Params.%s[%d] = %.20f;\n' % (name, i, value[i]))
                 f.write('update_%s(%d, %.20f);\n' % (name, i, value[i]))
-
-    #f.write('\n// pass changed user-defined parameter values to the solver\n')
-    #for name in user_p_writable.keys():
-    #    f.write('update_%s();\n' % name)
 
     f.write('\n// solve the problem instance\n')
     f.write('solve();\n\n')
@@ -443,14 +437,11 @@ def write_module(f, user_p_name_to_size, var_name_to_size, OSQP_settings_names):
     for name, size in user_p_name_to_size.items():
         f.write('    if (CPG_Updated_cpp.%s) {\n' % name)
         if size == 1:
-            #f.write('        %s = CPG_Params_cpp.%s;\n' % (name, name))
             f.write('        update_%s(CPG_Params_cpp.%s);\n' % (name, name))
         else:
             f.write('        for(int i = 0; i < %d; i++) {\n' % size)
-            #f.write('            %s[i] = CPG_Params_cpp.%s[i];\n' % (name, name))
             f.write('            update_%s(i, CPG_Params_cpp.%s[i]);\n' % (name, name))
             f.write('        }\n')
-        #f.write('        update_%s();\n' % name)
         f.write('    }\n')
 
     # perform ASA procedure
