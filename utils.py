@@ -568,10 +568,10 @@ def write_method(f, code_dir, user_p_name_to_size, var_name_to_shape):
     f.write('                             \'dua_res\': res.CPG_Info.dua_res}\n')
     f.write('    attr = {\'solve_time\': t1-t0, \'solver_specific_stats\': solver_specific_stats, \'num_iters\': res.CPG_Info.iter}\n')
     f.write('    prob._solution = Solution(prob.status, prob.value, primal_vars, dual_vars, attr)\n')
-    f.write('    prob.solver_stats.extra_stats = solver_specific_stats\n')
-    f.write('    prob.solver_stats.num_iters = res.CPG_Info.iter\n')
-    f.write('    prob.solver_stats.solve_time = t1-t0\n')
-    f.write('    prob.solver_stats.solver_name = \'OSQP\'\n\n')
+    f.write('    results_dict = {\'solver_specific_stats\': solver_specific_stats,\n')
+    f.write('                    \'num_iters\': res.CPG_Info.iter,\n')
+    f.write('                    \'solve_time\': t1-t0}\n')
+    f.write('    prob._solver_stats = SolverStats(results_dict, \'OSQP\')\n\n')
 
     f.write('    return prob.value\n')
 
