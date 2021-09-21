@@ -267,7 +267,9 @@ def generate_code(problem, code_dir='CPG_code'):
 
     # create python module
     sys.stdout.write("Compiling CPG Python wrapper... \t\t\t\t\t")
+    pdir = os.getcwd()
     os.chdir(code_dir)
     call([sys.executable, 'setup.py', '--quiet', 'build_ext', '--inplace'])
+    os.chdir(pdir)
 
     print('CPG Code Generation Done.')
