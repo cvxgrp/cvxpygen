@@ -295,7 +295,7 @@ def write_solve(f, OSQP_p_ids, mappings, user_p_col_to_name, user_p_sizes, n_eq,
     f.write('} else if (OSQP_Outdated.P) {\n')
     f.write('canonicalize_OSQP_P();\n')
     f.write('osqp_update_P(&workspace, OSQP_Params.P->x, 0, 0);\n')
-    f.write('} else if (OSQP_Outdated.P) {\n')
+    f.write('} else if (OSQP_Outdated.A) {\n')
     f.write('canonicalize_OSQP_A();\n')
     f.write('osqp_update_A(&workspace, OSQP_Params.A->x, 0, 0);\n')
     f.write('}\n')
