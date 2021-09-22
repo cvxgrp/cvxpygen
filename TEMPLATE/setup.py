@@ -65,7 +65,7 @@ cpg = Extension('cpg_module',
                               get_pybind_include(),
                               get_pybind_include(user=False)],
                 language='c++',
-                extra_compile_args=['-std=c++11'],
+                extra_compile_args=['-std=c++11', '-O3'],
                 extra_objects=[cpg_lib])
 
 
