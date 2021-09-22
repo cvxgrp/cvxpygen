@@ -133,7 +133,6 @@ def write_workspace(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP
         results_cast.append('(c_float *) ')
         if symm:
             osqp_utils.write_vec(f, value.flatten(order='F'), name, 'c_float')
-            results_cast.append('(c_float *) ')
 
     f.write('\n// Struct containing CPG objective value and solution\n')
     CPG_Result_fields = ['objective_value'] + list(var_init.keys())
