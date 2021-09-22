@@ -250,6 +250,7 @@ def write_solve(f, OSQP_p_ids, mappings, user_p_col_to_name, user_p_sizes, n_eq,
 
         for row in range(n_rows):
             expr = ''
+            expr_is_const = True
             data = mapping.data[mapping.indptr[row]:mapping.indptr[row+1]]
             columns = mapping.indices[mapping.indptr[row]:mapping.indptr[row+1]]
             for (datum, col) in zip(data, columns):
@@ -257,6 +258,7 @@ def write_solve(f, OSQP_p_ids, mappings, user_p_col_to_name, user_p_sizes, n_eq,
                 ex = '(%.20f)+' % coeff
                 for i, user_p_col in enumerate(base_cols):
                     if user_p_col + user_p_sizes[i] > col:
+                        expr_is_const = False
                         user_name = user_p_col_to_name[user_p_col]
                         if abs(coeff) == 1:
                             ex = '(%sCPG_Params.%s[%d])+' % (sign_to_str[coeff], user_name, col-user_p_col)
@@ -265,7 +267,7 @@ def write_solve(f, OSQP_p_ids, mappings, user_p_col_to_name, user_p_sizes, n_eq,
                         break
                 expr += ex
             expr = expr[:-1]
-            if data.size > 0:
+            if data.size > 0 and expr_is_const is False:
                 OSQP_row = OSQP_rows[row]
                 f.write('OSQP_Params.%s%s[%d] = %s;\n' % (OSQP_name, s, OSQP_row, expr))
 
