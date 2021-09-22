@@ -80,7 +80,7 @@ def write_struct(f, fields, casts, values, name, typ):
 
     # write structure fields
     for field, cast, value in zip(fields, casts, values):
-        f.write('.%s = %s&%s,\n' % (field, cast, value))
+        f.write('.%s = %s%s,\n' % (field, cast, value))
 
     f.write('};\n')
 
@@ -93,7 +93,7 @@ def write_struct_extern(f, name, typ):
     f.write("extern %s %s;\n" % (typ, name))
 
 
-def write_workspace(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP_p):
+def write_workspace(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP_p, var_symm, var_offsets):
 
     OSQP_casts = []
 
@@ -107,7 +107,7 @@ def write_workspace(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP
 
     f.write('\n// Struct containing parameters accepted by OSQP\n')
 
-    write_struct(f, OSQP_p_ids, OSQP_casts, ['OSQP_'+p for p in OSQP_p_ids], 'OSQP_Params', 'OSQP_Params_t')
+    write_struct(f, OSQP_p_ids, OSQP_casts, ['&OSQP_'+p for p in OSQP_p_ids], 'OSQP_Params', 'OSQP_Params_t')
 
     f.write('\n// User-defined parameters\n')
 
@@ -121,7 +121,7 @@ def write_workspace(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP
             user_casts.append('(c_float *) ')
 
     f.write('\n// Struct containing all user-defined parameters\n')
-    write_struct(f, user_p_names, user_casts, user_p_names, 'CPG_Params', 'CPG_Params_t')
+    write_struct(f, user_p_names, user_casts, ['&'+name for name in user_p_names], 'CPG_Params', 'CPG_Params_t')
 
     f.write('\n// Value of the objective function\n')
     f.write('c_float objective_value = 0;\n')
@@ -129,17 +129,21 @@ def write_workspace(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP
     results_cast = ['']
 
     f.write('\n// User-defined variables\n')
-    for name, value in var_init.items():
-        if np.isscalar(value):
-            f.write('c_float %s = %.20f;\n' % (name, value))
-            results_cast.append('')
-        else:
+    for (name, value), symm in zip(var_init.items(), var_symm):
+        results_cast.append('(c_float *) ')
+        if symm:
             osqp_utils.write_vec(f, value.flatten(order='F'), name, 'c_float')
             results_cast.append('(c_float *) ')
 
     f.write('\n// Struct containing CPG objective value and solution\n')
     CPG_Result_fields = ['objective_value'] + list(var_init.keys())
-    write_struct(f, CPG_Result_fields, results_cast, CPG_Result_fields, 'CPG_Result', 'CPG_Result_t')
+    CPG_Result_values = ['&objective_value']
+    for (name, symm, offset) in zip(var_init.keys(), var_symm, var_offsets):
+        if symm:
+            CPG_Result_values.append('&' + name)
+        else:
+            CPG_Result_values.append('&xsolution + %d' % offset)
+    write_struct(f, CPG_Result_fields, results_cast, CPG_Result_values, 'CPG_Result', 'CPG_Result_t')
 
     # Boolean struct for outdated parameter flags
     f.write('OSQP_Outdated_t OSQP_Outdated = {\n')
@@ -149,7 +153,7 @@ def write_workspace(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP
     f.write('};\n')
 
 
-def write_workspace_extern(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP_p):
+def write_workspace_extern(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP_p, var_symm):
     """"
     Write workspace initialization to file
     """
@@ -193,10 +197,8 @@ def write_workspace_extern(f, user_p_names, user_p_writable, var_init, OSQP_p_id
     f.write('extern c_float objective_value;\n')
 
     f.write('\n// User-defined variables\n')
-    for name, value in var_init.items():
-        if np.isscalar(value):
-            f.write("extern c_float %s;\n" % name)
-        else:
+    for (name, value), symm in zip(var_init.items(), var_symm):
+        if symm:
             osqp_utils.write_vec_extern(f, value.flatten(order='F'), name, 'c_float')
 
     f.write('\n// Struct containing CPG objective value and solution\n')
@@ -204,7 +206,7 @@ def write_workspace_extern(f, user_p_names, user_p_writable, var_init, OSQP_p_id
 
 
 def write_solve(f, OSQP_p_ids, mappings, user_p_col_to_name, user_p_sizes, n_eq, problem_data_index_A,
-                var_id_to_indices, is_maximization, user_p_to_OSQP_outdated, OSQP_settings_names_to_types):
+                var_id_to_indices, is_maximization, user_p_to_OSQP_outdated, OSQP_settings_names_to_types, var_symm):
     """
     Write parameter initialization function to file
     """
@@ -285,10 +287,8 @@ def write_solve(f, OSQP_p_ids, mappings, user_p_col_to_name, user_p_sizes, n_eq,
     f.write('// retrieve solution in terms of user-defined variables\n')
     f.write('void retrieve_solution(){\n')
 
-    for var_id, indices in var_id_to_indices.items():
-        if len(indices) == 1:
-            f.write('%s = workspace.solution->x[%d];\n' % (var_id, indices[0]))
-        else:
+    for symm, (var_id, indices) in zip(var_symm, var_id_to_indices.items()):
+        if symm:
             for i, idx in enumerate(indices):
                 f.write('%s[%d] = workspace.solution->x[%d];\n' % (var_id, i, idx))
 
@@ -391,10 +391,10 @@ def write_main(f, user_p_writable, var_name_to_size):
 
     for name, size in var_name_to_size.items():
         if size == 1:
-            f.write('printf("%s = %%f \\n", %s);\n' % (name, name))
+            f.write('printf("%s = %%f \\n", *CPG_Result.%s);\n' % (name, name))
         else:
             f.write('for(int i = 0; i < %d; i++) {\n' % size)
-            f.write('printf("%s[%%d] = %%f \\n", i, %s[i]);\n' % (name, name))
+            f.write('printf("%s[%%d] = %%f \\n", i, CPG_Result.%s[i]);\n' % (name, name))
             f.write('}\n')
 
     f.write('return 0;\n')
@@ -470,10 +470,10 @@ def write_module(f, user_p_name_to_size, var_name_to_size, OSQP_settings_names):
     f.write('    CPG_Result_cpp.CPG_Info = CPG_Info_cpp;\n')
     for name, size in var_name_to_size.items():
         if size == 1:
-            f.write('    CPG_Result_cpp.%s = %s;\n' % (name, name))
+            f.write('    CPG_Result_cpp.%s = *CPG_Result.%s;\n' % (name, name))
         else:
             f.write('    for(int i = 0; i < %d; i++) {\n' % size)
-            f.write('        CPG_Result_cpp.%s[i] = %s[i];\n' % (name, name))
+            f.write('        CPG_Result_cpp.%s[i] = CPG_Result.%s[i];\n' % (name, name))
             f.write('    }\n')
 
     # return

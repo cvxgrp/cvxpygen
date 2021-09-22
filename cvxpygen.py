@@ -202,11 +202,11 @@ def generate_code(problem, code_dir='CPG_code'):
 
     # 'workspace' prototypes
     with open(os.path.join(code_dir, 'c/include/cpg_workspace.h'), 'a') as f:
-        utils.write_workspace_extern(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP_p)
+        utils.write_workspace_extern(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP_p, var_symm)
 
     # 'workspace' definitions
     with open(os.path.join(code_dir, 'c/src/cpg_workspace.c'), 'a') as f:
-        utils.write_workspace(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP_p)
+        utils.write_workspace(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP_p, var_symm, var_offsets)
 
     # 'solve' prototypes
     with open(os.path.join(code_dir, 'c/include/cpg_solve.h'), 'a') as f:
@@ -228,7 +228,7 @@ def generate_code(problem, code_dir='CPG_code'):
         utils.write_solve(f, OSQP_p_ids, mappings, user_p_col_to_name,
                           list(user_p_id_to_size.values()), n_eq, p_prob.problem_data_index_A, var_name_to_indices,
                           type(problem.objective) == cp.problems.objective.Maximize, user_p_to_OSQP_outdated,
-                          OSQP_settings_names_to_types)
+                          OSQP_settings_names_to_types, var_symm)
 
     # 'example' definitions
     with open(os.path.join(code_dir, 'c/src/cpg_example.c'), 'a') as f:
