@@ -3,6 +3,9 @@ import numpy as np
 from osqp.codegen import utils as osqp_utils
 
 
+sign_to_str = {1: '', -1: '-'}
+
+
 def replace_inf(v):
     """
     Replace infinity by large number
@@ -250,11 +253,15 @@ def write_solve(f, OSQP_p_ids, mappings, user_p_col_to_name, user_p_sizes, n_eq,
             data = mapping.data[mapping.indptr[row]:mapping.indptr[row+1]]
             columns = mapping.indices[mapping.indptr[row]:mapping.indptr[row+1]]
             for (datum, col) in zip(data, columns):
-                ex = '(%.20f)+' % (sign*datum)
+                coeff = sign*datum
+                ex = '(%.20f)+' % coeff
                 for i, user_p_col in enumerate(base_cols):
                     if user_p_col + user_p_sizes[i] > col:
                         user_name = user_p_col_to_name[user_p_col]
-                        ex = '(%.20f*CPG_Params.%s[%d])+' % (sign*datum, user_name, col-user_p_col)
+                        if abs(coeff) == 1:
+                            ex = '(%sCPG_Params.%s[%d])+' % (sign_to_str[coeff], user_name, col-user_p_col)
+                        else:
+                            ex = '(%.20f*CPG_Params.%s[%d])+' % (sign * datum, user_name, col - user_p_col)
                         break
                 expr += ex
             expr = expr[:-1]
