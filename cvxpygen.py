@@ -150,6 +150,8 @@ def generate_code(problem, code_dir='CPG_code'):
     for p_name, p in zip(user_p_names, p_prob.parameters):
         if p.value is None:
             p.project_and_assign(np.random.randn(*p.shape))
+            if type(p.value) is not np.ndarray:
+                p.value = p.value.toarray()
         if len(p.shape) < 2:
             # dealing with scalar or vector
             user_p_writable[p_name] = p.value
