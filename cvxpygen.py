@@ -150,7 +150,7 @@ def generate_code(problem, code_dir='CPG_code'):
     for p_name, p in zip(user_p_names, p_prob.parameters):
         if p.value is None:
             p.project_and_assign(np.random.randn(*p.shape))
-            if type(p.value) is not np.ndarray:
+            if type(p.value) is sparse.dia_matrix:
                 p.value = p.value.toarray()
         if len(p.shape) < 2:
             # dealing with scalar or vector
