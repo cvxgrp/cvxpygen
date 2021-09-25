@@ -147,7 +147,7 @@ def write_workspace(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP
     # Boolean struct for outdated parameter flags
     f.write('OSQP_Outdated_t OSQP_Outdated = {\n')
     for OSQP_p_id in OSQP_p_ids:
-        f.write('.%s = 1,\n' % OSQP_p_id)
+        f.write('.%s = 0,\n' % OSQP_p_id)
 
     f.write('};\n')
 
