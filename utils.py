@@ -454,7 +454,9 @@ def write_module(f, user_p_name_to_size, var_name_to_size, OSQP_settings_names):
 
     # perform ASA procedure
     f.write('\n    // ASA\n')
-    f.write('    solve();\n\n')
+    f.write('    std::clock_t ASA_start = std::clock();\n')
+    f.write('    solve();\n')
+    f.write('    std::clock_t ASA_end = std::clock();\n\n')
 
     # arrange and return results
     f.write('    // arrange and return results\n')
@@ -464,6 +466,7 @@ def write_module(f, user_p_name_to_size, var_name_to_size, OSQP_settings_names):
     f.write('    CPG_Info_cpp.status = workspace.info->status;\n')
     f.write('    CPG_Info_cpp.pri_res = workspace.info->pri_res;\n')
     f.write('    CPG_Info_cpp.dua_res = workspace.info->dua_res;\n')
+    f.write('    CPG_Info_cpp.ASA_proc_time = 1000.0 * (ASA_end-ASA_start) / CLOCKS_PER_SEC;\n')
 
     f.write('    CPG_Result_cpp_t CPG_Result_cpp {};\n')
     f.write('    CPG_Result_cpp.CPG_Info = CPG_Info_cpp;\n')
@@ -501,7 +504,8 @@ def write_module(f, user_p_name_to_size, var_name_to_size, OSQP_settings_names):
     f.write('            .def_readwrite("status", &CPG_Info_cpp_t::status)\n')
     f.write('            .def_readwrite("pri_res", &CPG_Info_cpp_t::pri_res)\n')
     f.write('            .def_readwrite("dua_res", &CPG_Info_cpp_t::dua_res)\n')
-    f.write('            ;\n')
+    f.write('            .def_readwrite("ASA_proc_time", &CPG_Info_cpp_t::ASA_proc_time)\n')
+    f.write('            ;\n\n')
 
     f.write('    py::class_<CPG_Result_cpp_t>(m, "cpg_result")\n')
     f.write('            .def(py::init<>())\n')
@@ -573,7 +577,8 @@ def write_method(f, code_dir, user_p_name_to_size, var_name_to_shape):
     f.write('                             \'status\': res.CPG_Info.status,\n')
     f.write('                             \'iter\': res.CPG_Info.iter,\n')
     f.write('                             \'pri_res\': res.CPG_Info.pri_res,\n')
-    f.write('                             \'dua_res\': res.CPG_Info.dua_res}\n')
+    f.write('                             \'dua_res\': res.CPG_Info.dua_res,\n')
+    f.write('                             \'ASA_proc_time\': res.CPG_Info.ASA_proc_time}\n')
     f.write('    attr = {\'solve_time\': t1-t0, \'solver_specific_stats\': solver_specific_stats, \'num_iters\': res.CPG_Info.iter}\n')
     f.write('    prob._solution = Solution(prob.status, prob.value, primal_vars, dual_vars, attr)\n')
     f.write('    results_dict = {\'solver_specific_stats\': solver_specific_stats,\n')
