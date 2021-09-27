@@ -24,6 +24,22 @@ def replace_inf(v):
     return v
 
 
+def csc_to_dict(m):
+    """
+    Convert scipy csc matrix to dict that can be passed to osqp_utils.write_mat()
+    """
+
+    d = dict()
+    d['i'] = m.indices
+    d['p'] = m.indptr
+    d['x'] = m.data
+    d['nzmax'] = m.nnz
+    (d['m'], d['n']) = m.shape
+    d['nz'] = -1
+
+    return d
+
+
 def write_osqp(f, param, name):
     """
     Use osqp.codegen.utils for writing vectors and matrices

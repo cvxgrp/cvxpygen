@@ -13,22 +13,6 @@ import sys
 from subprocess import call
 
 
-def csc_to_dict(m):
-    """
-    Convert scipy csc matrix to dict that can be passed to osqp_utils.write_mat()
-    """
-
-    d = dict()
-    d['i'] = m.indices
-    d['p'] = m.indptr
-    d['x'] = m.data
-    d['nzmax'] = m.nnz
-    (d['m'], d['n']) = m.shape
-    d['nz'] = -1
-
-    return d
-
-
 def generate_code(problem, code_dir='CPG_code'):
     """
     Generate C code for CVXPY problem and optionally compile example program
@@ -170,12 +154,12 @@ def generate_code(problem, code_dir='CPG_code'):
     OSQP_p_flat = MAP @ user_p_flat
     data_P = OSQP_p_flat[OSQP_p_id_to_col_lu['P']:OSQP_p_id_to_col_lu['P'] + OSQP_p_id_to_size_lu['P']]
     OSQP_p['P_csc'] = sparse.csc_matrix((data_P, indices_P, indptr_P), shape=shape_P)
-    OSQP_p['P'] = csc_to_dict(OSQP_p['P_csc'])
+    OSQP_p['P'] = utils.csc_to_dict(OSQP_p['P_csc'])
     OSQP_p['q'] = OSQP_p_flat[OSQP_p_id_to_col_lu['q']:OSQP_p_id_to_col_lu['q'] + OSQP_p_id_to_size_lu['q']]
     OSQP_p['d'] = OSQP_p_flat[OSQP_p_id_to_col_lu['d']:OSQP_p_id_to_col_lu['d'] + OSQP_p_id_to_size_lu['d']]
     data_A = OSQP_p_flat[OSQP_p_id_to_col_lu['A']:OSQP_p_id_to_col_lu['A'] + OSQP_p_id_to_size_lu['A']]
     OSQP_p['A_csc'] = sparse.csc_matrix((data_A, indices_A, indptr_A), shape=shape_A)
-    OSQP_p['A'] = csc_to_dict(OSQP_p['A_csc'])
+    OSQP_p['A'] = utils.csc_to_dict(OSQP_p['A_csc'])
     data_lu = OSQP_p_flat[OSQP_p_id_to_col_lu['lu']:OSQP_p_id_to_col_lu['lu'] + OSQP_p_id_to_size_lu['lu']]
     lu = sparse.csc_matrix((data_lu, indices_lu, indptr_lu), shape=shape_lu).toarray().squeeze()
     OSQP_p['l'] = np.concatenate((-lu[:n_eq], -np.inf * np.ones((n_ineq))))
