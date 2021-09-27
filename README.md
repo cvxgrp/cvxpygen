@@ -14,6 +14,8 @@ Solving a DPP-compliant problem repeatedly for different values of the parameter
 For now, CVXPYGEN is a separate module, until it will be integrated into CVXPY.
 As of today, CVXPYGEN works with linear and quadratic programs.
 
+Unix operating systems are supported, Windows will be supported soon.
+
 ## Installation
 
 1. Clone this repository via SSH,
