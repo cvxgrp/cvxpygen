@@ -13,7 +13,7 @@ import sys
 from subprocess import call
 
 
-def generate_code(problem, code_dir='CPG_code'):
+def generate_code(problem, code_dir='CPG_code', explicit=True):
     """
     Generate C code for CVXPY problem and optionally compile example program
     """
@@ -70,6 +70,7 @@ def generate_code(problem, code_dir='CPG_code'):
     P_data_length = p_prob.reduced_P.shape[0]
     A_data_length = len(indices_A)
     lu_data_length = len(indices_lu)
+    l_data_length = np.count_nonzero(indices_lu < n_eq)
 
     # OSQP parameters
     OSQP_p_ids = ['P', 'q', 'd', 'A', 'l', 'u']
@@ -175,7 +176,7 @@ def generate_code(problem, code_dir='CPG_code'):
             OSQP_id_lu = OSQP_p_id
         mapping = MAP[OSQP_p_id_to_col_lu[OSQP_id_lu]:OSQP_p_id_to_col_lu[OSQP_id_lu]+OSQP_p_id_to_size_lu[OSQP_id_lu], -1]
         if OSQP_p_id in ['l', 'u']:
-            OSQP_rows = indices_Alu[indptr_Alu[-2]:indptr_Alu[-1]]
+            OSQP_rows = indices_lu
             if OSQP_p_id == 'l':
                 n_rows = np.count_nonzero(OSQP_rows < n_eq)
             else:
@@ -186,13 +187,39 @@ def generate_code(problem, code_dir='CPG_code'):
             matrix[:, -1] = mapping.toarray().squeeze()
         OSQP_p_decomposed[OSQP_p_id+'_decomposed'] = matrix
 
+    # affine mapping for each OSQP parameter
+    OSQP_mappings = []
+    OSQP_p_to_changes = {}
+    for OSQP_name in OSQP_p_ids:
+        if OSQP_name in ['l', 'u']:
+            if OSQP_name == 'l':
+                data_length = l_data_length
+                vec_length = n_eq
+            else:
+                data_length = lu_data_length
+                vec_length = n_eq+n_ineq
+            row_slice = slice(OSQP_p_id_to_col_lu['lu'], OSQP_p_id_to_col_lu['lu'] + data_length)
+            mapping_to_sparse_vec = -MAP[row_slice, :]
+            mapping_to_dense_vec = sparse.lil_matrix(np.zeros((vec_length, mapping_to_sparse_vec.shape[1])))
+            for i_data in range(data_length):
+                mapping_to_dense_vec[indices_lu[i_data], :] = mapping_to_sparse_vec[i_data, :]
+            mapping = sparse.csr_matrix(mapping_to_dense_vec)
+        else:
+            row_slice = slice(OSQP_p_id_to_col_lu[OSQP_name], OSQP_p_id_to_col_lu[OSQP_name] + OSQP_p_id_to_size_lu[OSQP_name])
+            mapping = MAP[row_slice, :]
+        OSQP_mappings.append(mapping)
+        OSQP_p_to_changes[OSQP_name] = mapping.nnz > 0
+
+    user_p_to_OSQP_outdated = {user_p_name: [OSQP_p_ids[j] for j in np.nonzero(adjacency[:, i])[0]]
+                               for i, user_p_name in enumerate(user_p_names)}
+
     # 'workspace' prototypes
     with open(os.path.join(code_dir, 'c/include/cpg_workspace.h'), 'a') as f:
-        utils.write_workspace_extern(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP_p, var_symm)
+        utils.write_workspace_extern(f, explicit, user_p_names, user_p_writable, user_p_flat, var_init, OSQP_p_ids, OSQP_p, OSQP_mappings, var_symm)
 
     # 'workspace' definitions
     with open(os.path.join(code_dir, 'c/src/cpg_workspace.c'), 'a') as f:
-        utils.write_workspace(f, user_p_names, user_p_writable, var_init, OSQP_p_ids, OSQP_p, var_symm, var_offsets)
+        utils.write_workspace(f, explicit, user_p_names, user_p_writable, user_p_flat, var_init, OSQP_p_ids, OSQP_p, OSQP_mappings, var_symm, var_offsets)
 
     # 'solve' prototypes
     with open(os.path.join(code_dir, 'c/include/cpg_solve.h'), 'a') as f:
@@ -200,21 +227,10 @@ def generate_code(problem, code_dir='CPG_code'):
 
     # 'solve' definitions
     with open(os.path.join(code_dir, 'c/src/cpg_solve.c'), 'a') as f:
-        mappings = []
-        for i in range(OSQP_p_num):
-            if i >= 4:
-                OSQP_p_id_lu = 'lu'
-            else:
-                OSQP_p_id_lu = OSQP_p_ids_lu[i]
-            row_slice = slice(OSQP_p_id_to_col_lu[OSQP_p_id_lu],
-                              OSQP_p_id_to_col_lu[OSQP_p_id_lu] + OSQP_p_id_to_size_lu[OSQP_p_id_lu])
-            mappings.append(MAP[row_slice, :])
-        user_p_to_OSQP_outdated = {user_p_name: [OSQP_p_ids[j] for j in np.nonzero(adjacency[:, i])[0]]
-                                   for i, user_p_name in enumerate(user_p_names)}
-        utils.write_solve(f, OSQP_p_ids, mappings, user_p_col_to_name,
-                          list(user_p_id_to_size.values()), n_eq, p_prob.problem_data_index_A, var_name_to_indices,
+        utils.write_solve(f, explicit, OSQP_p_ids, OSQP_mappings, user_p_col_to_name,
+                          list(user_p_id_to_size.values()), var_name_to_indices,
                           type(problem.objective) == cp.problems.objective.Maximize, user_p_to_OSQP_outdated,
-                          OSQP_settings_names_to_types, var_symm)
+                          OSQP_settings_names_to_types, var_symm, OSQP_p_to_changes)
 
     # 'example' definitions
     with open(os.path.join(code_dir, 'c/src/cpg_example.c'), 'a') as f:
@@ -231,13 +247,6 @@ def generate_code(problem, code_dir='CPG_code'):
     # adapt OSQP CMakeLists.txt
     with open(os.path.join(code_dir, 'c/OSQP_code/CMakeLists.txt'), 'a') as f:
         utils.write_OSQP_CMakeLists(f)
-
-    # html documentation file
-    with open(os.path.join(code_dir, 'README.html'), 'r') as f:
-        html_data = f.read()
-    html_data = utils.replace_html(code_dir, html_data, user_p_name_to_size, user_p_writable, var_name_to_size)
-    with open(os.path.join(code_dir, 'README.html'), 'w') as f:
-        f.write(html_data)
 
     # binding module
     with open(os.path.join(code_dir, 'cpp/cpg_module.cpp'), 'a') as f:
@@ -257,5 +266,12 @@ def generate_code(problem, code_dir='CPG_code'):
     os.chdir(code_dir)
     call([sys.executable, 'setup.py', '--quiet', 'build_ext', '--inplace'])
     os.chdir(pdir)
+
+    # html documentation file
+    with open(os.path.join(code_dir, 'README.html'), 'r') as f:
+        html_data = f.read()
+    html_data = utils.replace_html(code_dir, explicit, html_data, user_p_name_to_size, user_p_writable, var_name_to_size, user_p_total_size)
+    with open(os.path.join(code_dir, 'README.html'), 'w') as f:
+        f.write(html_data)
 
     print('CPG Code Generation Done.')

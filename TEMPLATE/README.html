@@ -78,10 +78,7 @@ typedef struct {
     int         l;              ///< bool, if OSQP parameter l outdated
     int         u;              ///< bool, if OSQP parameter u outdated
 } OSQP_Outdated_t;
-
-// Struct type with user-defined parameters as fields
 $CPGPARAMSTYPEDEF
-
 // Struct type with user-defined objective value and solution as fields
 $CPGRESULTTYPEDEF
           </code></pre>
@@ -107,9 +104,6 @@ OSQP_Params_t OSQP_Params;
 
 // User-defined parameters
 $CPGPARAMDECLARATIONS
-
-// Struct containing all user-defined parameters
-CPG_Params_t CPG_Params;
 
 // Value of the objective function
 c_float objective_value;
