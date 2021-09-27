@@ -30,4 +30,4 @@ print('Solution: x = ', x.value)
 print('Objective function value:', val)
 
 # generate code
-cpg.generate_code(prob, code_dir='CPG_code')
+cpg.generate_code(prob, code_dir='CPG_code', explicit=True)

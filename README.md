@@ -98,10 +98,11 @@ Generating C code for this problem is as simple as,
 
 ```python
 import cvxpygen as cpg
-cpg.generate_code(prob, code_dir='CPG_code')
+cpg.generate_code(prob, code_dir='CPG_code', explicit=True)
 ```
 
 where ``code_dir`` specifies the directory that the generated code is stored in.
+When ``explicit=True``, for-loops are unrolled in the canonicalization code.
 The above steps are summarized in ``example_main.py``.
 
 To get an overview of the code generation result, have a look at `CPG_code/README.html`.
