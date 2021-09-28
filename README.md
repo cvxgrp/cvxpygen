@@ -43,7 +43,9 @@ Unix operating systems are supported, Windows will be supported soon.
    pip install pybind11
    ```
    
-4. *Optional:* If you wish to use the example notebooks located in ``examples/``, register a new kernel spec with Jupyter.
+4. Install the [GCC compiler](https://gcc.gnu.org).
+   
+5. *Optional:* If you wish to use the example notebooks located in ``examples/``, register a new kernel spec with Jupyter.
     ```
    conda activate cpg_env
    conda install ipykernel
