@@ -35,6 +35,7 @@ if system() == 'Windows':
     lib_name = 'cpg.lib'
 elif system() == 'Linux' or system() == 'Darwin':
     cmake_args += ['-G', 'Unix Makefiles']
+    cmake_build_flags = []
     extra_compile_args = ['-std=c++11', '-O3']
     lib_subdir = []
     lib_name = 'libcpg.a'
