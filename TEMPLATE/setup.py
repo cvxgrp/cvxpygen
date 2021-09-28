@@ -4,6 +4,7 @@ from glob import glob
 from subprocess import call, check_output
 import os
 import sys
+from platform import system
 
 
 class get_pybind_include(object):
@@ -23,14 +24,28 @@ class get_pybind_include(object):
 
 
 # Add parameters to cmake_args and define_macros
-cmake_args = ['-DCMAKE_POSITION_INDEPENDENT_CODE=ON', '-G', 'Unix Makefiles']
-lib_name = 'libcpg.a'
+cmake_args = ['-DCMAKE_POSITION_INDEPENDENT_CODE=ON']
+if system() == 'Windows':
+    cmake_args += ['-G', 'Visual Studio 15 2017']
+    if sys.maxsize // 2 ** 32 > 0:
+        cmake_args[-1] += ' Win64'
+    cmake_build_flags = ['--config', 'Release']
+    extra_compile_args = []
+    lib_subdir = ['Release']
+    lib_name = 'cpg.lib'
+elif system() == 'Linux' or system() == 'Darwin':
+    cmake_args += ['-G', 'Unix Makefiles']
+    extra_compile_args = ['-std=c++11', '-O3']
+    lib_subdir = []
+    lib_name = 'libcpg.a'
+else:
+    raise OSError('Unknown operating system!')
 
 # Compile CPG using CMake
 current_dir = os.getcwd()
 cpg_dir = os.path.join(current_dir, 'c',)
 cpg_build_dir = os.path.join(cpg_dir, 'build')
-cpg_lib = [cpg_build_dir, 'out'] + [lib_name]
+cpg_lib = [cpg_build_dir, 'out'] + lib_subdir + [lib_name]
 cpg_lib = os.path.join(*cpg_lib)
 
 
@@ -49,7 +64,7 @@ class build_ext_cpg(build_ext):
 
         # Compile static library with CMake
         call(['cmake'] + cmake_args + ['..'])
-        call(['cmake', '--build', '.', '--target', 'cpg'])
+        call(['cmake', '--build', '.', '--target', 'cpg'] + cmake_build_flags)
 
         # Change directory back to the python interface
         os.chdir(current_dir)
@@ -65,7 +80,7 @@ cpg = Extension('cpg_module',
                               get_pybind_include(),
                               get_pybind_include(user=False)],
                 language='c++',
-                extra_compile_args=['-std=c++11', '-O3'],
+                extra_compile_args=extra_compile_args,
                 extra_objects=[cpg_lib])
 
 

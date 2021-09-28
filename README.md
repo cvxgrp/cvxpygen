@@ -14,8 +14,6 @@ Solving a DPP-compliant problem repeatedly for different values of the parameter
 For now, CVXPYGEN is a separate module, until it will be integrated into CVXPY.
 As of today, CVXPYGEN works with linear and quadratic programs.
 
-Unix operating systems are supported, Windows will be supported soon.
-
 ## Installation
 
 1. Clone this repository via SSH,
@@ -43,9 +41,11 @@ Unix operating systems are supported, Windows will be supported soon.
    pip install pybind11
    ```
    
-4. Install the [GCC compiler](https://gcc.gnu.org).
+4. Install the [GCC compiler](https://gcc.gnu.org) (on Windows, install
+``mingw32-gcc-g++`` and ``mingw32-make`` via the [MinGW](https://sourceforge.net/projects/mingw/) Installation Manager).
+On Windows, you need to install also [Visual Studio 2017 Build Tools](https://download.visualstudio.microsoft.com/download/pr/3e542575-929e-4297-b6c6-bef34d0ee648/639c868e1219c651793aff537a1d3b77/vs_buildtools.exe).
    
-5. *Optional:* If you wish to use the example notebooks located in ``examples/``, register a new kernel spec with Jupyter.
+5. *Optional:* If you wish to use the example notebooks located in ``examples/``, install ``ipykernel``, ``jupyter``, ``matplotlib`` and register a new kernel spec with Jupyter.
     ```
    conda activate cpg_env
    conda install ipykernel

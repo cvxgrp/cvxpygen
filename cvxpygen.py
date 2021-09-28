@@ -11,6 +11,7 @@ import utils
 import pickle
 import sys
 from subprocess import call
+from platform import system
 
 
 def generate_code(problem, code_dir='CPG_code', explicit=True):
@@ -242,7 +243,13 @@ def generate_code(problem, code_dir='CPG_code', explicit=True):
 
     myOSQP = osqp.OSQP()
     myOSQP.setup(P=OSQP_p['P_csc'], q=OSQP_p['q'], A=OSQP_p['A_csc'], l=OSQP_p['l'], u=OSQP_p['u'])
-    myOSQP.codegen(os.path.join(code_dir, 'c/OSQP_code'), parameters='matrices', force_rewrite=True)
+    if system() == 'Windows':
+        cmake_generator = 'MinGW Makefiles'
+    elif system() == 'Linux' or system() == 'Darwin':
+        cmake_generator = 'Unix Makefiles'
+    else:
+        raise OSError('Unknown operating system!')
+    myOSQP.codegen(os.path.join(code_dir, 'c/OSQP_code'), project_type=cmake_generator, parameters='matrices', force_rewrite=True)
 
     # adapt OSQP CMakeLists.txt
     with open(os.path.join(code_dir, 'c/OSQP_code/CMakeLists.txt'), 'a') as f:
