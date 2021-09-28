@@ -48,6 +48,7 @@ Unix operating systems are supported, Windows will be supported soon.
    conda activate cpg_env
    conda install ipykernel
    pip install jupyter
+   pip install matplotlib
    ipython kernel install --user --name=cpg_env
    ```
    In the Jupyter notebook, click on ``Kernel->Change kernel`` and choose ``cpg_env``.
