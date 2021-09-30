@@ -10,7 +10,6 @@ import osqp
 import utils
 import pickle
 import sys
-from datetime import datetime
 from subprocess import call
 from platform import system
 
