@@ -492,13 +492,23 @@ def write_OSQP_CMakeLists(f):
     f.write('\nset(osqp_src "${osqp_src}" PARENT_SCOPE)')
 
 
-def write_module(f, user_p_name_to_size, var_name_to_size, OSQP_settings_names):
+def write_module(f, user_p_name_to_size, var_name_to_size, OSQP_settings_names, problem_name):
     """
     Write c++ file for pbind11 wrapper
     """
 
+    # cpp struct containing info on results
+    f.write('struct CPG_Info_%s_cpp_t {\n' % problem_name)
+    f.write('    double obj_val;\n')
+    f.write('    int iter;\n')
+    f.write('    char* status;\n')
+    f.write('    double pri_res;\n')
+    f.write('    double dua_res;\n')
+    f.write('    double ASA_proc_time;\n')
+    f.write('};\n\n')
+
     # cpp struct containing user-defined parameters
-    f.write('struct CPG_Params_cpp_t {\n')
+    f.write('struct CPG_Params_%s_cpp_t {\n' % problem_name)
     for name, size in user_p_name_to_size.items():
         if size == 1:
             f.write('    double %s;\n' % name)
@@ -507,14 +517,14 @@ def write_module(f, user_p_name_to_size, var_name_to_size, OSQP_settings_names):
     f.write('};\n\n')
 
     # cpp struct containing update flags for user-defined parameters
-    f.write('struct CPG_Updated_cpp_t {\n')
+    f.write('struct CPG_Updated_%s_cpp_t {\n' % problem_name)
     for name in user_p_name_to_size.keys():
         f.write('    bool %s;\n' % name)
     f.write('};\n\n')
 
     # cpp struct containing objective value and user-defined variables
-    f.write('struct CPG_Result_cpp_t {\n')
-    f.write('    CPG_Info_cpp_t CPG_Info;\n')
+    f.write('struct CPG_Result_%s_cpp_t {\n' % problem_name)
+    f.write('    CPG_Info_%s_cpp_t CPG_Info;\n' % problem_name)
     for name, size in var_name_to_size.items():
         if size == 1:
             f.write('    double %s;\n' % name)
@@ -523,7 +533,8 @@ def write_module(f, user_p_name_to_size, var_name_to_size, OSQP_settings_names):
     f.write('};\n\n')
 
     # cpp function that maps parameters to results
-    f.write('CPG_Result_cpp_t solve_cpp(struct CPG_Updated_cpp_t& CPG_Updated_cpp, struct CPG_Params_cpp_t& CPG_Params_cpp){\n\n')
+    f.write('CPG_Result_%s_cpp_t solve_cpp(struct CPG_Updated_%s_cpp_t& CPG_Updated_cpp, struct CPG_Params_%s_cpp_t& CPG_Params_cpp){\n\n'
+            % (problem_name, problem_name, problem_name))
 
     f.write('    // pass changed user-defined parameter values to the solver\n')
     for name, size in user_p_name_to_size.items():
@@ -544,7 +555,7 @@ def write_module(f, user_p_name_to_size, var_name_to_size, OSQP_settings_names):
 
     # arrange and return results
     f.write('    // arrange and return results\n')
-    f.write('    CPG_Info_cpp_t CPG_Info_cpp {};\n')
+    f.write('    CPG_Info_%s_cpp_t CPG_Info_cpp {};\n' % problem_name)
     f.write('    CPG_Info_cpp.obj_val = objective_value;\n')
     f.write('    CPG_Info_cpp.iter = workspace.info->iter;\n')
     f.write('    CPG_Info_cpp.status = workspace.info->status;\n')
@@ -552,7 +563,7 @@ def write_module(f, user_p_name_to_size, var_name_to_size, OSQP_settings_names):
     f.write('    CPG_Info_cpp.dua_res = workspace.info->dua_res;\n')
     f.write('    CPG_Info_cpp.ASA_proc_time = 1000.0 * (ASA_end-ASA_start) / CLOCKS_PER_SEC;\n')
 
-    f.write('    CPG_Result_cpp_t CPG_Result_cpp {};\n')
+    f.write('    CPG_Result_%s_cpp_t CPG_Result_cpp {};\n' % problem_name)
     f.write('    CPG_Result_cpp.CPG_Info = CPG_Info_cpp;\n')
     for name, size in var_name_to_size.items():
         if size == 1:
@@ -569,33 +580,33 @@ def write_module(f, user_p_name_to_size, var_name_to_size, OSQP_settings_names):
     # module
     f.write('PYBIND11_MODULE(cpg_module, m) {\n\n')
 
-    f.write('    py::class_<CPG_Params_cpp_t>(m, "cpg_params")\n')
+    f.write('    py::class_<CPG_Params_%s_cpp_t>(m, "cpg_params")\n' % problem_name)
     f.write('            .def(py::init<>())\n')
     for name in user_p_name_to_size.keys():
-        f.write('            .def_readwrite("%s", &CPG_Params_cpp_t::%s)\n' % (name, name))
+        f.write('            .def_readwrite("%s", &CPG_Params_%s_cpp_t::%s)\n' % (name, problem_name, name))
     f.write('            ;\n\n')
 
-    f.write('    py::class_<CPG_Updated_cpp_t>(m, "cpg_updated")\n')
+    f.write('    py::class_<CPG_Updated_%s_cpp_t>(m, "cpg_updated")\n' % problem_name)
     f.write('            .def(py::init<>())\n')
     for name in user_p_name_to_size.keys():
-        f.write('            .def_readwrite("%s", &CPG_Updated_cpp_t::%s)\n' % (name, name))
+        f.write('            .def_readwrite("%s", &CPG_Updated_%s_cpp_t::%s)\n' % (name, problem_name, name))
     f.write('            ;\n\n')
 
-    f.write('    py::class_<CPG_Info_cpp_t>(m, "cpg_info")\n')
+    f.write('    py::class_<CPG_Info_%s_cpp_t>(m, "cpg_info")\n' % problem_name)
     f.write('            .def(py::init<>())\n')
-    f.write('            .def_readwrite("obj_val", &CPG_Info_cpp_t::obj_val)\n')
-    f.write('            .def_readwrite("iter", &CPG_Info_cpp_t::iter)\n')
-    f.write('            .def_readwrite("status", &CPG_Info_cpp_t::status)\n')
-    f.write('            .def_readwrite("pri_res", &CPG_Info_cpp_t::pri_res)\n')
-    f.write('            .def_readwrite("dua_res", &CPG_Info_cpp_t::dua_res)\n')
-    f.write('            .def_readwrite("ASA_proc_time", &CPG_Info_cpp_t::ASA_proc_time)\n')
+    f.write('            .def_readwrite("obj_val", &CPG_Info_%s_cpp_t::obj_val)\n' % problem_name)
+    f.write('            .def_readwrite("iter", &CPG_Info_%s_cpp_t::iter)\n' % problem_name)
+    f.write('            .def_readwrite("status", &CPG_Info_%s_cpp_t::status)\n' % problem_name)
+    f.write('            .def_readwrite("pri_res", &CPG_Info_%s_cpp_t::pri_res)\n' % problem_name)
+    f.write('            .def_readwrite("dua_res", &CPG_Info_%s_cpp_t::dua_res)\n' % problem_name)
+    f.write('            .def_readwrite("ASA_proc_time", &CPG_Info_%s_cpp_t::ASA_proc_time)\n' % problem_name)
     f.write('            ;\n\n')
 
-    f.write('    py::class_<CPG_Result_cpp_t>(m, "cpg_result")\n')
+    f.write('    py::class_<CPG_Result_%s_cpp_t>(m, "cpg_result")\n' % problem_name)
     f.write('            .def(py::init<>())\n')
-    f.write('            .def_readwrite("CPG_Info", &CPG_Result_cpp_t::CPG_Info)\n')
+    f.write('            .def_readwrite("cpg_info", &CPG_Result_%s_cpp_t::CPG_Info)\n' % problem_name)
     for name in var_name_to_size.keys():
-        f.write('            .def_readwrite("%s", &CPG_Result_cpp_t::%s)\n' % (name, name))
+        f.write('            .def_readwrite("%s", &CPG_Result_%s_cpp_t::%s)\n' % (name, problem_name, name))
     f.write('            ;\n\n')
 
     f.write('    m.def("solve", &solve_cpp);\n\n')
@@ -653,20 +664,23 @@ def write_method(f, code_dir, user_p_name_to_size, var_name_to_shape):
         else:
             f.write('    prob.var_dict[\'%s\'].value = np.array(res.%s)\n' % (name, name))
 
-    f.write('\n    prob._status = res.CPG_Info.status\n')
-    f.write('    prob._value = res.CPG_Info.obj_val\n')
+    f.write('\n    prob._status = res.cpg_info.status\n')
+    f.write('    if abs(res.cpg_info.obj_val) == 1e30:\n')
+    f.write('        prob._value = np.sign(res.cpg_info.obj_val)*np.inf\n')
+    f.write('    else:\n')
+    f.write('        prob._value = res.cpg_info.obj_val\n')
     f.write('    primal_vars = {var.id: var.value for var in prob.variables()}\n')
     f.write('    dual_vars = {}\n')
-    f.write('    solver_specific_stats = {\'obj_val\': res.CPG_Info.obj_val,\n')
-    f.write('                             \'status\': res.CPG_Info.status,\n')
-    f.write('                             \'iter\': res.CPG_Info.iter,\n')
-    f.write('                             \'pri_res\': res.CPG_Info.pri_res,\n')
-    f.write('                             \'dua_res\': res.CPG_Info.dua_res,\n')
-    f.write('                             \'ASA_proc_time\': res.CPG_Info.ASA_proc_time}\n')
-    f.write('    attr = {\'solve_time\': t1-t0, \'solver_specific_stats\': solver_specific_stats, \'num_iters\': res.CPG_Info.iter}\n')
+    f.write('    solver_specific_stats = {\'obj_val\': res.cpg_info.obj_val,\n')
+    f.write('                             \'status\': res.cpg_info.status,\n')
+    f.write('                             \'iter\': res.cpg_info.iter,\n')
+    f.write('                             \'pri_res\': res.cpg_info.pri_res,\n')
+    f.write('                             \'dua_res\': res.cpg_info.dua_res,\n')
+    f.write('                             \'ASA_proc_time\': res.cpg_info.ASA_proc_time}\n')
+    f.write('    attr = {\'solve_time\': t1-t0, \'solver_specific_stats\': solver_specific_stats, \'num_iters\': res.cpg_info.iter}\n')
     f.write('    prob._solution = Solution(prob.status, prob.value, primal_vars, dual_vars, attr)\n')
     f.write('    results_dict = {\'solver_specific_stats\': solver_specific_stats,\n')
-    f.write('                    \'num_iters\': res.CPG_Info.iter,\n')
+    f.write('                    \'num_iters\': res.cpg_info.iter,\n')
     f.write('                    \'solve_time\': t1-t0}\n')
     f.write('    prob._solver_stats = SolverStats(results_dict, \'OSQP\')\n\n')
 

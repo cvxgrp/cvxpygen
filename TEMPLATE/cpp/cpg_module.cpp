@@ -10,12 +10,3 @@ extern "C" {
 
 namespace py = pybind11;
 
-struct CPG_Info_cpp_t {
-    double obj_val;
-    int iter;
-    char* status;
-    double pri_res;
-    double dua_res;
-    double ASA_proc_time;
-};
-

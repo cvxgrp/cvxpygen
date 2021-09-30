@@ -10,6 +10,7 @@ import osqp
 import utils
 import pickle
 import sys
+from datetime import datetime
 from subprocess import call
 from platform import system
 
@@ -20,6 +21,9 @@ def generate_code(problem, code_dir='CPG_code', explicit=True):
     """
 
     print('Generating code ...')
+
+    # create unique problem identifier
+    problem_name = datetime.now().strftime('%y%m%d%H%M%S')
 
     # copy TEMPLATE
     if os.path.isdir(code_dir):
@@ -257,7 +261,7 @@ def generate_code(problem, code_dir='CPG_code', explicit=True):
 
     # binding module
     with open(os.path.join(code_dir, 'cpp/cpg_module.cpp'), 'a') as f:
-        utils.write_module(f, user_p_name_to_size, var_name_to_size, OSQP_settings_names)
+        utils.write_module(f, user_p_name_to_size, var_name_to_size, OSQP_settings_names, problem_name)
 
     # custom CVXPY solve method
     with open(os.path.join(code_dir, 'cpg_solver.py'), 'a') as f:
