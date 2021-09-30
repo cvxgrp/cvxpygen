@@ -104,7 +104,7 @@ def generate_code(problem, code_dir='CPG_code', explicit=True):
     user_p_name_to_size = {name: size for name, size in zip(user_p_names, user_p_id_to_size.values())}
 
     # adjacency matrix describing OSQP_params - user_params dependencies
-    adjacency = np.zeros(shape=(OSQP_p_num, user_p_num), dtype=np.bool)
+    adjacency = np.zeros(shape=(OSQP_p_num, user_p_num), dtype=bool)
 
     # adjacency P, q, d
     for j in range(user_p_num):
