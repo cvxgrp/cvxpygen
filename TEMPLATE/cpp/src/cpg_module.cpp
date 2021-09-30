@@ -11,3 +11,5 @@ extern "C" {
 
 namespace py = pybind11;
 
+int i;
+

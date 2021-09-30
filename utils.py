@@ -73,13 +73,13 @@ def write_canonicalize(f, OSQP_name, s, mapping):
     """
 
     f.write('// reset values to zero\n')
-    f.write('for (int i=0; i<%d; i++){\n' % mapping.shape[0])
+    f.write('for(i=0; i<%d; i++){\n' % mapping.shape[0])
     f.write('OSQP_Params.%s%s[i] = 0;\n' % (OSQP_name, s))
     f.write('}\n')
 
     f.write('// compute sparse matrix multiplication\n')
-    f.write('for (int i=0; i<%d; i++){\n' % mapping.shape[0])
-    f.write('for (int j=OSQP_%s_map.p[i]; j<OSQP_%s_map.p[i+1]; j++){\n' % (OSQP_name, OSQP_name))
+    f.write('for(i=0; i<%d; i++){\n' % mapping.shape[0])
+    f.write('for(j=OSQP_%s_map.p[i]; j<OSQP_%s_map.p[i+1]; j++){\n' % (OSQP_name, OSQP_name))
     f.write('OSQP_Params.%s%s[i] += OSQP_%s_map.x[j]*CPG_Params_Vec[OSQP_%s_map.i[j]];\n' % (OSQP_name, s, OSQP_name, OSQP_name))
     f.write('}\n')
     f.write('}\n')
@@ -291,6 +291,10 @@ def write_solve(f, explicit, OSQP_p_ids, mappings, user_p_col_to_name, user_p_si
     Write parameter initialization function to file
     """
 
+    if not explicit:
+        f.write('c_int i;\n')
+        f.write('c_int j;\n\n')
+
     base_cols = list(user_p_col_to_name.keys())
 
     f.write('// update user-defined parameters\n')
@@ -476,8 +480,8 @@ def write_main(f, user_p_writable, var_name_to_size):
         if size == 1:
             f.write('printf("%s = %%f \\n", *CPG_Result.%s);\n' % (name, name))
         else:
-            f.write('for(int i = 0; i < %d; i++) {\n' % size)
-            f.write('printf("%s[%%d] = %%f \\n", i, CPG_Result.%s[i]);\n' % (name, name))
+            f.write('for(i = 0; i < %d; i++) {\n' % size)
+            f.write('printf("%s[%%lld] = %%f \\n", i, CPG_Result.%s[i]);\n' % (name, name))
             f.write('}\n')
 
     f.write('return 0;\n')
@@ -507,7 +511,7 @@ def write_module(f, user_p_name_to_size, var_name_to_size, OSQP_settings_names, 
         if size == 1:
             f.write('        update_%s(CPG_Params_cpp.%s);\n' % (name, name))
         else:
-            f.write('        for(int i = 0; i < %d; i++) {\n' % size)
+            f.write('        for(i = 0; i < %d; i++) {\n' % size)
             f.write('            update_%s(i, CPG_Params_cpp.%s[i]);\n' % (name, name))
             f.write('        }\n')
         f.write('    }\n')
@@ -534,7 +538,7 @@ def write_module(f, user_p_name_to_size, var_name_to_size, OSQP_settings_names, 
         if size == 1:
             f.write('    CPG_Result_cpp.%s = *CPG_Result.%s;\n' % (name, name))
         else:
-            f.write('    for(int i = 0; i < %d; i++) {\n' % size)
+            f.write('    for(i = 0; i < %d; i++) {\n' % size)
             f.write('        CPG_Result_cpp.%s[i] = CPG_Result.%s[i];\n' % (name, name))
             f.write('    }\n')
 
