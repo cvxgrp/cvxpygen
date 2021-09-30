@@ -15,15 +15,12 @@ from subprocess import call
 from platform import system
 
 
-def generate_code(problem, code_dir='CPG_code', explicit=True):
+def generate_code(problem, code_dir='CPG_code', explicit=True, problem_name=''):
     """
     Generate C code for CVXPY problem and optionally compile example program
     """
 
     print('Generating code ...')
-
-    # create unique problem identifier
-    problem_name = datetime.now().strftime('%y%m%d%H%M%S')
 
     # copy TEMPLATE
     if os.path.isdir(code_dir):

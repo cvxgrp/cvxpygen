@@ -133,8 +133,8 @@ def portfolio_problem():
                                         (portfolio_problem(), 'portfolio')])
 def test(prob, name):
 
-    cpg.generate_code(prob, code_dir='test_%s_explicit' % name, explicit=True)
+    cpg.generate_code(prob, code_dir='test_%s_explicit' % name, explicit=True, problem_name='%s_ex' % name)
     assert len(glob.glob(os.path.join('test_%s_explicit' % name, 'cpg_module.*'))) > 0
 
-    cpg.generate_code(prob, code_dir='test_%s_implicit' % name, explicit=False)
+    cpg.generate_code(prob, code_dir='test_%s_implicit' % name, explicit=False, problem_name='%s_im' % name)
     assert len(glob.glob(os.path.join('test_%s_implicit' % name, 'cpg_module.*'))) > 0
