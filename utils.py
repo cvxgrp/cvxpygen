@@ -497,41 +497,6 @@ def write_module(f, user_p_name_to_size, var_name_to_size, OSQP_settings_names, 
     Write c++ file for pbind11 wrapper
     """
 
-    # cpp struct containing info on results
-    f.write('struct CPG_Info_%s_cpp_t {\n' % problem_name)
-    f.write('    double obj_val;\n')
-    f.write('    int iter;\n')
-    f.write('    char* status;\n')
-    f.write('    double pri_res;\n')
-    f.write('    double dua_res;\n')
-    f.write('    double ASA_proc_time;\n')
-    f.write('};\n\n')
-
-    # cpp struct containing user-defined parameters
-    f.write('struct CPG_Params_%s_cpp_t {\n' % problem_name)
-    for name, size in user_p_name_to_size.items():
-        if size == 1:
-            f.write('    double %s;\n' % name)
-        else:
-            f.write('    std::array<double, %d> %s;\n' % (size, name))
-    f.write('};\n\n')
-
-    # cpp struct containing update flags for user-defined parameters
-    f.write('struct CPG_Updated_%s_cpp_t {\n' % problem_name)
-    for name in user_p_name_to_size.keys():
-        f.write('    bool %s;\n' % name)
-    f.write('};\n\n')
-
-    # cpp struct containing objective value and user-defined variables
-    f.write('struct CPG_Result_%s_cpp_t {\n' % problem_name)
-    f.write('    CPG_Info_%s_cpp_t CPG_Info;\n' % problem_name)
-    for name, size in var_name_to_size.items():
-        if size == 1:
-            f.write('    double %s;\n' % name)
-        else:
-            f.write('    std::array<double, %d> %s;\n' % (size, name))
-    f.write('};\n\n')
-
     # cpp function that maps parameters to results
     f.write('CPG_Result_%s_cpp_t solve_cpp(struct CPG_Updated_%s_cpp_t& CPG_Updated_cpp, struct CPG_Params_%s_cpp_t& CPG_Params_cpp){\n\n'
             % (problem_name, problem_name, problem_name))
@@ -616,6 +581,51 @@ def write_module(f, user_p_name_to_size, var_name_to_size, OSQP_settings_names, 
         f.write('    m.def("set_OSQP_%s", &set_OSQP_%s);\n' % (name, name))
 
     f.write('\n}')
+
+
+def write_module_extern(f, user_p_name_to_size, var_name_to_size, problem_name):
+    """
+    Write c++ file for pbind11 wrapper
+    """
+
+    # cpp struct containing info on results
+    f.write('struct CPG_Info_%s_cpp_t {\n' % problem_name)
+    f.write('    double obj_val;\n')
+    f.write('    int iter;\n')
+    f.write('    char* status;\n')
+    f.write('    double pri_res;\n')
+    f.write('    double dua_res;\n')
+    f.write('    double ASA_proc_time;\n')
+    f.write('};\n\n')
+
+    # cpp struct containing user-defined parameters
+    f.write('struct CPG_Params_%s_cpp_t {\n' % problem_name)
+    for name, size in user_p_name_to_size.items():
+        if size == 1:
+            f.write('    double %s;\n' % name)
+        else:
+            f.write('    std::array<double, %d> %s;\n' % (size, name))
+    f.write('};\n\n')
+
+    # cpp struct containing update flags for user-defined parameters
+    f.write('struct CPG_Updated_%s_cpp_t {\n' % problem_name)
+    for name in user_p_name_to_size.keys():
+        f.write('    bool %s;\n' % name)
+    f.write('};\n\n')
+
+    # cpp struct containing objective value and user-defined variables
+    f.write('struct CPG_Result_%s_cpp_t {\n' % problem_name)
+    f.write('    CPG_Info_%s_cpp_t CPG_Info;\n' % problem_name)
+    for name, size in var_name_to_size.items():
+        if size == 1:
+            f.write('    double %s;\n' % name)
+        else:
+            f.write('    std::array<double, %d> %s;\n' % (size, name))
+    f.write('};\n\n')
+
+    # cpp function that maps parameters to results
+    f.write('CPG_Result_%s_cpp_t solve_cpp(struct CPG_Updated_%s_cpp_t& CPG_Updated_cpp, struct CPG_Params_%s_cpp_t& CPG_Params_cpp);\n'
+            % (problem_name, problem_name, problem_name))
 
 
 def write_method(f, code_dir, user_p_name_to_size, var_name_to_shape):

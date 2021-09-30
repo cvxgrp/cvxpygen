@@ -75,8 +75,9 @@ class build_ext_cpg(build_ext):
 
 
 cpg = Extension('cpg_module',
-                sources=glob(os.path.join('cpp', '*.cpp')),
+                sources=glob(os.path.join('cpp', 'src', '*.cpp')),
                 include_dirs=['c',
+                              os.path.join('cpp', 'include'),
                               os.path.join('c', 'OSQP_code', 'include'),
                               get_pybind_include(),
                               get_pybind_include(user=False)],

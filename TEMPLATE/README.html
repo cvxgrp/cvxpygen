@@ -39,7 +39,10 @@ $CODEDIR
       build
       CMakeLists.txt
     cpp
-      cpg_module.cpp
+      include
+        cpg_module.hpp
+      src
+        cpg_module.cpp
     setup.py
     cpg_solver.py
     problem.pickle
@@ -152,7 +155,7 @@ void set_OSQP_&lt;setting_name&gt;(&lt;setting_type&gt; &lt;setting_value&gt;);
       <dt><code>c/src/cpg_solve.c</code> contains the definition of functions declared in <code>include/cpg_solve.h</code>.</dt>
       <dt><code>c/src/cpg_example.c</code> contains example code that initializes the problem data and solves a problem instance.</dt>
       <dt><code>c/CMakeLists.txt</code> contains instructions for build file generation inside the <code>c/build</code> directory with CMake.</dt>
-      <dt><code>cpp/cpg_module.cpp</code> contains binding code for the python wrapper generated with <a href="https://github.com/pybind/pybind11" target="_blank">pybind11</a> and <code>setup.py</code>.</dt>
+      <dt><code>cpp/</code> contains binding code for the python wrapper generated with <a href="https://github.com/pybind/pybind11" target="_blank">pybind11</a> and <code>setup.py</code>.</dt>
       <dt><code>cpg_solver.py</code> contains a custom CVXPY solve method that uses the python wrapper to solve your problem.</dt>
       <dt>Finally, <code>problem.pickle</code> is the serialized version of your CVXPY problem object.</dt>
     </dl>

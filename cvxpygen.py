@@ -255,8 +255,12 @@ def generate_code(problem, code_dir='CPG_code', explicit=True, problem_name=''):
     with open(os.path.join(code_dir, 'c/OSQP_code/CMakeLists.txt'), 'a') as f:
         utils.write_OSQP_CMakeLists(f)
 
+    # binding module declaration
+    with open(os.path.join(code_dir, 'cpp/include/cpg_module.hpp'), 'a') as f:
+        utils.write_module_extern(f, user_p_name_to_size, var_name_to_size, problem_name)
+
     # binding module
-    with open(os.path.join(code_dir, 'cpp/cpg_module.cpp'), 'a') as f:
+    with open(os.path.join(code_dir, 'cpp/src/cpg_module.cpp'), 'a') as f:
         utils.write_module(f, user_p_name_to_size, var_name_to_size, OSQP_settings_names, problem_name)
 
     # custom CVXPY solve method
