@@ -1,5 +1,4 @@
 *code/
-examples/*/
 tests/*/
 *.so
 __pycache__
