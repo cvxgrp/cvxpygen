@@ -292,8 +292,8 @@ def write_solve(f, explicit, OSQP_p_ids, mappings, user_p_col_to_name, user_p_si
     """
 
     if not explicit:
-        f.write('c_int i;\n')
-        f.write('c_int j;\n\n')
+        f.write('static c_int i;\n')
+        f.write('static c_int j;\n\n')
 
     base_cols = list(user_p_col_to_name.keys())
 
