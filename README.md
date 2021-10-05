@@ -38,7 +38,7 @@ As of today, CVXPYGEN works with linear and quadratic programs.
     ```
    conda install -c conda-forge cvxpy
    conda install -c anaconda cmake
-   pip install pybind11
+   conda install pybind11
    ```
    
 4. Install the [GCC compiler](https://gcc.gnu.org) (on Windows, install
@@ -49,8 +49,8 @@ On Windows, you need to install also [Visual Studio 2017 Build Tools](https://do
     ```
    conda activate cpg_env
    conda install ipykernel
-   pip install jupyter
-   pip install matplotlib
+   conda install jupyter
+   conda install matplotlib
    ipython kernel install --user --name=cpg_env
    ```
    In the Jupyter notebook, click on ``Kernel->Change kernel`` and choose ``cpg_env``.
