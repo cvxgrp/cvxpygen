@@ -4,6 +4,7 @@ import cvxpygen as cpg
 import numpy as np
 import pickle
 import time
+import os
 
 '''
 1. Generate Code
@@ -46,7 +47,7 @@ cpg.generate_code(prob, code_dir='CPG_code', explicit=True)
 from CPG_code.cpg_solver import cpg_solve
 
 # load the serialized problem formulation
-with open('CPG_code/problem.pickle', 'rb') as f:
+with open(os.path.join('CPG_code', 'problem.pickle'), 'rb') as f:
     prob = pickle.load(f)
 
 # assign parameter values

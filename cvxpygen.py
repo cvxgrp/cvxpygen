@@ -215,26 +215,26 @@ def generate_code(problem, code_dir='CPG_code', explicit=True, problem_name=''):
                                for i, user_p_name in enumerate(user_p_names)}
 
     # 'workspace' prototypes
-    with open(os.path.join(code_dir, 'c/include/cpg_workspace.h'), 'a') as f:
+    with open(os.path.join(code_dir, 'c', 'include', 'cpg_workspace.h'), 'a') as f:
         utils.write_workspace_extern(f, explicit, user_p_names, user_p_writable, user_p_flat, var_init, OSQP_p_ids, OSQP_p, OSQP_mappings, var_symm)
 
     # 'workspace' definitions
-    with open(os.path.join(code_dir, 'c/src/cpg_workspace.c'), 'a') as f:
+    with open(os.path.join(code_dir, 'c', 'src', 'cpg_workspace.c'), 'a') as f:
         utils.write_workspace(f, explicit, user_p_names, user_p_writable, user_p_flat, var_init, OSQP_p_ids, OSQP_p, OSQP_mappings, var_symm, var_offsets)
 
     # 'solve' prototypes
-    with open(os.path.join(code_dir, 'c/include/cpg_solve.h'), 'a') as f:
+    with open(os.path.join(code_dir, 'c', 'include', 'cpg_solve.h'), 'a') as f:
         utils.write_solve_extern(f, user_p_name_to_size, OSQP_settings_names_to_types)
 
     # 'solve' definitions
-    with open(os.path.join(code_dir, 'c/src/cpg_solve.c'), 'a') as f:
+    with open(os.path.join(code_dir, 'c', 'src', 'cpg_solve.c'), 'a') as f:
         utils.write_solve(f, explicit, OSQP_p_ids, OSQP_mappings, user_p_col_to_name,
                           list(user_p_id_to_size.values()), var_name_to_indices,
                           type(problem.objective) == cp.problems.objective.Maximize, user_p_to_OSQP_outdated,
                           OSQP_settings_names_to_types, var_symm, OSQP_p_to_changes)
 
     # 'example' definitions
-    with open(os.path.join(code_dir, 'c/src/cpg_example.c'), 'a') as f:
+    with open(os.path.join(code_dir, 'c', 'src', 'cpg_example.c'), 'a') as f:
         utils.write_main(f, user_p_writable, var_name_to_size)
 
     # OSQP codegen
@@ -249,18 +249,18 @@ def generate_code(problem, code_dir='CPG_code', explicit=True, problem_name=''):
         cmake_generator = 'Unix Makefiles'
     else:
         raise OSError('Unknown operating system!')
-    myOSQP.codegen(os.path.join(code_dir, 'c/OSQP_code'), project_type=cmake_generator, parameters='matrices', force_rewrite=True)
+    myOSQP.codegen(os.path.join(code_dir, 'c', 'OSQP_code'), project_type=cmake_generator, parameters='matrices', force_rewrite=True)
 
     # adapt OSQP CMakeLists.txt
-    with open(os.path.join(code_dir, 'c/OSQP_code/CMakeLists.txt'), 'a') as f:
+    with open(os.path.join(code_dir, 'c', 'OSQP_code', 'CMakeLists.txt'), 'a') as f:
         utils.write_OSQP_CMakeLists(f)
 
     # binding module declaration
-    with open(os.path.join(code_dir, 'cpp/include/cpg_module.hpp'), 'a') as f:
+    with open(os.path.join(code_dir, 'cpp', 'include', 'cpg_module.hpp'), 'a') as f:
         utils.write_module_extern(f, user_p_name_to_size, var_name_to_size, problem_name)
 
     # binding module
-    with open(os.path.join(code_dir, 'cpp/src/cpg_module.cpp'), 'a') as f:
+    with open(os.path.join(code_dir, 'cpp', 'src', 'cpg_module.cpp'), 'a') as f:
         utils.write_module(f, user_p_name_to_size, var_name_to_size, OSQP_settings_names, problem_name)
 
     # custom CVXPY solve method

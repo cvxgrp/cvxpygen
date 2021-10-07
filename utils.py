@@ -637,7 +637,7 @@ def write_method(f, code_dir, user_p_name_to_size, var_name_to_shape):
     Write function to be registered as custom CVXPY solve method
     """
 
-    f.write('from %s import cpg_module\n\n\n' % code_dir.replace('/', '.'))
+    f.write('from %s import cpg_module\n\n\n' % code_dir.replace('/', '.').replace('\\', '.'))
     f.write('def cpg_solve(prob, updated_params=None, **kwargs):\n\n')
     f.write('    if updated_params is None:\n')
     p_list_string = ''
@@ -708,7 +708,7 @@ def replace_html(code_dir, explicit, text, user_p_name_to_size, user_p_writable,
 
     # code_dir
     text = text.replace('$CODEDIR', code_dir)
-    text = text.replace('$CDPYTHON', code_dir.replace('/', '.'))
+    text = text.replace('$CDPYTHON', code_dir.replace('/', '.').replace('\\', '.'))
 
     # type definition of CPG_Params_t or CPG_Params_Vec
     if explicit:

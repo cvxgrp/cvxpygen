@@ -123,6 +123,7 @@ from CPG_code.cpg_solver import cpg_solve
 import numpy as np
 import pickle
 import time
+import os
 
 # load the serialized problem formulation
 with open('CPG_code/problem.pickle', 'rb') as f:
