@@ -178,3 +178,19 @@ To run the compiled program, type
 cd CPG_code/c/build
 ./cpg_example
 ```
+
+
+## Tests
+
+To run tests, install ``pytest`` via
+
+```bash
+conda install pytest
+```
+
+and execute:
+
+```bash
+cd tests
+pytest
+```
