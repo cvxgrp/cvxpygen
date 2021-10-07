@@ -67,7 +67,6 @@ For constant properties, use ``cp.Constant()``.
 
 ```python
 import cvxpy as cp
-import numpy as np
 
 # define dimensions, variables, parameters
 # IMPORTANT: uniquely specify variable and parameter names for them to be recognized in the generated C code
@@ -90,6 +89,8 @@ prob = cp.Problem(objective, constraints)
 Assign parameter values and solve the problem.
 
 ```python
+import numpy as np
+
 # assign parameter values and solve
 np.random.seed(0)
 A.value = np.random.randn(m, n)
@@ -109,13 +110,13 @@ cpg.generate_code(prob, code_dir='CPG_code', explicit=True)
 
 where ``code_dir`` specifies the directory that the generated code is stored in.
 When ``explicit=True``, for-loops are unrolled in the canonicalization code.
-The above steps are summarized in ``example_main.py``.
+The above steps are summarized in the first part of ``example.py``.
 
 To get an overview of the code generation result, have a look at `CPG_code/README.html`.
 
 ### 2. Solve & Compare
 
-As summarized in ``example_test.py``, after assigning parameter values, you can solve the problem both by conventional CVXPY and via the generated code, which is wrapped inside the custom CVXPY solve method ``cpg_solve``.
+As summarized in the second part ``example.py``, after assigning parameter values, you can solve the problem both by conventional CVXPY and via the generated code, which is wrapped inside the custom CVXPY solve method ``cpg_solve``.
 
 ```python
 from CPG_code.cpg_solver import cpg_solve
