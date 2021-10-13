@@ -10,9 +10,9 @@ on:
     branches: [ main ]
 
 jobs:
-  build_and_test:
+  test_E2E_macOS:
 
-    runs-on: [ ubuntu-latest ]
+    runs-on: [ macos-latest ]
 
     steps:
     - uses: actions/checkout@v2
@@ -22,12 +22,7 @@ jobs:
         python-version: 3.9
     - name: Install dependencies
       run: |
-        conda update -n base conda
-        conda install -c conda-forge cvxpy
-        conda install -c anaconda cmake
-        conda install pybind11
+        $CONDA/bin/conda env update --file environment.yml --name base
     - name: Test with pytest
       run: |
-        pip install pytest
-        cd tests
-        pytest
+        $CONDA/bin/pytest tests/

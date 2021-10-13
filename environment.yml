@@ -1,0 +1,12 @@
+name: cpg_env
+channels:
+  - conda-forge
+  - anaconda
+  - defaults
+dependencies:
+  - cmake
+  - cvxpy
+  - ipykernel
+  - jupyter
+  - matplotlib
+  - pybind11
