@@ -28,5 +28,6 @@ jobs:
         conda install pybind11
     - name: Test with pytest
       run: |
+        pip install pytest
         cd tests
         pytest
