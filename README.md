@@ -153,7 +153,7 @@ Especially for smaller problems like this, the new solve method ``'CPG'`` is sig
 
 ### 3. Executable
 
-If you wish to compile the example executable, please run the following commands in your terminal.
+If you wish to compile the example executable on a Unix platform, please run the following commands in your terminal.
 
 ```bash
 cd CPG_code/c/build
