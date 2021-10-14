@@ -10,9 +10,14 @@ on:
     branches: [ main ]
 
 jobs:
-  test_E2E_macOS:
+  test:
 
-    runs-on: [ macos-latest ]
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest ]
 
     steps:
     - uses: actions/checkout@v2
@@ -20,9 +25,14 @@ jobs:
       uses: actions/setup-python@v2
       with:
         python-version: 3.9
+    - name: Add conda to system path
+      run: |
+        echo $CONDA/bin >> $GITHUB_PATH
     - name: Install dependencies
       run: |
-        $CONDA/bin/conda env update --file environment.yml --name base
+        sudo conda env update --file environment.yml --name base
     - name: Test with pytest
       run: |
-        $CONDA/bin/pytest tests/
+        sudo conda install pytest
+        cd tests
+        $CONDA/bin/pytest
