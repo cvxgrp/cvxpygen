@@ -168,7 +168,18 @@ def write_workspace(f, explicit, user_p_names, user_p_writable, user_p_flat, var
 
     f.write('\n// Struct containing parameters accepted by OSQP\n')
 
-    write_struct(f, OSQP_p_ids, OSQP_casts, ['&OSQP_'+p for p in OSQP_p_ids], 'OSQP_Params', 'OSQP_Params_t')
+    struct_values = []
+    for OSQP_p_id in OSQP_p_ids:
+        if type(OSQP_p[OSQP_p_id]) == dict:
+            length = len(OSQP_p[OSQP_p_id]['x'])
+        else:
+            length = len(OSQP_p[OSQP_p_id])
+        if length > 0:
+            struct_values.append('&OSQP_%s' % OSQP_p_id)
+        else:
+            struct_values.append('0')
+
+    write_struct(f, OSQP_p_ids, OSQP_casts, struct_values, 'OSQP_Params', 'OSQP_Params_t')
 
     if explicit:
         f.write('\n// User-defined parameters\n')
