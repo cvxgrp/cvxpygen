@@ -17,22 +17,54 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-latest, macos-latest ]
+        os: [ ubuntu-latest, macos-latest, windows-2016 ]
 
     steps:
     - uses: actions/checkout@v2
+
     - name: Set up Python 3.9
       uses: actions/setup-python@v2
       with:
         python-version: 3.9
+
     - name: Add conda to system path
       run: |
         echo $CONDA/bin >> $GITHUB_PATH
-    - name: Install dependencies
+
+    - name: Install dependencies (Linux)
+      if: runner.os == 'Linux'
       run: |
         sudo conda env update --file environment.yml --name base
-    - name: Test with pytest
+
+    - name: Install dependencies (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        sudo conda env update --file environment.yml --name base
+
+    - name: Install dependencies (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        C:\Miniconda\condabin\conda.bat env update --file environment.yml --name base
+        C:\Miniconda\condabin\conda.bat init powershell
+
+    - name: Test with pytest (Linux)
+      if: runner.os == 'Linux'
       run: |
         sudo conda install pytest
         cd tests
         $CONDA/bin/pytest
+
+    - name: Test with pytest (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        sudo conda install pytest
+        cd tests
+        $CONDA/bin/pytest
+
+    - name: Test with pytest (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        C:\Miniconda\condabin\conda.bat activate base
+        C:\Miniconda\condabin\conda.bat install pytest
+        cd tests
+        C:\Miniconda\Scripts\pytest test_E2E_QP.py
