@@ -14,6 +14,15 @@ include_directories (include OSQP_code/include)
 
 add_subdirectory (OSQP_code)
 
-add_executable (cpg_example src/cpg_example.c src/cpg_workspace.c src/cpg_solve.c ${osqp_src})
+list (APPEND
+      cpg_src
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/cpg_workspace.c
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/cpg_solve.c
+      ${osqp_src}
+)
 
-add_library(cpg STATIC src/cpg_workspace.c src/cpg_solve.c ${osqp_src})
+add_executable (cpg_example src/cpg_example.c ${cpg_src})
+
+add_library(cpg STATIC ${cpg_src})
+
+set(cpg_src "${cpg_src}" PARENT_SCOPE)
