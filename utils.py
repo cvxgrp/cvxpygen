@@ -40,7 +40,7 @@ def csc_to_dict(m):
     return d
 
 
-def write_canonicalize_explicit(f, OSQP_name, s, mapping, base_cols, user_p_sizes, user_p_col_to_name):
+def write_canonicalize_explicit(f, osqp_name, s, mapping, base_cols, user_p_sizes, user_p_col_to_name):
     """
     Write function to compute OSQP parameter value
     """
@@ -64,23 +64,24 @@ def write_canonicalize_explicit(f, OSQP_name, s, mapping, base_cols, user_p_size
             expr += ex
         expr = expr[:-1]
         if data.size > 0 and expr_is_const is False:
-            f.write('OSQP_Params.%s%s[%d] = %s;\n' % (OSQP_name, s, row, expr))
+            f.write('OSQP_Params.%s%s[%d] = %s;\n' % (osqp_name, s, row, expr))
 
 
-def write_canonicalize(f, OSQP_name, s, mapping):
+def write_canonicalize(f, osqp_name, s, mapping):
     """
     Write function to compute OSQP parameter value
     """
 
     f.write('// reset values to zero\n')
     f.write('for(i=0; i<%d; i++){\n' % mapping.shape[0])
-    f.write('OSQP_Params.%s%s[i] = 0;\n' % (OSQP_name, s))
+    f.write('OSQP_Params.%s%s[i] = 0;\n' % (osqp_name, s))
     f.write('}\n')
 
     f.write('// compute sparse matrix multiplication\n')
     f.write('for(i=0; i<%d; i++){\n' % mapping.shape[0])
-    f.write('for(j=OSQP_%s_map.p[i]; j<OSQP_%s_map.p[i+1]; j++){\n' % (OSQP_name, OSQP_name))
-    f.write('OSQP_Params.%s%s[i] += OSQP_%s_map.x[j]*CPG_Params_Vec[OSQP_%s_map.i[j]];\n' % (OSQP_name, s, OSQP_name, OSQP_name))
+    f.write('for(j=OSQP_%s_map.p[i]; j<OSQP_%s_map.p[i+1]; j++){\n' % (osqp_name, osqp_name))
+    f.write('OSQP_Params.%s%s[i] += OSQP_%s_map.x[j]*CPG_Params_Vec[OSQP_%s_map.i[j]];\n' %
+            (osqp_name, s, osqp_name, osqp_name))
     f.write('}\n')
     f.write('}\n')
 
@@ -154,13 +155,14 @@ def write_struct_extern(f, name, typ):
     f.write("extern %s %s;\n" % (typ, name))
 
 
-def write_workspace(f, explicit, user_p_names, user_p_writable, user_p_flat, var_init, OSQP_p_ids, OSQP_p, OSQP_mappings, var_symm, var_offsets):
+def write_workspace_def(f, explicit, user_p_names, user_p_writable, user_p_flat, var_init, osqp_p_ids, osqp_p,
+                        osqp_mappings, var_symmetric, var_offsets):
 
     OSQP_casts = []
 
     f.write('// Parameters accepted by OSQP\n')
-    for OSQP_p_id in OSQP_p_ids:
-        write_osqp(f, replace_inf(OSQP_p[OSQP_p_id]), OSQP_p_id)
+    for OSQP_p_id in osqp_p_ids:
+        write_osqp(f, replace_inf(osqp_p[OSQP_p_id]), OSQP_p_id)
         if OSQP_p_id in ['P', 'A', 'd']:
             OSQP_casts.append('')
         else:
@@ -169,17 +171,17 @@ def write_workspace(f, explicit, user_p_names, user_p_writable, user_p_flat, var
     f.write('\n// Struct containing parameters accepted by OSQP\n')
 
     struct_values = []
-    for OSQP_p_id in OSQP_p_ids:
-        if type(OSQP_p[OSQP_p_id]) == dict:
-            length = len(OSQP_p[OSQP_p_id]['x'])
+    for OSQP_p_id in osqp_p_ids:
+        if type(osqp_p[OSQP_p_id]) == dict:
+            length = len(osqp_p[OSQP_p_id]['x'])
         else:
-            length = len(OSQP_p[OSQP_p_id])
+            length = len(osqp_p[OSQP_p_id])
         if length > 0:
             struct_values.append('&OSQP_%s' % OSQP_p_id)
         else:
             struct_values.append('0')
 
-    write_struct(f, OSQP_p_ids, OSQP_casts, struct_values, 'OSQP_Params', 'OSQP_Params_t')
+    write_struct(f, osqp_p_ids, OSQP_casts, struct_values, 'OSQP_Params', 'OSQP_Params_t')
 
     if explicit:
         f.write('\n// User-defined parameters\n')
@@ -197,7 +199,7 @@ def write_workspace(f, explicit, user_p_names, user_p_writable, user_p_flat, var
         write_struct(f, user_p_names, user_casts, ['&'+name for name in user_p_names], 'CPG_Params', 'CPG_Params_t')
     else:
         f.write('\n// Sparse mappings from user-defined to OSQP-accepted parameters\n')
-        for name, mapping in zip(OSQP_p_ids, OSQP_mappings):
+        for name, mapping in zip(osqp_p_ids, osqp_mappings):
             if mapping.nnz > 0:
                 osqp_utils.write_mat(f, csc_to_dict(mapping), 'OSQP_%s_map' % name)
 
@@ -210,7 +212,7 @@ def write_workspace(f, explicit, user_p_names, user_p_writable, user_p_flat, var
     results_cast = ['']
 
     f.write('\n// User-defined variables\n')
-    for (name, value), symm in zip(var_init.items(), var_symm):
+    for (name, value), symm in zip(var_init.items(), var_symmetric):
         results_cast.append('(c_float *) ')
         if symm:
             osqp_utils.write_vec(f, value.flatten(order='F'), name, 'c_float')
@@ -218,7 +220,7 @@ def write_workspace(f, explicit, user_p_names, user_p_writable, user_p_flat, var
     f.write('\n// Struct containing CPG objective value and solution\n')
     CPG_Result_fields = ['objective_value'] + list(var_init.keys())
     CPG_Result_values = ['&objective_value']
-    for (name, symm, offset) in zip(var_init.keys(), var_symm, var_offsets):
+    for (name, symm, offset) in zip(var_init.keys(), var_symmetric, var_offsets):
         if symm:
             CPG_Result_values.append('&' + name)
         else:
@@ -228,13 +230,14 @@ def write_workspace(f, explicit, user_p_names, user_p_writable, user_p_flat, var
     # Boolean struct for outdated parameter flags
     f.write('\n// Struct containing flags for outdated OSQP parameters\n')
     f.write('OSQP_Outdated_t OSQP_Outdated = {\n')
-    for OSQP_p_id in OSQP_p_ids:
+    for OSQP_p_id in osqp_p_ids:
         f.write('.%s = 0,\n' % OSQP_p_id)
 
     f.write('};\n')
 
 
-def write_workspace_extern(f, explicit, user_p_names, user_p_writable, user_p_flat, var_init, OSQP_p_ids, OSQP_p, OSQP_maps, var_symm):
+def write_workspace_prot(f, explicit, user_p_names, user_p_writable, user_p_flat, var_init, osqp_p_ids, osqp_p,
+                         osqp_maps, var_symmetric):
     """"
     Write workspace initialization to file
     """
@@ -259,8 +262,8 @@ def write_workspace_extern(f, explicit, user_p_names, user_p_writable, user_p_fl
     f.write('#endif // ifndef CPG_TYPES_H\n')
 
     f.write('\n// Parameters accepted by OSQP\n')
-    for OSQP_p_id in OSQP_p_ids:
-        write_osqp_extern(f, OSQP_p[OSQP_p_id], OSQP_p_id)
+    for OSQP_p_id in osqp_p_ids:
+        write_osqp_extern(f, osqp_p[OSQP_p_id], OSQP_p_id)
 
     f.write('\n// Struct containing parameters accepted by OSQP\n')
     write_struct_extern(f, 'OSQP_Params', 'OSQP_Params_t')
@@ -277,7 +280,7 @@ def write_workspace_extern(f, explicit, user_p_names, user_p_writable, user_p_fl
         write_struct_extern(f, 'CPG_Params', 'CPG_Params_t')
     else:
         f.write('\n// Sparse mappings from user-defined to OSQP-accepted parameters\n')
-        for name, mapping in zip(OSQP_p_ids, OSQP_maps):
+        for name, mapping in zip(osqp_p_ids, osqp_maps):
             if mapping.nnz > 0:
                 osqp_utils.write_mat_extern(f, csc_to_dict(mapping), 'OSQP_%s_map' % name)
 
@@ -288,7 +291,7 @@ def write_workspace_extern(f, explicit, user_p_names, user_p_writable, user_p_fl
     f.write('extern c_float objective_value;\n')
 
     f.write('\n// User-defined variables\n')
-    for (name, value), symm in zip(var_init.items(), var_symm):
+    for (name, value), symm in zip(var_init.items(), var_symmetric):
         if symm:
             osqp_utils.write_vec_extern(f, value.flatten(order='F'), name, 'c_float')
 
@@ -296,8 +299,9 @@ def write_workspace_extern(f, explicit, user_p_names, user_p_writable, user_p_fl
     write_struct_extern(f, 'CPG_Result', 'CPG_Result_t')
 
 
-def write_solve(f, explicit, OSQP_p_ids, mappings, user_p_col_to_name, user_p_sizes, var_id_to_indices, is_maximization,
-                user_p_to_OSQP_outdated, OSQP_settings_names_to_types, var_symm, OSQP_p_to_changes):
+def write_solve_def(f, explicit, osqp_p_ids, mappings, user_p_col_to_name, user_p_sizes, var_id_to_indices,
+                    is_maximization, user_p_to_osqp_outdated, osqp_settings_names_to_types, var_symm,
+                    osqp_p_to_changes):
     """
     Write parameter initialization function to file
     """
@@ -310,7 +314,7 @@ def write_solve(f, explicit, OSQP_p_ids, mappings, user_p_col_to_name, user_p_si
 
     f.write('// update user-defined parameters\n')
     if explicit:
-        for (user_p_name, OSQP_outdated_names), user_p_size in zip(user_p_to_OSQP_outdated.items(), user_p_sizes):
+        for (user_p_name, OSQP_outdated_names), user_p_size in zip(user_p_to_osqp_outdated.items(), user_p_sizes):
             if user_p_size == 1:
                 f.write('void update_%s(c_float val){\n' % user_p_name)
                 f.write('*CPG_Params.%s = val;\n' % user_p_name)
@@ -321,7 +325,8 @@ def write_solve(f, explicit, OSQP_p_ids, mappings, user_p_col_to_name, user_p_si
                 f.write('OSQP_Outdated.%s = 1;\n' % OSQP_outdated_name)
             f.write('}\n')
     else:
-        for base_col, (user_p_name, OSQP_outdated_names), user_p_size in zip(base_cols, user_p_to_OSQP_outdated.items(), user_p_sizes):
+        for base_col, (user_p_name, OSQP_outdated_names), user_p_size in zip(base_cols, user_p_to_osqp_outdated.items(),
+                                                                             user_p_sizes):
             if user_p_size == 1:
                 f.write('void update_%s(c_float val){\n' % user_p_name)
                 f.write('CPG_Params_Vec[%d] = val;\n' % base_col)
@@ -334,7 +339,7 @@ def write_solve(f, explicit, OSQP_p_ids, mappings, user_p_col_to_name, user_p_si
 
     f.write('\n// map user-defined to OSQP-accepted parameters\n')
 
-    for OSQP_name, mapping in zip(OSQP_p_ids, mappings):
+    for OSQP_name, mapping in zip(osqp_p_ids, mappings):
         if mapping.nnz > 0:
             f.write('void canonicalize_OSQP_%s(){\n' % OSQP_name)
             if OSQP_name in ['P', 'A']:
@@ -369,7 +374,7 @@ def write_solve(f, explicit, OSQP_p_ids, mappings, user_p_col_to_name, user_p_si
     f.write('// perform one ASA sequence to solve a problem instance\n')
     f.write('void solve(){\n')
 
-    if OSQP_p_to_changes['P'] and OSQP_p_to_changes['A']:
+    if osqp_p_to_changes['P'] and osqp_p_to_changes['A']:
         f.write('if (OSQP_Outdated.P && OSQP_Outdated.A) {\n')
         f.write('canonicalize_OSQP_P();\n')
         f.write('canonicalize_OSQP_A();\n')
@@ -382,29 +387,29 @@ def write_solve(f, explicit, OSQP_p_ids, mappings, user_p_col_to_name, user_p_si
         f.write('osqp_update_A(&workspace, OSQP_Params.A->x, 0, 0);\n')
         f.write('}\n')
     else:
-        if OSQP_p_to_changes['P']:
+        if osqp_p_to_changes['P']:
             f.write('if (OSQP_Outdated.P) {\n')
             f.write('canonicalize_OSQP_P();\n')
             f.write('osqp_update_P(&workspace, OSQP_Params.P->x, 0, 0);\n')
             f.write('}\n')
-        if OSQP_p_to_changes['A']:
+        if osqp_p_to_changes['A']:
             f.write('if (OSQP_Outdated.A) {\n')
             f.write('canonicalize_OSQP_A();\n')
             f.write('osqp_update_A(&workspace, OSQP_Params.A->x, 0, 0);\n')
             f.write('}\n')
 
-    if OSQP_p_to_changes['q']:
+    if osqp_p_to_changes['q']:
         f.write('if (OSQP_Outdated.q) {\n')
         f.write('canonicalize_OSQP_q();\n')
         f.write('osqp_update_lin_cost(&workspace, OSQP_Params.q);\n')
         f.write('}\n')
 
-    if OSQP_p_to_changes['d']:
+    if osqp_p_to_changes['d']:
         f.write('if (OSQP_Outdated.d) {\n')
         f.write('canonicalize_OSQP_d();\n')
         f.write('}\n')
 
-    if OSQP_p_to_changes['l'] and OSQP_p_to_changes['u']:
+    if osqp_p_to_changes['l'] and osqp_p_to_changes['u']:
         f.write('if (OSQP_Outdated.l && OSQP_Outdated.u) {\n')
         f.write('canonicalize_OSQP_l();\n')
         f.write('canonicalize_OSQP_u();\n')
@@ -417,12 +422,12 @@ def write_solve(f, explicit, OSQP_p_ids, mappings, user_p_col_to_name, user_p_si
         f.write('osqp_update_upper_bound(&workspace, OSQP_Params.u);\n')
         f.write('}\n')
     else:
-        if OSQP_p_to_changes['l']:
+        if osqp_p_to_changes['l']:
             f.write('if (OSQP_Outdated.l) {\n')
             f.write('canonicalize_OSQP_l();\n')
             f.write('osqp_update_lower_bound(&workspace, OSQP_Params.l);\n')
             f.write('}\n')
-        if OSQP_p_to_changes['u']:
+        if osqp_p_to_changes['u']:
             f.write('if (OSQP_Outdated.u) {\n')
             f.write('canonicalize_OSQP_u();\n')
             f.write('osqp_update_upper_bound(&workspace, OSQP_Params.u);\n')
@@ -432,7 +437,7 @@ def write_solve(f, explicit, OSQP_p_ids, mappings, user_p_col_to_name, user_p_si
     f.write('retrieve_value();\n')
     f.write('retrieve_solution();\n')
 
-    for OSQP_p_id in OSQP_p_ids:
+    for OSQP_p_id in osqp_p_ids:
         f.write('OSQP_Outdated.%s = 0;\n' % OSQP_p_id)
 
     f.write('}\n\n')
@@ -441,13 +446,13 @@ def write_solve(f, explicit, OSQP_p_ids, mappings, user_p_col_to_name, user_p_si
     f.write('void set_OSQP_default_settings(){\n')
     f.write('osqp_set_default_settings(&settings);\n')
     f.write('}\n')
-    for name, typ in OSQP_settings_names_to_types.items():
+    for name, typ in osqp_settings_names_to_types.items():
         f.write('void set_OSQP_%s(%s %s_new){\n' % (name, typ, name))
         f.write('osqp_update_%s(&workspace, %s_new);\n' % (name, name))
         f.write('}\n')
 
 
-def write_solve_extern(f, user_p_name_to_size, OSQP_settings_names_to_types):
+def write_solve_prot(f, user_p_name_to_size, osqp_settings_names_to_types):
     """
     Write function declarations to file
     """
@@ -460,11 +465,11 @@ def write_solve_extern(f, user_p_name_to_size, OSQP_settings_names_to_types):
 
     f.write('\n// update OSQP settings\n')
     f.write('extern void set_OSQP_default_settings();\n')
-    for name, typ in OSQP_settings_names_to_types.items():
+    for name, typ in osqp_settings_names_to_types.items():
         f.write('extern void set_OSQP_%s(%s %s_new);\n' % (name, typ, name))
 
 
-def write_main(f, user_p_writable, var_name_to_size):
+def write_example_def(f, user_p_writable, var_name_to_size):
     """
     Write main function to file
     """
@@ -499,7 +504,7 @@ def write_main(f, user_p_writable, var_name_to_size):
     f.write('}\n')
 
 
-def write_OSQP_CMakeLists(f):
+def write_osqp_CMakeLists(f):
     """
     Pass sources to parent scope in OSQP_code/CMakeLists.txt
     """
@@ -507,13 +512,14 @@ def write_OSQP_CMakeLists(f):
     f.write('\nset(osqp_src "${osqp_src}" PARENT_SCOPE)')
 
 
-def write_module(f, user_p_name_to_size, var_name_to_size, OSQP_settings_names, problem_name):
+def write_module(f, user_p_name_to_size, var_name_to_size, osqp_settings_names, problem_name):
     """
     Write c++ file for pbind11 wrapper
     """
 
     # cpp function that maps parameters to results
-    f.write('CPG_Result_%s_cpp_t solve_cpp(struct CPG_Updated_%s_cpp_t& CPG_Updated_cpp, struct CPG_Params_%s_cpp_t& CPG_Params_cpp){\n\n'
+    f.write('CPG_Result_%s_cpp_t solve_cpp(struct CPG_Updated_%s_cpp_t& CPG_Updated_cpp, '
+            'struct CPG_Params_%s_cpp_t& CPG_Params_cpp){\n\n'
             % (problem_name, problem_name, problem_name))
 
     f.write('    // pass changed user-defined parameter values to the solver\n')
@@ -592,13 +598,13 @@ def write_module(f, user_p_name_to_size, var_name_to_size, OSQP_settings_names, 
     f.write('    m.def("solve", &solve_cpp);\n\n')
 
     f.write('    m.def("set_OSQP_default_settings", &set_OSQP_default_settings);\n')
-    for name in OSQP_settings_names:
+    for name in osqp_settings_names:
         f.write('    m.def("set_OSQP_%s", &set_OSQP_%s);\n' % (name, name))
 
     f.write('\n}')
 
 
-def write_module_extern(f, user_p_name_to_size, var_name_to_size, problem_name):
+def write_module_prot(f, user_p_name_to_size, var_name_to_size, problem_name):
     """
     Write c++ file for pbind11 wrapper
     """
@@ -639,7 +645,8 @@ def write_module_extern(f, user_p_name_to_size, var_name_to_size, problem_name):
     f.write('};\n\n')
 
     # cpp function that maps parameters to results
-    f.write('CPG_Result_%s_cpp_t solve_cpp(struct CPG_Updated_%s_cpp_t& CPG_Updated_cpp, struct CPG_Params_%s_cpp_t& CPG_Params_cpp);\n'
+    f.write('CPG_Result_%s_cpp_t solve_cpp(struct CPG_Updated_%s_cpp_t& CPG_Updated_cpp, '
+            'struct CPG_Params_%s_cpp_t& CPG_Params_cpp);\n'
             % (problem_name, problem_name, problem_name))
 
 
@@ -685,7 +692,8 @@ def write_method(f, code_dir, user_p_name_to_size, var_name_to_shape):
 
     for name, shape in var_name_to_shape.items():
         if len(shape) == 2:
-            f.write('    prob.var_dict[\'%s\'].value = np.array(res.%s).reshape((%d, %d), order=\'F\')\n' % (name, name, shape[0], shape[1]))
+            f.write('    prob.var_dict[\'%s\'].value = np.array(res.%s).reshape((%d, %d), order=\'F\')\n' %
+                    (name, name, shape[0], shape[1]))
         else:
             f.write('    prob.var_dict[\'%s\'].value = np.array(res.%s)\n' % (name, name))
 
@@ -702,7 +710,8 @@ def write_method(f, code_dir, user_p_name_to_size, var_name_to_shape):
     f.write('                             \'pri_res\': res.cpg_info.pri_res,\n')
     f.write('                             \'dua_res\': res.cpg_info.dua_res,\n')
     f.write('                             \'ASA_proc_time\': res.cpg_info.ASA_proc_time}\n')
-    f.write('    attr = {\'solve_time\': t1-t0, \'solver_specific_stats\': solver_specific_stats, \'num_iters\': res.cpg_info.iter}\n')
+    f.write('    attr = {\'solve_time\': t1-t0, \'solver_specific_stats\': solver_specific_stats, '
+            '\'num_iters\': res.cpg_info.iter}\n')
     f.write('    prob._solution = Solution(prob.status, prob.value, primal_vars, dual_vars, attr)\n')
     f.write('    results_dict = {\'solver_specific_stats\': solver_specific_stats,\n')
     f.write('                    \'num_iters\': res.cpg_info.iter,\n')
@@ -712,7 +721,8 @@ def write_method(f, code_dir, user_p_name_to_size, var_name_to_shape):
     f.write('    return prob.value\n')
 
 
-def replace_html(code_dir, explicit, text, user_p_name_to_size, user_p_writable, var_name_to_size, user_p_total_size):
+def replace_html_data(code_dir, explicit, text, user_p_name_to_size, user_p_writable, var_name_to_size,
+                      user_p_total_size):
     """
     Replace placeholder strings in html documentation file
     """
