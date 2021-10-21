@@ -14,7 +14,7 @@ from subprocess import call
 from platform import system
 
 
-def generate_code(problem, code_dir='CPG_code', explicit=True, problem_name=''):
+def generate_code(problem, code_dir='CPG_code', explicit=False, problem_name=''):
     """
     Generate C code for CVXPY problem and optionally compile example program
     """
