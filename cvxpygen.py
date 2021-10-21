@@ -14,7 +14,7 @@ from subprocess import call
 from platform import system
 
 
-def generate_code(problem, code_dir='CPG_code', explicit=False, problem_name=''):
+def generate_code(problem, code_dir='CPG_code', compile_module=True, explicit=False, problem_name=''):
     """
     Generate C code for CVXPY problem and optionally compile example program
     """
@@ -271,12 +271,13 @@ def generate_code(problem, code_dir='CPG_code', explicit=False, problem_name='')
     with open(os.path.join(code_dir, 'problem.pickle'), 'wb') as f:
         pickle.dump(cp.Problem(problem.objective, problem.constraints), f)
 
-    # create python module
-    sys.stdout.write("Compiling CPG Python wrapper... \t\t\t\t\t")
-    pdir = os.getcwd()
-    os.chdir(code_dir)
-    call([sys.executable, 'setup.py', '--quiet', 'build_ext', '--inplace'])
-    os.chdir(pdir)
+    # compile python module
+    if compile_module:
+        sys.stdout.write("Compiling CPG Python wrapper... \t\t\t\t\t")
+        pdir = os.getcwd()
+        os.chdir(code_dir)
+        call([sys.executable, 'setup.py', '--quiet', 'build_ext', '--inplace'])
+        os.chdir(pdir)
 
     # html documentation file
     with open(os.path.join(code_dir, 'README.html'), 'r') as f:
