@@ -24,7 +24,7 @@ class get_pybind_include(object):
 
 
 # Add parameters to cmake_args and define_macros
-cmake_args = ['-DCMAKE_POSITION_INDEPENDENT_CODE=ON']
+cmake_args = ['-DCMAKE_POSITION_INDEPENDENT_CODE=ON', '-Wno-dev']
 if system() == 'Windows':
     cmake_args += ['-G', 'Visual Studio 15 2017']
     if sys.maxsize // 2 ** 32 > 0:
