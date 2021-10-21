@@ -163,6 +163,8 @@ void set_OSQP_&lt;setting_name&gt;(&lt;setting_type&gt; &lt;setting_value&gt;);
 
   <h3>Using Generated Code</h3>
 
+  <h4>Python</h4>
+
   <p>
       To use the python module, run exemplarily,
   </p>
@@ -184,6 +186,8 @@ print(prob.var_dict['&lt;v_name&gt;'].value)
   <code>obj</code> and solution in terms of variable <code>&lt;v_name&gt;</code> can be inspected.
   </p>
 
+  <h4>Example Executable</h4>
+
   <p>
     To compile the example executable on a Unix platform, run the following:
   </p>
@@ -199,6 +203,31 @@ make
     <pre><code>
 $CODEDIR/c/build/cpg_example
     </code></pre>
+
+  <h4>Existing Project</h4>
+
+  <p>
+    To use the generated code in an existing <code>CMake</code> project, copy the following to a subdirectory <code>&lt;subdir&gt;</code>
+      of your project:
+  </p>
+    <pre><code>
+$CODEDIR/c/CMakeLists.txt
+$CODEDIR/c/src/
+$CODEDIR/c/include/
+$CODEDIR/c/OSQP_code/
+    </code></pre>
+
+  <p>
+    In your top-level <code>CMakeLists.txt</code>, add the subdirectory via
+  </p>
+    <pre><code>
+add_subdirectory(&lt;subdir&gt;)
+include_directories(&lt;existing_dirs&gt; &lt;subdir&gt;/include &lt;subdir&gt;/OSQP_code/include)
+    </code></pre>
+  <p>
+      where <code>&lt;existing_dirs&gt;</code> is your existing include directories, and add <code>${cpg_src}</code>
+      to all targets that use the generated code.
+  </p>
 
 </body>
 
