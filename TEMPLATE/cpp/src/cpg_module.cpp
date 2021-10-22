@@ -6,7 +6,7 @@
 extern "C" {
     #include "include/cpg_workspace.h"
     #include "include/cpg_solve.h"
-    #include "OSQP_code/include/workspace.h"
+    #include "solver_code/include/workspace.h"
 }
 
 namespace py = pybind11;

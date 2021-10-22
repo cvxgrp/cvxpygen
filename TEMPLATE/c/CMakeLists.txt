@@ -10,9 +10,9 @@ set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -g")
 set(CMAKE_C_STANDARD_LIBRARIES "${CMAKE_C_STANDARD_LIBRARIES} -lm")
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)  # -fPIC
 
-include_directories (include OSQP_code/include)
+include_directories (include solver_code/include)
 
-add_subdirectory (OSQP_code)
+add_subdirectory (solver_code)
 
 list (APPEND
       cpg_src
