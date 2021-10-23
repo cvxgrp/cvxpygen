@@ -21,19 +21,18 @@ def generate_code(problem, code_dir='CPG_code', compile_module=True, explicit=Fa
 
     sys.stdout.write('Generating code with CVXPYGEN ...\n')
 
+    current_directory = os.path.dirname(os.path.realpath(__file__))
+
     # copy TEMPLATE
     if os.path.isdir(code_dir):
         shutil.rmtree(code_dir)
-    shutil.copytree(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'TEMPLATE'), code_dir)
+    shutil.copytree(os.path.join(current_directory, 'TEMPLATE'), code_dir)
 
     # get problem data
     data, solving_chain, inverse_data = problem.get_problem_data(solver=None, gp=False, enforce_dpp=True,
                                                                  verbose=False)
 
     solver_name = solving_chain.solver.name()
-    n_var = data['n_var']
-    n_eq = data['n_eq']
-    n_ineq = data['n_ineq']
     p_prob = data['param_prob']
 
     # get variable information
@@ -93,11 +92,16 @@ def generate_code(problem, code_dir='CPG_code', compile_module=True, explicit=Fa
         return np.array(user_p_id_to_param[user_p_id].value)
     user_p_flat = cI.get_parameter_vector(user_p_total_size, user_p_id_to_col, user_p_id_to_size, user_p_value)
 
-    canon_p = dict()
+    canon_p = {}
     canon_mappings = []
     canon_p_to_changes = {}
+    canon_constants = {}
 
     if solver_name == 'OSQP':
+
+        n_var = data['n_var']
+        n_eq = data['n_eq']
+        n_ineq = data['n_ineq']
 
         # extract csc values for individual osqp parameters (Alu -> A, lu)
         (indices_P, indptr_P, shape_P) = p_prob.problem_data_index_P
@@ -190,7 +194,7 @@ def generate_code(problem, code_dir='CPG_code', compile_module=True, explicit=Fa
                                   osqp_p_id_to_col_lu[osqp_name] + osqp_p_id_to_size_lu[osqp_name])
                 mapping = MAP[row_slice, :]
             canon_mappings.append(mapping)
-            canon_p_to_changes[osqp_name] = mapping.nnz > 0
+            canon_p_to_changes[osqp_name] = mapping[:, :-1].nnz > 0
 
         # OSQP codegen
         myOSQP = osqp.OSQP()
@@ -206,12 +210,141 @@ def generate_code(problem, code_dir='CPG_code', compile_module=True, explicit=Fa
 
     elif solver_name == 'ECOS':
 
-        adjacency = []
-        canon_p_ids = []
+        n_var = p_prob.x.size
+        n_eq = p_prob.cone_dims.zero
+        n_ineq = data['G'].shape[0]
+
+        canon_constants['n'] = n_var
+        canon_constants['m'] = n_ineq
+        canon_constants['p'] = n_eq
+        canon_constants['l'] = p_prob.cone_dims.nonneg
+        canon_constants['n_cones'] = len(p_prob.cone_dims.soc)
+        canon_constants['q'] = np.array(p_prob.cone_dims.soc)
+        canon_constants['e'] = p_prob.cone_dims.exp
+
+        # affine mapping for each OSQP parameter
+        canon_p_ids = ['c', 'd', 'A', 'b', 'G', 'h']
+        adjacency = np.zeros(shape=(len(canon_p_ids), user_p_num), dtype=bool)
+
+        indices_AGbh, indptr_AGbh, shape_AGbh = p_prob.problem_data_index
+        n_data_AGbh = len(indices_AGbh)
+        n_data_bh = indptr_AGbh[-1] - indptr_AGbh[-2]
+        n_data_AG = n_data_AGbh - n_data_bh
+
+        mapping_rows_eq = np.nonzero(indices_AGbh < n_eq)[0]
+        mapping_rows_ineq = np.nonzero(indices_AGbh >= n_eq)[0]
+
+        for i, p_id in enumerate(canon_p_ids):
+
+            mapping_rows = []
+            indices = []
+            indptr_original = []
+            shape = ()
+
+            if p_id == 'c':
+                mapping = p_prob.c[:-1]
+            elif p_id == 'd':
+                mapping = p_prob.c[-1]
+            elif p_id == 'A':
+                mapping_rows = mapping_rows_eq[mapping_rows_eq < n_data_AG]
+                shape = (n_eq, n_var)
+            elif p_id == 'G':
+                mapping_rows = mapping_rows_ineq[mapping_rows_ineq < n_data_AG]
+                shape = (n_ineq, n_var)
+            elif p_id == 'b':
+                mapping_rows = mapping_rows_eq[mapping_rows_eq >= n_data_AG]
+                shape = (n_eq, 1)
+            elif p_id == 'h':
+                mapping_rows = mapping_rows_ineq[mapping_rows_ineq >= n_data_AG]
+                shape = (n_ineq, 1)
+            else:
+                raise ValueError('Unknown ECOS parameter name: "%s"' % p_id)
+
+            if p_id in ['A', 'b']:
+                indices = indices_AGbh[mapping_rows]
+            elif p_id in ['G', 'h']:
+                indices = indices_AGbh[mapping_rows] - n_eq
+
+            if p_id in ['A', 'G']:
+                mapping = -p_prob.reduced_A[mapping_rows]
+                indptr_original = indptr_AGbh[:-1]
+            elif p_id in ['b', 'h']:
+                mapping_to_sparse = p_prob.reduced_A[mapping_rows]
+                mapping_to_dense = sparse.lil_matrix(np.zeros((shape[0], mapping_to_sparse.shape[1])))
+                for i_data in range(mapping_to_sparse.shape[0]):
+                    mapping_to_dense[indices[i_data], :] = mapping_to_sparse[i_data, :]
+                mapping = sparse.csc_matrix(mapping_to_dense)
+
+            canon_mappings.append(mapping.tocsr())
+            canon_p_to_changes[p_id] = mapping[:, :-1].nnz > 0
+
+            for j in range(user_p_num):
+                column_slice = slice(user_p_id_to_col[user_p_ids[j]], user_p_id_to_col[user_p_ids[j + 1]])
+                if mapping[:, column_slice].nnz > 0:
+                    adjacency[i, j] = True
+
+            canon_p_data = mapping @ user_p_flat
+
+            if p_id.isupper():
+                indptr = 0 * indptr_original
+                for r in mapping_rows:
+                    for c in range(shape[1]):
+                        if indptr_original[c] <= r < indptr_original[c + 1]:
+                            indptr[c + 1:] += 1
+                            break
+                csc_mat = sparse.csc_matrix((canon_p_data, indices, indptr), shape=shape)
+                if p_id in ['A', 'G']:
+                    canon_p[p_id] = utils.csc_to_dict(csc_mat)
+            else:
+                canon_p[p_id] = canon_p_data
+
         canon_settings_names = None
         canon_settings_names_to_types = None
 
         # copy sources
+        solver_code_dir = os.path.join(code_dir, 'c', 'solver_code')
+        if os.path.isdir(solver_code_dir):
+            shutil.rmtree(solver_code_dir)
+        os.mkdir(solver_code_dir)
+        dirs_to_copy = ['src', 'include', 'external', 'ecos_bb']
+        for dtc in dirs_to_copy:
+            shutil.copytree(os.path.join(current_directory, 'solver', 'ecos', dtc), os.path.join(solver_code_dir, dtc))
+        shutil.copyfile(os.path.join(current_directory, 'solver', 'ecos', 'CMakeLists.txt'),
+                        os.path.join(solver_code_dir, 'CMakeLists.txt'))
+
+        # adjust top-level CMakeLists.txt
+        with open(os.path.join(code_dir, 'c', 'CMakeLists.txt'), 'r') as f:
+            CMakeLists_data = f.read()
+        indent = ' ' * 21
+        CMakeLists_data = CMakeLists_data.replace('include solver_code/include',
+                                                  'include\n' +
+                                                  indent + 'solver_code/include\n' +
+                                                  indent + 'solver_code/external/SuiteSparse_config\n' +
+                                                  indent + 'solver_code/external/amd/include\n' +
+                                                  indent + 'solver_code/external/ldl/include')
+        with open(os.path.join(code_dir, 'c', 'CMakeLists.txt'), 'w') as f:
+            f.write(CMakeLists_data)
+
+        # remove library target from ECOS CMakeLists.txt
+        with open(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'), 'r') as f:
+            lines = f.readlines()
+        with open(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'), 'w') as f:
+            for line in lines:
+                if '# ECOS library' in line:
+                    break
+                f.write(line)
+
+        # adjust setup.py
+        with open(os.path.join(code_dir, 'setup.py'), 'r') as f:
+            setup_text = f.read()
+        indent = ' ' * 30
+        setup_text = setup_text.replace("os.path.join('c', 'solver_code', 'include'),",
+                                        "os.path.join('c', 'solver_code', 'include'),\n" +
+                                        indent+"os.path.join('c', 'solver_code', 'external', 'SuiteSparse_config'),\n" +
+                                        indent+"os.path.join('c', 'solver_code', 'external', 'amd', 'include'),\n" +
+                                        indent+"os.path.join('c', 'solver_code', 'external', 'ldl', 'include'),")
+        with open(os.path.join(code_dir, 'setup.py'), 'w') as f:
+            f.write(setup_text)
 
     else:
         raise ValueError("Problem class cannot be addressed by the OSQP or ECOS solver!")
@@ -222,12 +355,12 @@ def generate_code(problem, code_dir='CPG_code', compile_module=True, explicit=Fa
     # 'workspace' prototypes
     with open(os.path.join(code_dir, 'c', 'include', 'cpg_workspace.h'), 'a') as f:
         utils.write_workspace_prot(f, solver_name, explicit, user_p_names, user_p_writable, user_p_flat, var_init,
-                                   canon_p_ids, canon_p, canon_mappings, var_symmetric)
+                                   canon_p_ids, canon_p, canon_mappings, var_symmetric, canon_constants)
 
     # 'workspace' definitions
     with open(os.path.join(code_dir, 'c', 'src', 'cpg_workspace.c'), 'a') as f:
         utils.write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable, user_p_flat, var_init,
-                                  canon_p_ids, canon_p, canon_mappings, var_symmetric, var_offsets)
+                                  canon_p_ids, canon_p, canon_mappings, var_symmetric, var_offsets, canon_constants)
 
     # 'solve' prototypes
     with open(os.path.join(code_dir, 'c', 'include', 'cpg_solve.h'), 'a') as f:
@@ -238,7 +371,7 @@ def generate_code(problem, code_dir='CPG_code', compile_module=True, explicit=Fa
         utils.write_solve_def(f, solver_name, explicit, canon_p_ids, canon_mappings, user_p_col_to_name,
                               list(user_p_id_to_size.values()), var_name_to_indices,
                               type(problem.objective) == cp.problems.objective.Maximize, user_p_to_canon_outdated,
-                              canon_settings_names_to_types, var_symmetric, canon_p_to_changes)
+                              canon_settings_names_to_types, var_symmetric, canon_p_to_changes, n_var, canon_constants)
 
     # 'example' definitions
     with open(os.path.join(code_dir, 'c', 'src', 'cpg_example.c'), 'a') as f:

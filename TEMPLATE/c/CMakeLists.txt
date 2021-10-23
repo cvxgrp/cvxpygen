@@ -15,14 +15,22 @@ include_directories (include solver_code/include)
 add_subdirectory (solver_code)
 
 list (APPEND
+      cpg_head
+      ${CMAKE_CURRENT_SOURCE_DIR}/include/cpg_workspace.h
+      ${CMAKE_CURRENT_SOURCE_DIR}/include/cpg_solve.h
+      ${solver_head}
+)
+
+list (APPEND
       cpg_src
       ${CMAKE_CURRENT_SOURCE_DIR}/src/cpg_workspace.c
       ${CMAKE_CURRENT_SOURCE_DIR}/src/cpg_solve.c
-      ${osqp_src}
+      ${solver_src}
 )
 
-add_executable (cpg_example src/cpg_example.c ${cpg_src})
+add_executable (cpg_example ${cpg_head} src/cpg_example.c ${cpg_src})
 
-add_library(cpg STATIC ${cpg_src})
+add_library(cpg STATIC ${cpg_head} ${cpg_src})
 
+set(cpg_head "${cpg_head}" PARENT_SCOPE)
 set(cpg_src "${cpg_src}" PARENT_SCOPE)

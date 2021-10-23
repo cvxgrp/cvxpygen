@@ -3,13 +3,3 @@
 #include <ctime>
 #include "cpg_module.hpp"
 
-extern "C" {
-    #include "include/cpg_workspace.h"
-    #include "include/cpg_solve.h"
-    #include "solver_code/include/workspace.h"
-}
-
-namespace py = pybind11;
-
-static int i;
-
