@@ -230,6 +230,8 @@ def write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable,
         osqp_utils.write_vec(f, canon_constants['q'], 'ecos_q', 'c_int')
         f.write('\n// ECOS workspace\n')
         f.write('pwork* ecos_workspace = 0;\n')
+        f.write('\n// ECOS exit flag\n')
+        f.write('c_int ecos_flag = -99;\n')
 
     if explicit:
         f.write('\n// User-defined parameters\n')
@@ -357,6 +359,8 @@ def write_workspace_prot(f, solver_name, explicit, user_p_names, user_p_writable
         osqp_utils.write_vec_extern(f, canon_constants['q'], 'ecos_q', 'c_int')
         f.write('\n// ECOS workspace\n')
         f.write('extern pwork* ecos_workspace;\n')
+        f.write('\n// ECOS exit flag\n')
+        f.write('extern c_int ecos_flag;\n')
 
     f.write('\n// Struct containing flags for outdated canonical parameters\n')
     f.write('extern Canon_Outdated_t Canon_Outdated;\n')
@@ -470,25 +474,18 @@ def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_
     f.write('void retrieve_value(){\n')
 
     if solver_name == 'OSQP':
-        if is_maximization:
-            f.write('objective_value = -(workspace.info->obj_val + *Canon_Params.d);\n')
-        else:
-            f.write('objective_value = workspace.info->obj_val + *Canon_Params.d;\n')
+        obj_str = 'workspace.info->obj_val'
         sol_str = 'workspace.solution->x'
     elif solver_name == 'ECOS':
-        if is_maximization:
-            f.write('objective_value = -*Canon_Params.d;\n')
-            f.write('for (i = 0; i < %d; i++) {\n' % n_var)
-            f.write('objective_value -= ecos_workspace->c[i]*ecos_workspace->x[i];\n')
-            f.write('}\n')
-        else:
-            f.write('objective_value = *Canon_Params.d;\n')
-            f.write('for (i = 0; i < %d; i++) {\n' % n_var)
-            f.write('objective_value += ecos_workspace->c[i]*ecos_workspace->x[i];\n')
-            f.write('}\n')
+        obj_str = 'ecos_workspace->info->pcost'
         sol_str = 'ecos_workspace->x'
     else:
         raise ValueError("Only OSQP and ECOS are supported!")
+
+    if is_maximization:
+        f.write('objective_value = -(%s + *Canon_Params.d);\n' % obj_str)
+    else:
+        f.write('objective_value = %s + *Canon_Params.d;\n' % obj_str)
 
     f.write('}\n\n')
 
@@ -581,7 +578,7 @@ def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_
         f.write('osqp_solve(&workspace);\n')
     elif solver_name == 'ECOS':
         write_ecos_setup(f, canon_constants)
-        f.write('ECOS_solve(ecos_workspace);\n')
+        f.write('ecos_flag = ECOS_solve(ecos_workspace);\n')
 
     f.write('retrieve_value();\n')
     f.write('retrieve_solution();\n')
@@ -688,7 +685,7 @@ def write_canon_CMakeLists(f, solver_name):
         f.write('\nset(solver_src "${ecos_sources}" PARENT_SCOPE)')
 
 
-def write_module(f, solver_name, user_p_name_to_size, var_name_to_size, canon_settings_names, problem_name):
+def write_module_def(f, solver_name, user_p_name_to_size, var_name_to_size, canon_settings_names, problem_name):
     """
     Write c++ file for pbind11 wrapper
     """
@@ -727,12 +724,17 @@ def write_module(f, solver_name, user_p_name_to_size, var_name_to_size, canon_se
     # arrange and return results
     f.write('    // arrange and return results\n')
     f.write('    CPG_Info_%s_cpp_t CPG_Info_cpp {};\n' % problem_name)
+    f.write('    CPG_Info_cpp.obj_val = objective_value;\n')
     if solver_name == 'OSQP':
-        f.write('    CPG_Info_cpp.obj_val = objective_value;\n')
         f.write('    CPG_Info_cpp.iter = workspace.info->iter;\n')
         f.write('    CPG_Info_cpp.status = workspace.info->status;\n')
         f.write('    CPG_Info_cpp.pri_res = workspace.info->pri_res;\n')
         f.write('    CPG_Info_cpp.dua_res = workspace.info->dua_res;\n')
+    elif solver_name == 'ECOS':
+        f.write('    CPG_Info_cpp.iter = ecos_workspace->info->iter;\n')
+        f.write('    CPG_Info_cpp.status = ecos_flag;\n')
+        f.write('    CPG_Info_cpp.pri_res = ecos_workspace->info->pres;\n')
+        f.write('    CPG_Info_cpp.dua_res = ecos_workspace->info->dres;\n')
     f.write('    CPG_Info_cpp.ASA_proc_time = 1000.0 * (ASA_end-ASA_start) / CLOCKS_PER_SEC;\n')
 
     f.write('    CPG_Result_%s_cpp_t CPG_Result_cpp {};\n' % problem_name)
@@ -766,12 +768,11 @@ def write_module(f, solver_name, user_p_name_to_size, var_name_to_size, canon_se
 
     f.write('    py::class_<CPG_Info_%s_cpp_t>(m, "cpg_info")\n' % problem_name)
     f.write('            .def(py::init<>())\n')
-    if solver_name == 'OSQP':
-        f.write('            .def_readwrite("obj_val", &CPG_Info_%s_cpp_t::obj_val)\n' % problem_name)
-        f.write('            .def_readwrite("iter", &CPG_Info_%s_cpp_t::iter)\n' % problem_name)
-        f.write('            .def_readwrite("status", &CPG_Info_%s_cpp_t::status)\n' % problem_name)
-        f.write('            .def_readwrite("pri_res", &CPG_Info_%s_cpp_t::pri_res)\n' % problem_name)
-        f.write('            .def_readwrite("dua_res", &CPG_Info_%s_cpp_t::dua_res)\n' % problem_name)
+    f.write('            .def_readwrite("obj_val", &CPG_Info_%s_cpp_t::obj_val)\n' % problem_name)
+    f.write('            .def_readwrite("iter", &CPG_Info_%s_cpp_t::iter)\n' % problem_name)
+    f.write('            .def_readwrite("status", &CPG_Info_%s_cpp_t::status)\n' % problem_name)
+    f.write('            .def_readwrite("pri_res", &CPG_Info_%s_cpp_t::pri_res)\n' % problem_name)
+    f.write('            .def_readwrite("dua_res", &CPG_Info_%s_cpp_t::dua_res)\n' % problem_name)
     f.write('            .def_readwrite("ASA_proc_time", &CPG_Info_%s_cpp_t::ASA_proc_time)\n' % problem_name)
     f.write('            ;\n\n')
 
@@ -799,12 +800,14 @@ def write_module_prot(f, solver_name, user_p_name_to_size, var_name_to_size, pro
 
     # cpp struct containing info on results
     f.write('struct CPG_Info_%s_cpp_t {\n' % problem_name)
+    f.write('    double obj_val;\n')
+    f.write('    int iter;\n')
     if solver_name == 'OSQP':
-        f.write('    double obj_val;\n')
-        f.write('    int iter;\n')
         f.write('    char* status;\n')
-        f.write('    double pri_res;\n')
-        f.write('    double dua_res;\n')
+    elif solver_name == 'ECOS':
+        f.write('    int status;\n')
+    f.write('    double pri_res;\n')
+    f.write('    double dua_res;\n')
     f.write('    double ASA_proc_time;\n')
     f.write('};\n\n')
 
@@ -845,6 +848,22 @@ def write_method(f, solver_name, code_dir, user_p_name_to_size, var_name_to_shap
     """
 
     f.write('from %s import cpg_module\n\n\n' % code_dir.replace('/', '.').replace('\\', '.'))
+
+    if solver_name == 'ECOS':
+        indent = ' ' * 24
+        f.write('status_int_to_string = {0: "Optimal solution found", \n' +
+                indent + '1: "Certificate of primal infeasibility found", \n' +
+                indent + '2: "Certificate of dual infeasibility found", \n' +
+                indent + '10: "Optimal solution found subject to reduced tolerances", \n' +
+                indent + '11: "Certificate of primal infeasibility found subject to reduced tolerances", \n' +
+                indent + '12: "Certificate of dual infeasibility found subject to reduced tolerances", \n' +
+                indent + '-1: "Maximum number of iterations reached", \n' +
+                indent + '-2: "Numerical problems (unreliable search direction)", \n' +
+                indent + '-3: "Numerical problems (slacks or multipliers outside cone)", \n' +
+                indent + '-4: "Interrupted by signal or CTRL-C", \n' +
+                indent + '-7: "Unknown problem in solver", \n' +
+                indent + '-99: "Unknown problem before solving"}\n\n\n')
+
     f.write('def cpg_solve(prob, updated_params=None, **kwargs):\n\n')
     f.write('    if updated_params is None:\n')
     p_list_string = ''
@@ -889,25 +908,27 @@ def write_method(f, solver_name, code_dir, user_p_name_to_size, var_name_to_shap
 
     if solver_name == 'OSQP':
         f.write('\n    prob._status = res.cpg_info.status\n')
-        f.write('    if abs(res.cpg_info.obj_val) == 1e30:\n')
-        f.write('        prob._value = np.sign(res.cpg_info.obj_val)*np.inf\n')
-        f.write('    else:\n')
-        f.write('        prob._value = res.cpg_info.obj_val\n')
-        f.write('    primal_vars = {var.id: var.value for var in prob.variables()}\n')
-        f.write('    dual_vars = {}\n')
-        f.write('    solver_specific_stats = {\'obj_val\': res.cpg_info.obj_val,\n')
-        f.write('                             \'status\': res.cpg_info.status,\n')
-        f.write('                             \'iter\': res.cpg_info.iter,\n')
-        f.write('                             \'pri_res\': res.cpg_info.pri_res,\n')
-        f.write('                             \'dua_res\': res.cpg_info.dua_res,\n')
-        f.write('                             \'ASA_proc_time\': res.cpg_info.ASA_proc_time}\n')
-        f.write('    attr = {\'solve_time\': t1-t0, \'solver_specific_stats\': solver_specific_stats, '
-                '\'num_iters\': res.cpg_info.iter}\n')
-        f.write('    prob._solution = Solution(prob.status, prob.value, primal_vars, dual_vars, attr)\n')
-        f.write('    results_dict = {\'solver_specific_stats\': solver_specific_stats,\n')
-        f.write('                    \'num_iters\': res.cpg_info.iter,\n')
-        f.write('                    \'solve_time\': t1-t0}\n')
-        f.write('    prob._solver_stats = SolverStats(results_dict, \'OSQP\')\n\n')
+    elif solver_name == 'ECOS':
+        f.write('\n    prob._status = status_int_to_string[res.cpg_info.status]\n')
+    f.write('    if abs(res.cpg_info.obj_val) == 1e30:\n')
+    f.write('        prob._value = np.sign(res.cpg_info.obj_val)*np.inf\n')
+    f.write('    else:\n')
+    f.write('        prob._value = res.cpg_info.obj_val\n')
+    f.write('    primal_vars = {var.id: var.value for var in prob.variables()}\n')
+    f.write('    dual_vars = {}\n')
+    f.write('    solver_specific_stats = {\'obj_val\': res.cpg_info.obj_val,\n')
+    f.write('                             \'status\': prob._status,\n')
+    f.write('                             \'iter\': res.cpg_info.iter,\n')
+    f.write('                             \'pri_res\': res.cpg_info.pri_res,\n')
+    f.write('                             \'dua_res\': res.cpg_info.dua_res,\n')
+    f.write('                             \'ASA_proc_time\': res.cpg_info.ASA_proc_time}\n')
+    f.write('    attr = {\'solve_time\': t1-t0, \'solver_specific_stats\': solver_specific_stats, '
+            '\'num_iters\': res.cpg_info.iter}\n')
+    f.write('    prob._solution = Solution(prob.status, prob.value, primal_vars, dual_vars, attr)\n')
+    f.write('    results_dict = {\'solver_specific_stats\': solver_specific_stats,\n')
+    f.write('                    \'num_iters\': res.cpg_info.iter,\n')
+    f.write('                    \'solve_time\': t1-t0}\n')
+    f.write('    prob._solver_stats = SolverStats(results_dict, \'%s\')\n\n' % solver_name)
 
     f.write('    return prob.value\n')
 
