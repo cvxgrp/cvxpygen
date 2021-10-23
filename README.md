@@ -24,6 +24,11 @@ As of today, CVXPYGEN works with linear and quadratic programs.
     ```
     git clone https://github.com/cvxgrp/codegen.git
     ```
+   and initialize its submodules.
+    ```
+    cd codegen
+    git submodule update --init
+    ```
 
 
 2. Install [conda](https://docs.conda.io/en/latest/) and create the ``cpg_env`` environment via,
