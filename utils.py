@@ -94,30 +94,30 @@ def write_canonicalize(f, canon_name, s, mapping):
     f.write('}\n')
 
 
-def write_param_def(f, param, name):
+def write_param_def(f, param, name, suffix):
     """
     Use osqp.codegen.utils for writing vectors and matrices
     """
     if not param_is_empty(param):
         if name.isupper():
-            osqp_utils.write_mat(f, param, 'Canon_' + name)
+            osqp_utils.write_mat(f, param, 'Canon_%s%s' % (name, suffix))
         elif name == 'd':
-            f.write('c_float Canon_d = %.20f;\n' % param[0])
+            f.write('c_float Canon_d%s = %.20f;\n' % (suffix, param[0]))
         else:
-            osqp_utils.write_vec(f, param, 'Canon_' + name, 'c_float')
+            osqp_utils.write_vec(f, param, 'Canon_%s%s' % (name, suffix), 'c_float')
 
 
-def write_param_prot(f, param, name):
+def write_param_prot(f, param, name, suffix):
     """
     Use osqp.codegen.utils for writing vectors and matrices
     """
     if not param_is_empty(param):
         if name.isupper():
-            osqp_utils.write_mat_extern(f, param, 'Canon_' + name)
+            osqp_utils.write_mat_extern(f, param, 'Canon_%s%s' % (name, suffix))
         elif name == 'd':
-            f.write('extern c_float Canon_d;\n')
+            f.write('extern c_float Canon_d%s;\n' % suffix)
         else:
-            osqp_utils.write_vec_extern(f, param, 'Canon_' + name, 'c_float')
+            osqp_utils.write_vec_extern(f, param, 'Canon_%s%s' % (name, suffix), 'c_float')
 
 
 def write_dense_mat_def(f, mat, name):
@@ -181,20 +181,21 @@ def write_ecos_setup(f, canon_constants):
     if p == 0:
         Ax_str = Ap_str = Ai_str = b_str = '0'
     else:
-        Ax_str = 'Canon_Params.A->x'
-        Ap_str = 'Canon_Params.A->p'
-        Ai_str = 'Canon_Params.A->i'
-        b_str = 'Canon_Params.b'
+        Ax_str = 'Canon_Params_ECOS.A->x'
+        Ap_str = 'Canon_Params_ECOS.A->p'
+        Ai_str = 'Canon_Params_ECOS.A->i'
+        b_str = 'Canon_Params_ECOS.b'
 
     f.write('ecos_workspace = ECOS_setup(%d, %d, %d, %d, %d, (int *) &ecos_q, %d, '
-            'Canon_Params.G->x, Canon_Params.G->p, Canon_Params.G->i, '
+            'Canon_Params_ECOS.G->x, Canon_Params_ECOS.G->p, Canon_Params_ECOS.G->i, '
             '%s, %s, %s, '
-            'Canon_Params.c, Canon_Params.h, %s);\n' %
+            'Canon_Params_ECOS.c, Canon_Params_ECOS.h, %s);\n' %
             (n, m, p, l, n_cones, e, Ax_str, Ap_str, Ai_str, b_str))
 
 
 def write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable, user_p_flat, var_init, canon_p_ids,
-                        canon_p, canon_mappings, var_symmetric, var_offsets, canon_constants):
+                        canon_p, canon_mappings, var_symmetric, var_offsets, canon_constants,
+                        canon_settings_names_to_default):
 
     f.write('\n#include "cpg_workspace.h"\n')
     if solver_name == 'OSQP':
@@ -204,7 +205,8 @@ def write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable,
 
     f.write('// Canonical parameters\n')
     for canon_p_id in canon_p_ids:
-        write_param_def(f, replace_inf(canon_p[canon_p_id]), canon_p_id)
+        write_param_def(f, replace_inf(canon_p[canon_p_id]), canon_p_id, '')
+        write_param_def(f, replace_inf(canon_p[canon_p_id]), canon_p_id, '_ECOS')
         if canon_p_id.isupper() or canon_p_id == 'd':
             canon_casts.append('')
         else:
@@ -213,6 +215,7 @@ def write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable,
     f.write('\n// Struct containing parameters accepted by canonical solver\n')
 
     struct_values = []
+    struct_values_ECOS = []
     for canon_p_id in canon_p_ids:
         if type(canon_p[canon_p_id]) == dict:
             length = len(canon_p[canon_p_id]['x'])
@@ -220,12 +223,20 @@ def write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable,
             length = len(canon_p[canon_p_id])
         if length > 0:
             struct_values.append('&Canon_%s' % canon_p_id)
+            struct_values_ECOS.append('&Canon_%s_ECOS' % canon_p_id)
         else:
             struct_values.append('0')
+            struct_values_ECOS.append('0')
 
     write_struct_def(f, canon_p_ids, canon_casts, struct_values, 'Canon_Params', 'Canon_Params_t')
+    write_struct_def(f, canon_p_ids, canon_casts, struct_values_ECOS, 'Canon_Params_ECOS', 'Canon_Params_t')
 
     if solver_name == 'ECOS':
+        f.write('\n// Struct containing solver settings\n')
+        f.write('Canon_Settings_t Canon_Settings = {\n')
+        for name, default in canon_settings_names_to_default.items():
+            f.write('.%s = %s,\n' % (name, default))
+        f.write('};\n')
         f.write('\n// ECOS array of SOC dimensions\n')
         osqp_utils.write_vec(f, canon_constants['q'], 'ecos_q', 'c_int')
         f.write('\n// ECOS workspace\n')
@@ -290,7 +301,7 @@ def write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable,
 
 
 def write_workspace_prot(f, solver_name, explicit, user_p_names, user_p_writable, user_p_flat, var_init, canon_p_ids,
-                         canon_p, canon_maps, var_symmetric, canon_constants):
+                         canon_p, canon_maps, var_symmetric, canon_constants, canon_settings_names_to_types):
     """"
     Write workspace initialization to file
     """
@@ -319,6 +330,11 @@ def write_workspace_prot(f, solver_name, explicit, user_p_names, user_p_writable
         f.write('  c_float  *x;\n')
         f.write('  c_int    nz;\n')
         f.write('} csc;\n\n')
+
+        f.write('typedef struct {\n')
+        for name, typ in canon_settings_names_to_types.items():
+            f.write('  %s    %s;\n' % (typ, name))
+        f.write('} Canon_Settings_t;\n\n')
 
     f.write('typedef struct {\n')
     for canon_p_id in canon_p_ids:
@@ -355,6 +371,8 @@ def write_workspace_prot(f, solver_name, explicit, user_p_names, user_p_writable
     f.write('#endif // ifndef CPG_TYPES_H\n')
 
     if solver_name == 'ECOS':
+        f.write('\n// Struct containing solver settings\n')
+        write_struct_prot(f, 'Canon_Settings', 'Canon_Settings_t')
         f.write('\n// ECOS array of SOC dimensions\n')
         osqp_utils.write_vec_extern(f, canon_constants['q'], 'ecos_q', 'c_int')
         f.write('\n// ECOS workspace\n')
@@ -367,10 +385,12 @@ def write_workspace_prot(f, solver_name, explicit, user_p_names, user_p_writable
 
     f.write('\n// Canonical parameters\n')
     for canon_p_id in canon_p_ids:
-        write_param_prot(f, canon_p[canon_p_id], canon_p_id)
+        write_param_prot(f, canon_p[canon_p_id], canon_p_id, '')
+        write_param_prot(f, canon_p[canon_p_id], canon_p_id, '_ECOS')
 
     f.write('\n// Struct containing canonical parameters\n')
     write_struct_prot(f, 'Canon_Params', 'Canon_Params_t')
+    write_struct_prot(f, 'Canon_Params_ECOS', 'Canon_Params_t')
 
     if explicit:
         f.write('\n// User-defined parameters\n')
@@ -408,8 +428,9 @@ def write_workspace_prot(f, solver_name, explicit, user_p_names, user_p_writable
 
 
 def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_to_name, user_p_sizes,
-                    var_id_to_indices, is_maximization, user_p_to_canon_outdated, canon_settings_names_to_types,
-                    var_symm, canon_p_to_changes, n_var, canon_constants):
+                    var_id_to_indices, canon_p_id_to_size, is_maximization, user_p_to_canon_outdated,
+                    canon_settings_names_to_types, canon_settings_names_to_default, var_symm, canon_p_to_changes,
+                    canon_constants):
     """
     Write parameter initialization function to file
     """
@@ -425,11 +446,11 @@ def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_
         f.write('static c_int j;\n\n')
 
     if explicit and solver_name == 'ECOS':
-        f.write('static c_int i;\n')
+        f.write('\nstatic c_int i;\n')
 
     base_cols = list(user_p_col_to_name.keys())
 
-    f.write('// update user-defined parameters\n')
+    f.write('\n// update user-defined parameters\n')
     if explicit:
         for (user_p_name, Canon_outdated_names), user_p_size in zip(user_p_to_canon_outdated.items(), user_p_sizes):
             if user_p_size == 1:
@@ -577,26 +598,48 @@ def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_
     if solver_name == 'OSQP':
         f.write('osqp_solve(&workspace);\n')
     elif solver_name == 'ECOS':
+        f.write('// Copy raw canonical parameters to addresses where they are scaled by ECOS\n')
+        for p_pid, size in canon_p_id_to_size.items():
+            if size > 0:
+                f.write('for (i=0; i<%d; i++){\n' % size)
+                if p_pid.isupper():
+                    f.write('Canon_Params_ECOS.%s->x[i] = Canon_Params.%s->x[i];\n' % (p_pid, p_pid))
+                else:
+                    f.write('Canon_Params_ECOS.%s[i] = Canon_Params.%s[i];\n' % (p_pid, p_pid))
+                f.write('}\n')
         write_ecos_setup(f, canon_constants)
+        for name in canon_settings_names_to_types.keys():
+            f.write('ecos_workspace->stgs->%s = Canon_Settings.%s;\n' % (name, name))
         f.write('ecos_flag = ECOS_solve(ecos_workspace);\n')
 
     f.write('retrieve_value();\n')
     f.write('retrieve_solution();\n')
+
+    if solver_name == 'ECOS':
+        f.write('ECOS_cleanup(ecos_workspace, 0);\n')
 
     for canon_p_id in canon_p_ids:
         f.write('Canon_Outdated.%s = 0;\n' % canon_p_id)
 
     f.write('}\n\n')
 
+    f.write('// update solver settings\n')
     if solver_name == 'OSQP':
-        f.write('// update OSQP settings\n')
         f.write('void set_OSQP_default_settings(){\n')
         f.write('osqp_set_default_settings(&settings);\n')
         f.write('}\n')
-        for name, typ in canon_settings_names_to_types.items():
-            f.write('void set_OSQP_%s(%s %s_new){\n' % (name, typ, name))
+    elif solver_name == 'ECOS':
+        f.write('void set_ecos_default_settings(){\n')
+        for name, value in canon_settings_names_to_default.items():
+            f.write('Canon_Settings.%s = %s;\n' % (name, value))
+        f.write('}\n')
+    for name, typ in canon_settings_names_to_types.items():
+        f.write('void set_solver_%s(%s %s_new){\n' % (name, typ, name))
+        if solver_name == 'OSQP':
             f.write('osqp_update_%s(&workspace, %s_new);\n' % (name, name))
-            f.write('}\n')
+        elif solver_name == 'ECOS':
+            f.write('Canon_Settings.%s = %s_new;\n' % (name, name))
+        f.write('}\n')
 
 
 def write_solve_prot(f, solver_name, canon_p_ids, user_p_name_to_size, canon_settings_names_to_types):
@@ -630,11 +673,13 @@ def write_solve_prot(f, solver_name, canon_p_ids, user_p_name_to_size, canon_set
         else:
             f.write('extern void update_%s(c_int idx, c_float val);\n' % name)
 
+    f.write('\n// update solver settings\n')
     if solver_name == 'OSQP':
-        f.write('\n// update OSQP settings\n')
         f.write('extern void set_OSQP_default_settings();\n')
-        for name, typ in canon_settings_names_to_types.items():
-            f.write('extern void set_OSQP_%s(%s %s_new);\n' % (name, typ, name))
+    elif solver_name == 'ECOS':
+        f.write('extern void set_ecos_default_settings();\n')
+    for name, typ in canon_settings_names_to_types.items():
+        f.write('extern void set_solver_%s(%s %s_new);\n' % (name, typ, name))
 
 
 def write_example_def(f, user_p_writable, var_name_to_size):
@@ -787,8 +832,10 @@ def write_module_def(f, solver_name, user_p_name_to_size, var_name_to_size, cano
 
     if solver_name == 'OSQP':
         f.write('    m.def("set_OSQP_default_settings", &set_OSQP_default_settings);\n')
-        for name in canon_settings_names:
-            f.write('    m.def("set_OSQP_%s", &set_OSQP_%s);\n' % (name, name))
+    elif solver_name == 'ECOS':
+        f.write('    m.def("set_ecos_default_settings", &set_ecos_default_settings);\n')
+    for name in canon_settings_names:
+        f.write('    m.def("set_solver_%s", &set_solver_%s);\n' % (name, name))
 
     f.write('\n}')
 
@@ -879,11 +926,16 @@ def write_method(f, solver_name, code_dir, user_p_name_to_size, var_name_to_shap
 
     if solver_name == 'OSQP':
         f.write('    cpg_module.set_OSQP_default_settings()\n')
-        f.write('    for key, value in kwargs.items():\n')
-        f.write('        try:\n')
-        f.write('            eval(\'cpg_module.set_OSQP_%s(value)\' % key)\n')
-        f.write('        except AttributeError:\n')
-        f.write('            raise(AttributeError(\'Solver setting "%s" not available.\' % key))\n\n')
+    elif solver_name == 'ECOS':
+        f.write('    cpg_module.set_ecos_default_settings()\n')
+    f.write('    for key, value in kwargs.items():\n')
+    if solver_name == 'ECOS':
+        f.write('        if key == "max_iters":\n')
+        f.write('            key = "maxit"\n')
+    f.write('        try:\n')
+    f.write('            eval(\'cpg_module.set_solver_%s(value)\' % key)\n')
+    f.write('        except AttributeError:\n')
+    f.write('            raise(AttributeError(\'Solver setting "%s" not available.\' % key))\n\n')
 
     f.write('    par = cpg_module.cpg_params()\n')
 

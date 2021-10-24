@@ -96,6 +96,8 @@ def generate_code(problem, code_dir='CPG_code', compile_module=True, explicit=Fa
     canon_mappings = []
     canon_p_to_changes = {}
     canon_constants = {}
+    canon_p_id_to_size = {}
+    canon_settings_names_to_default = {}
 
     if solver_name == 'OSQP':
 
@@ -277,6 +279,7 @@ def generate_code(problem, code_dir='CPG_code', compile_module=True, explicit=Fa
 
             canon_mappings.append(mapping.tocsr())
             canon_p_to_changes[p_id] = mapping[:, :-1].nnz > 0
+            canon_p_id_to_size[p_id] = mapping.shape[0]
 
             for j in range(user_p_num):
                 column_slice = slice(user_p_id_to_col[user_p_ids[j]], user_p_id_to_col[user_p_ids[j + 1]])
@@ -298,8 +301,11 @@ def generate_code(problem, code_dir='CPG_code', compile_module=True, explicit=Fa
             else:
                 canon_p[p_id] = canon_p_data
 
-        canon_settings_names = None
-        canon_settings_names_to_types = None
+        canon_settings_names = ['feastol', 'abstol', 'reltol', 'feastol_inacc', 'abstol_inacc', 'reltol_inacc', 'maxit']
+        canon_settings_types = ['c_float', 'c_float', 'c_float', 'c_float', 'c_float', 'c_float', 'c_int']
+        canon_settins_defaults = ['1e-8', '1e-8', '1e-8', '1e-4', '5e-5', '5e-5', '100']
+        canon_settings_names_to_types = {name: typ for name, typ in zip(canon_settings_names, canon_settings_types)}
+        canon_settings_names_to_default = {name: typ for name, typ in zip(canon_settings_names, canon_settins_defaults)}
 
         # copy sources
         solver_code_dir = os.path.join(code_dir, 'c', 'solver_code')
@@ -355,12 +361,14 @@ def generate_code(problem, code_dir='CPG_code', compile_module=True, explicit=Fa
     # 'workspace' prototypes
     with open(os.path.join(code_dir, 'c', 'include', 'cpg_workspace.h'), 'a') as f:
         utils.write_workspace_prot(f, solver_name, explicit, user_p_names, user_p_writable, user_p_flat, var_init,
-                                   canon_p_ids, canon_p, canon_mappings, var_symmetric, canon_constants)
+                                   canon_p_ids, canon_p, canon_mappings, var_symmetric, canon_constants,
+                                   canon_settings_names_to_types)
 
     # 'workspace' definitions
     with open(os.path.join(code_dir, 'c', 'src', 'cpg_workspace.c'), 'a') as f:
         utils.write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable, user_p_flat, var_init,
-                                  canon_p_ids, canon_p, canon_mappings, var_symmetric, var_offsets, canon_constants)
+                                  canon_p_ids, canon_p, canon_mappings, var_symmetric, var_offsets, canon_constants,
+                                  canon_settings_names_to_default)
 
     # 'solve' prototypes
     with open(os.path.join(code_dir, 'c', 'include', 'cpg_solve.h'), 'a') as f:
@@ -369,9 +377,10 @@ def generate_code(problem, code_dir='CPG_code', compile_module=True, explicit=Fa
     # 'solve' definitions
     with open(os.path.join(code_dir, 'c', 'src', 'cpg_solve.c'), 'a') as f:
         utils.write_solve_def(f, solver_name, explicit, canon_p_ids, canon_mappings, user_p_col_to_name,
-                              list(user_p_id_to_size.values()), var_name_to_indices,
+                              list(user_p_id_to_size.values()), var_name_to_indices, canon_p_id_to_size,
                               type(problem.objective) == cp.problems.objective.Maximize, user_p_to_canon_outdated,
-                              canon_settings_names_to_types, var_symmetric, canon_p_to_changes, n_var, canon_constants)
+                              canon_settings_names_to_types, canon_settings_names_to_default, var_symmetric,
+                              canon_p_to_changes, canon_constants)
 
     # 'example' definitions
     with open(os.path.join(code_dir, 'c', 'src', 'cpg_example.c'), 'a') as f:
