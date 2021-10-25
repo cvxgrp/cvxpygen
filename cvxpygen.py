@@ -419,7 +419,7 @@ def generate_code(problem, code_dir='CPG_code', compile_module=True, explicit=Fa
         html_data = f.read()
     html_data = utils.replace_html_data(code_dir, solver_name, explicit, html_data, user_p_name_to_size,
                                         user_p_writable, var_name_to_size, user_p_total_size, canon_p_ids,
-                                        canon_p_id_to_size, canon_settings_names_to_types)
+                                        canon_p_id_to_size, canon_settings_names_to_types, canon_constants)
     with open(os.path.join(code_dir, 'README.html'), 'w') as f:
         f.write(html_data)
 

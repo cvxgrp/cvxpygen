@@ -186,11 +186,16 @@ def write_ecos_setup(f, canon_constants):
         Ai_str = 'Canon_Params_ECOS.A->i'
         b_str = 'Canon_Params_ECOS.b'
 
-    f.write('ecos_workspace = ECOS_setup(%d, %d, %d, %d, %d, (int *) &ecos_q, %d, '
+    if n_cones == 0:
+        ecos_q_str = '0'
+    else:
+        ecos_q_str = '(int *) &ecos_q'
+
+    f.write('ecos_workspace = ECOS_setup(%d, %d, %d, %d, %d, %s, %d, '
             'Canon_Params_ECOS.G->x, Canon_Params_ECOS.G->p, Canon_Params_ECOS.G->i, '
             '%s, %s, %s, '
             'Canon_Params_ECOS.c, Canon_Params_ECOS.h, %s);\n' %
-            (n, m, p, l, n_cones, e, Ax_str, Ap_str, Ai_str, b_str))
+            (n, m, p, l, n_cones, ecos_q_str, e, Ax_str, Ap_str, Ai_str, b_str))
 
 
 def write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable, user_p_flat, var_init, canon_p_ids,
@@ -237,8 +242,9 @@ def write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable,
         for name, default in canon_settings_names_to_default.items():
             f.write('.%s = %s,\n' % (name, default))
         f.write('};\n')
-        f.write('\n// ECOS array of SOC dimensions\n')
-        osqp_utils.write_vec(f, canon_constants['q'], 'ecos_q', 'c_int')
+        if canon_constants['n_cones'] > 0:
+            f.write('\n// ECOS array of SOC dimensions\n')
+            osqp_utils.write_vec(f, canon_constants['q'], 'ecos_q', 'c_int')
         f.write('\n// ECOS workspace\n')
         f.write('pwork* ecos_workspace = 0;\n')
         f.write('\n// ECOS exit flag\n')
@@ -373,8 +379,9 @@ def write_workspace_prot(f, solver_name, explicit, user_p_names, user_p_writable
     if solver_name == 'ECOS':
         f.write('\n// Struct containing solver settings\n')
         write_struct_prot(f, 'Canon_Settings', 'Canon_Settings_t')
-        f.write('\n// ECOS array of SOC dimensions\n')
-        osqp_utils.write_vec_extern(f, canon_constants['q'], 'ecos_q', 'c_int')
+        if canon_constants['n_cones'] > 0:
+            f.write('\n// ECOS array of SOC dimensions\n')
+            osqp_utils.write_vec_extern(f, canon_constants['q'], 'ecos_q', 'c_int')
         f.write('\n// ECOS workspace\n')
         f.write('extern pwork* ecos_workspace;\n')
         f.write('\n// ECOS exit flag\n')
@@ -975,7 +982,7 @@ def write_method(f, solver_name, code_dir, user_p_name_to_size, var_name_to_shap
 
 
 def replace_html_data(code_dir, solver_name, explicit, text, user_p_name_to_size, user_p_writable, var_name_to_size,
-                      user_p_total_size, canon_p_ids, canon_p_id_to_size, canon_settings_names_to_types):
+                      user_p_total_size, canon_p_ids, canon_p_id_to_size, canon_settings_names_to_types, canon_constants):
     """
     Replace placeholder strings in html documentation file
     """
@@ -1057,7 +1064,8 @@ def replace_html_data(code_dir, solver_name, explicit, text, user_p_name_to_size
         CPGEXTRADECLARATIONS = '// Struct containing solver settings\n'
         CPGEXTRADECLARATIONS += 'Canon_Settings_t Canon_Settings;\n\n'
         CPGEXTRADECLARATIONS += '// ECOS array of SOC dimensions\n'
-        CPGEXTRADECLARATIONS += 'c_int ecos_q[5];\n\n'
+        if canon_constants['n_cones'] > 0:
+            CPGEXTRADECLARATIONS += 'c_int ecos_q[%d];\n\n' % canon_constants['n_cones']
         CPGEXTRADECLARATIONS += '// ECOS workspace\n'
         CPGEXTRADECLARATIONS += 'pwork* ecos_workspace;\n\n'
         CPGEXTRADECLARATIONS += '// ECOS exit flag\n'
