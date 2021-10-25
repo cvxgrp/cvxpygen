@@ -119,8 +119,8 @@ def test(name, style, seed):
 
     prob = assign_data(prob, name, seed)
 
-    val_py = prob.solve(solver='OSQP', eps_abs=1e-3, eps_rel=1e-3, max_iter=4000, polish=False, adaptive_rho_interval=int(1e6), warm_start=False)
-    val_ex = prob.solve(method='CPG', warm_start=False)
+    val_py = prob.solve()
+    val_ex = prob.solve(method='CPG')
 
     if not np.isinf(val_py):
         assert abs((val_ex - val_py) / val_py) < 0.1

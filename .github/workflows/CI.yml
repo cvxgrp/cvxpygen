@@ -20,7 +20,10 @@ jobs:
         os: [ ubuntu-latest, macos-latest, windows-2016 ]
 
     steps:
-    - uses: actions/checkout@v2
+    - name: Checkout repository and submodules
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
 
     - name: Set up Python 3.9
       uses: actions/setup-python@v2
@@ -67,4 +70,4 @@ jobs:
         C:\Miniconda\condabin\conda.bat activate base
         C:\Miniconda\condabin\conda.bat install pytest
         cd tests
-        C:\Miniconda\Scripts\pytest test_E2E_QP.py
+        C:\Miniconda\Scripts\pytest
