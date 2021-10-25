@@ -624,15 +624,13 @@ def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_
     f.write('}\n\n')
 
     f.write('// update solver settings\n')
+    f.write('void set_solver_default_settings(){\n')
     if solver_name == 'OSQP':
-        f.write('void set_OSQP_default_settings(){\n')
         f.write('osqp_set_default_settings(&settings);\n')
-        f.write('}\n')
     elif solver_name == 'ECOS':
-        f.write('void set_ecos_default_settings(){\n')
         for name, value in canon_settings_names_to_default.items():
             f.write('Canon_Settings.%s = %s;\n' % (name, value))
-        f.write('}\n')
+    f.write('}\n')
     for name, typ in canon_settings_names_to_types.items():
         f.write('void set_solver_%s(%s %s_new){\n' % (name, typ, name))
         if solver_name == 'OSQP':
@@ -674,10 +672,7 @@ def write_solve_prot(f, solver_name, canon_p_ids, user_p_name_to_size, canon_set
             f.write('extern void update_%s(c_int idx, c_float val);\n' % name)
 
     f.write('\n// update solver settings\n')
-    if solver_name == 'OSQP':
-        f.write('extern void set_OSQP_default_settings();\n')
-    elif solver_name == 'ECOS':
-        f.write('extern void set_ecos_default_settings();\n')
+    f.write('extern void set_solver_default_settings();\n')
     for name, typ in canon_settings_names_to_types.items():
         f.write('extern void set_solver_%s(%s %s_new);\n' % (name, typ, name))
 
@@ -830,10 +825,7 @@ def write_module_def(f, solver_name, user_p_name_to_size, var_name_to_size, cano
 
     f.write('    m.def("solve", &solve_cpp);\n\n')
 
-    if solver_name == 'OSQP':
-        f.write('    m.def("set_OSQP_default_settings", &set_OSQP_default_settings);\n')
-    elif solver_name == 'ECOS':
-        f.write('    m.def("set_ecos_default_settings", &set_ecos_default_settings);\n')
+    f.write('    m.def("set_solver_default_settings", &set_solver_default_settings);\n')
     for name in canon_settings_names:
         f.write('    m.def("set_solver_%s", &set_solver_%s);\n' % (name, name))
 
@@ -924,10 +916,7 @@ def write_method(f, solver_name, code_dir, user_p_name_to_size, var_name_to_shap
     f.write('        except AttributeError:\n')
     f.write('            raise(AttributeError("%s is not a parameter." % p))\n\n')
 
-    if solver_name == 'OSQP':
-        f.write('    cpg_module.set_OSQP_default_settings()\n')
-    elif solver_name == 'ECOS':
-        f.write('    cpg_module.set_ecos_default_settings()\n')
+    f.write('    cpg_module.set_solver_default_settings()\n')
     f.write('    for key, value in kwargs.items():\n')
     if solver_name == 'ECOS':
         f.write('        if key == "max_iters":\n')
@@ -985,8 +974,8 @@ def write_method(f, solver_name, code_dir, user_p_name_to_size, var_name_to_shap
     f.write('    return prob.value\n')
 
 
-def replace_html_data(code_dir, explicit, text, user_p_name_to_size, user_p_writable, var_name_to_size,
-                      user_p_total_size):
+def replace_html_data(code_dir, solver_name, explicit, text, user_p_name_to_size, user_p_writable, var_name_to_size,
+                      user_p_total_size, canon_p_ids, canon_p_id_to_size, canon_settings_names_to_types):
     """
     Replace placeholder strings in html documentation file
     """
@@ -995,56 +984,149 @@ def replace_html_data(code_dir, explicit, text, user_p_name_to_size, user_p_writ
     text = text.replace('$CODEDIR', code_dir)
     text = text.replace('$CDPYTHON', code_dir.replace('/', '.').replace('\\', '.'))
 
+    # solver name and docu
+    text = text.replace('$CPGSOLVERNAME', solver_name)
+    if solver_name == 'OSQP':
+        text = text.replace('$CPGSOLVERDOCUURL', 'https://osqp.org/docs/codegen/python.html')
+    elif solver_name == 'ECOS':
+        text = text.replace('$CPGSOLVERDOCUURL', 'https://github.com/embotech/ecos/wiki/Usage-from-C')
+        
+    # basic type definitions
+    if solver_name == 'ECOS':
+        CPGBASICTYPEDEF = 'typedef double c_float;\n'
+        CPGBASICTYPEDEF += 'typedef int c_int;\n\n'
+        CPGBASICTYPEDEF += 'typedef struct {\n'
+        CPGBASICTYPEDEF += '  c_int    nzmax;\n'
+        CPGBASICTYPEDEF += '  c_int    n;\n'
+        CPGBASICTYPEDEF += '  c_int    m;\n'
+        CPGBASICTYPEDEF += '  c_int    *p;\n'
+        CPGBASICTYPEDEF += '  c_int    *i;\n'
+        CPGBASICTYPEDEF += '  c_float  *x;\n'
+        CPGBASICTYPEDEF += '  c_int    nz;\n'
+        CPGBASICTYPEDEF += '} csc;\n\n'
+        CPGBASICTYPEDEF += 'typedef struct {\n'
+        for name, typ in canon_settings_names_to_types.items():
+            CPGBASICTYPEDEF += '  %s    %s;\n' % (typ, name)
+        CPGBASICTYPEDEF += '} Canon_Settings_t;\n'
+    else:
+        CPGBASICTYPEDEF = ''
+    text = text.replace('$CPGBASICTYPEDEF', CPGBASICTYPEDEF)
+
+    # type definition of Canon_Params_t
+    CPGCANONPARAMSTYPEDEF = '// Struct type with canoncial parameters as fields\n'
+    CPGCANONPARAMSTYPEDEF += 'typedef struct {\n'
+    for name in canon_p_ids:
+        if name.isupper():
+            CPGCANONPARAMSTYPEDEF += ('    csc         *%s;' % name).ljust(33) + ('///< Canonical parameter %s\n' % name)
+        else:
+            CPGCANONPARAMSTYPEDEF += ('    c_float     *%s;' % name).ljust(33) + ('///< Canonical parameter %s\n' % name)
+    CPGCANONPARAMSTYPEDEF += '} Canon_Params_t;\n'
+    text = text.replace('$CPGCANONPARAMSTYPEDEF', CPGCANONPARAMSTYPEDEF)
+
+    # type definition of Canon_Outdated_t
+    CPGOUTDATEDTYPEDEF = '// Struct type with booleans as fields, indicating if respective canonical parameter is outdated\n'
+    CPGOUTDATEDTYPEDEF += 'typedef struct {\n'
+    for name in canon_p_ids:
+        CPGOUTDATEDTYPEDEF += ('    int     *%s;' % name).ljust(33) + ('///< bool, if canonical parameter %s outdated\n' % name)
+    CPGOUTDATEDTYPEDEF += '} Canon_Outdated_t;\n'
+    text = text.replace('$CPGOUTDATEDTYPEDEF', CPGOUTDATEDTYPEDEF)
+
     # type definition of CPG_Params_t or CPG_Params_Vec
     if explicit:
-        CPGPARAMSTYPEDEF = '\n// Struct type with user-defined parameters as fields\n'
-        CPGPARAMSTYPEDEF += 'typedef struct {\n'
+        CPGUSERPARAMSTYPEDEF = '// Struct type with user-defined parameters as fields\n'
+        CPGUSERPARAMSTYPEDEF += 'typedef struct {\n'
         for name in user_p_name_to_size.keys():
-            CPGPARAMSTYPEDEF += ('    c_float     *%s;' % name).ljust(33) + ('///< Your parameter %s\n' % name)
-        CPGPARAMSTYPEDEF += '} CPG_Params_t;\n'
+            CPGUSERPARAMSTYPEDEF += ('    c_float     *%s;' % name).ljust(33) + ('///< Your parameter %s\n' % name)
+        CPGUSERPARAMSTYPEDEF += '} CPG_Params_t;\n'
     else:
-        CPGPARAMSTYPEDEF = ''
-    text = text.replace('$CPGPARAMSTYPEDEF', CPGPARAMSTYPEDEF)
+        CPGUSERPARAMSTYPEDEF = ''
+    text = text.replace('$CPGUSERPARAMSTYPEDEF', CPGUSERPARAMSTYPEDEF)
 
     # type definition of CPG_Result_t
-    CPGRESULTTYPEDEF = 'typedef struct {\n'
+    CPGRESULTTYPEDEF = '// Struct type with user-defined objective value and solution as fields\n'
+    CPGRESULTTYPEDEF += 'typedef struct {\n'
     CPGRESULTTYPEDEF += '    c_float     *objective_value;///< Objective function value\n'
     for name in var_name_to_size.keys():
         CPGRESULTTYPEDEF += ('    c_float     *%s;' % name).ljust(33) + ('///< Your variable %s\n' % name)
-    CPGRESULTTYPEDEF += '} CPG_Result_t;'
+    CPGRESULTTYPEDEF += '} CPG_Result_t;\n'
 
     text = text.replace('$CPGRESULTTYPEDEF', CPGRESULTTYPEDEF)
 
+    # extra declarations
+    if solver_name == 'ECOS':
+        CPGEXTRADECLARATIONS = '// Struct containing solver settings\n'
+        CPGEXTRADECLARATIONS += 'Canon_Settings_t Canon_Settings;\n\n'
+        CPGEXTRADECLARATIONS += '// ECOS array of SOC dimensions\n'
+        CPGEXTRADECLARATIONS += 'c_int ecos_q[5];\n\n'
+        CPGEXTRADECLARATIONS += '// ECOS workspace\n'
+        CPGEXTRADECLARATIONS += 'pwork* ecos_workspace;\n\n'
+        CPGEXTRADECLARATIONS += '// ECOS exit flag\n'
+        CPGEXTRADECLARATIONS += 'c_int ecos_flag;\n'
+    else:
+        CPGEXTRADECLARATIONS = ''
+    text = text.replace('$CPGEXTRADECLARATIONS', CPGEXTRADECLARATIONS)
+
+    # canonical parameter declarations
+    CPGCANONPARAMDECLARATIONS = '// Canonical parameters\n'
+    for p_id, size in canon_p_id_to_size.items():
+        if size > 0:
+            if p_id.isupper():
+                CPGCANONPARAMDECLARATIONS += 'csc Canon_%s;\n' % p_id
+                if solver_name == 'ECOS':
+                    CPGCANONPARAMDECLARATIONS += 'csc Canon_%s_ECOS;\n' % p_id
+            elif p_id == 'd':
+                CPGCANONPARAMDECLARATIONS += 'c_float Canon_d;\n'
+                if solver_name == 'ECOS':
+                    CPGCANONPARAMDECLARATIONS += 'c_float Canon_d_ECOS;\n'
+            else:
+                CPGCANONPARAMDECLARATIONS += 'c_float Canon_%s[%d];\n' % (p_id, size)
+                if solver_name == 'ECOS':
+                    CPGCANONPARAMDECLARATIONS += 'c_float Canon_%s_ECOS[%d];\n' % (p_id, size)
+    text = text.replace('$CPGCANONPARAMDECLARATIONS', CPGCANONPARAMDECLARATIONS)
+
+    # canoncial parameter struct declarations
+    CPGCANONPARAMSTRUCTDECLARATIONS = '// Struct containing canonical parameters\n'
+    CPGCANONPARAMSTRUCTDECLARATIONS += 'Canon_Params_t Canon_Params;\n'
+    if solver_name == 'ECOS':
+        CPGCANONPARAMSTRUCTDECLARATIONS += 'Canon_Params_t Canon_Params_ECOS;\n'
+    text = text.replace('$CPGCANONPARAMSTRUCTDECLARATIONS', CPGCANONPARAMSTRUCTDECLARATIONS)
+
     # parameter delarations
+    CPGPARAMDECLARATIONS = '// User-defined parameters\n'
     if explicit:
-        CPGPARAMDECLARATIONS = ''
         for name, value in user_p_writable.items():
             if np.isscalar(value):
                 CPGPARAMDECLARATIONS += 'c_float %s;\n' % name
             else:
                 CPGPARAMDECLARATIONS += 'c_float %s[%d];\n' % (name, value.size)
-        CPGPARAMDECLARATIONS += '// Struct containing all user-defined parameters\n'
+        CPGPARAMDECLARATIONS += '\n// Struct containing all user-defined parameters\n'
         CPGPARAMDECLARATIONS += 'CPG_Params_t CPG_Params;\n'
     else:
-        CPGPARAMDECLARATIONS = 'c_float CPG_Params_Vec[%d];' % (user_p_total_size+1)
+        CPGPARAMDECLARATIONS += 'c_float CPG_Params_Vec[%d];' % (user_p_total_size+1)
     text = text.replace('$CPGPARAMDECLARATIONS', CPGPARAMDECLARATIONS)
 
     # variable declarations
-    CPGVARIABLEDECLARATIONS = ''
+    CPGVARIABLEDECLARATIONS = '// User-defined variables\n'
     for name, size in var_name_to_size.items():
         if size == 1:
             CPGVARIABLEDECLARATIONS += 'c_float %s;\n' % name
         else:
             CPGVARIABLEDECLARATIONS += 'c_float %s[%d];\n' % (name, size)
 
-    text = text.replace('$CPGVARIABLEDECLARATIONS', CPGVARIABLEDECLARATIONS[:-1])
+    text = text.replace('$CPGVARIABLEDECLARATIONS', CPGVARIABLEDECLARATIONS)
+
+    # canonicalize declarations
+    CPGCANONICALIZEDECLARATIONS = '// map user-defined to canonical parameters\n'
+    for p_id in canon_p_ids:
+        CPGCANONICALIZEDECLARATIONS += 'void canonicalize_Canon_%s();\n' % p_id
+    text = text.replace('$CPGCANONICALIZEDECLARATIONS', CPGCANONICALIZEDECLARATIONS)
 
     # update declarations
-    CPGUPDATEDECLARATIONS = ''
+    CPGUPDATEDECLARATIONS = '// update user-defined parameter values\n'
     for name, size in user_p_name_to_size.items():
         if size == 1:
             CPGUPDATEDECLARATIONS += 'void update_%s(c_float value);\n' % name
         else:
             CPGUPDATEDECLARATIONS += 'void update_%s(c_int idx, c_float value);\n' % name
 
-    return text.replace('$CPGUPDATEDECLARATIONS', CPGUPDATEDECLARATIONS[:-1])
+    return text.replace('$CPGUPDATEDECLARATIONS', CPGUPDATEDECLARATIONS)

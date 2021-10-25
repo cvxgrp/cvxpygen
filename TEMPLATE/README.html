@@ -27,7 +27,7 @@
   <pre><code><!-- language: lang-c -->
 $CODEDIR
     c
-      OSQP_code
+      solver_code
         ...
       include
         cpg_workspace.h
@@ -48,11 +48,11 @@ $CODEDIR
     problem.pickle
   </code></pre>
   <p>
-      The <code>c/OSQP_code</code> subdirectory contains all code produced by the code generation feature of the chosen
-      numerical solver (OSQP). For documentation on this part, please have a look <a href="https://osqp.org/docs/codegen/python.html" target="_blank">here</a>.
+      The <code>c/solver_code</code> subdirectory contains all code produced by the code generation feature of the chosen
+      numerical solver ($CPGSOLVERNAME). For documentation on this part, please have a look <a href="$CPGSOLVERDOCUURL" target="_blank">here</a>.
   </p>
   <p>
-    To make this solver usable, your problem needs to be converted to the standard form accepted by OSQP.
+    To make this solver usable, your problem needs to be converted to the standard form accepted by $CPGSOLVERNAME.
       This is done by all the other source files inside the <code>$CODEDIR</code> directory.
   </p>
   <h3>Types, declarations & definitions</h3>
@@ -62,27 +62,10 @@ $CODEDIR
       <dt><code>c/include/cpg_workspace.h</code> contains type definitions,</dt>
         <dd>
           <pre><code><!-- language: lang-c -->
-// Struct type with OSQP-accepted parameters as fields
-typedef struct {
-    csc         *P;              ///< OSQP parameter P
-    c_float     *q;              ///< OSQP parameter q
-    c_float     *d;              ///< OSQP parameter d
-    csc         *A;              ///< OSQP parameter A
-    c_float     *l;              ///< OSQP parameter l
-    c_float     *u;              ///< OSQP parameter u
-} OSQP_Params_t;
-
-// Struct type with booleans as fields, indicating if respective OSQP parameter is outdated
-typedef struct {
-    int         P;              ///< bool, if OSQP parameter P outdated
-    int         q;              ///< bool, if OSQP parameter q outdated
-    int         d;              ///< bool, if OSQP parameter d outdated
-    int         A;              ///< bool, if OSQP parameter A outdated
-    int         l;              ///< bool, if OSQP parameter l outdated
-    int         u;              ///< bool, if OSQP parameter u outdated
-} OSQP_Outdated_t;
-$CPGPARAMSTYPEDEF
-// Struct type with user-defined objective value and solution as fields
+$CPGBASICTYPEDEF
+$CPGCANONPARAMSTYPEDEF
+$CPGOUTDATEDTYPEDEF
+$CPGUSERPARAMSTYPEDEF
 $CPGRESULTTYPEDEF
           </code></pre>
         </dd>
@@ -91,29 +74,17 @@ $CPGRESULTTYPEDEF
         </dd>
         <dd>
           <pre><code><!-- language: lang-c -->
-// Struct containing flags for outdated OSQP parameters
-OSQP_Outdated_t OSQP_Outdated;
+$CPGEXTRADECLARATIONS
+// Struct containing flags for outdated canonical parameters
+Canon_Outdated_t Canon_Outdated;
 
-// Parameters accepted by OSQP
-csc P;
-c_float q[11];
-c_float d;
-csc A;
-c_float l[15];
-c_float u[15];
-
-// Struct containing parameters accepted by OSQP
-OSQP_Params_t OSQP_Params;
-
-// User-defined parameters
+$CPGCANONPARAMDECLARATIONS
+$CPGCANONPARAMSTRUCTDECLARATIONS
 $CPGPARAMDECLARATIONS
-
 // Value of the objective function
 c_float objective_value;
 
-// User-defined variables
 $CPGVARIABLEDECLARATIONS
-
 // Struct containing user-defined objective value and solution
 CPG_Result_t CPG_Result;
           </code></pre>
@@ -121,14 +92,7 @@ CPG_Result_t CPG_Result;
       <dt><code>c/include/cpg_solve.h</code> contains function prototypes:</dt>
         <dd>
           <pre><code><!-- language: lang-c -->
-// map user-defined to OSQP-accepted parameters
-void canonicalize_OSQP_P();
-void canonicalize_OSQP_q();
-void canonicalize_OSQP_d();
-void canonicalize_OSQP_A();
-void canonicalize_OSQP_l();
-void canonicalize_OSQP_u();
-
+$CPGCANONICALIZEDECLARATIONS
 // retrieve user-defined objective function value
 void retrieve_value();
 
@@ -138,18 +102,16 @@ void retrieve_solution();
 // perform one ASA sequence to solve a problem instance
 void solve();
 
-// update user-defined parameter values
 $CPGUPDATEDECLARATIONS
-
-// update OSQP settings
-void set_OSQP_default_settings();
-void set_OSQP_&lt;setting_name&gt;(&lt;setting_type&gt; &lt;setting_value&gt;);
+// update solver settings
+void set_solver_default_settings();
+void set_solver_&lt;setting_name&gt;(&lt;setting_type&gt; &lt;setting_value&gt;);
 ...
           </code></pre>
         </dd>
         <dd>
             where <code>&lt;setting_name&gt;</code>, <code>&lt;setting_type&gt;</code>, and <code>&lt;setting_value&gt;</code> are
-            the name, type, and value of the OSQP setting to be updated, respectively.
+            the name, type, and value of the solver setting to be updated, respectively.
         </dd>
       <dt><code>c/src/cpg_workspace.c</code> contains the static allocation of the C variables declared in <code>include/cpg_workspace.h</code>.</dt>
       <dt><code>c/src/cpg_solve.c</code> contains the definition of functions declared in <code>include/cpg_solve.h</code>.</dt>
@@ -214,7 +176,7 @@ $CODEDIR/c/build/cpg_example
 $CODEDIR/c/CMakeLists.txt
 $CODEDIR/c/src/
 $CODEDIR/c/include/
-$CODEDIR/c/OSQP_code/
+$CODEDIR/c/solver_code/
     </code></pre>
 
   <p>
