@@ -222,11 +222,12 @@ $CODEDIR/c/OSQP_code/
   </p>
     <pre><code>
 add_subdirectory(&lt;subdir&gt;)
-include_directories(&lt;existing_dirs&gt; &lt;subdir&gt;/include &lt;subdir&gt;/OSQP_code/include)
+include_directories(&lt;existing_dirs&gt; ${cpg_include})
     </code></pre>
   <p>
-      where <code>&lt;existing_dirs&gt;</code> is your existing include directories, and add <code>${cpg_src}</code>
-      to all targets that use the generated code.
+      where <code>&lt;existing_dirs&gt;</code> is your existing include directories and <code>${cpg_include}</code> lists
+      the include directories used by the generated code. Add <code>${cpg_head}</code> and
+      <code>${cpg_src}</code> to all targets that use the generated code.
   </p>
 
 </body>

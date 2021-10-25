@@ -10,7 +10,13 @@ set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -g")
 set(CMAKE_C_STANDARD_LIBRARIES "${CMAKE_C_STANDARD_LIBRARIES} -lm")
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)  # -fPIC
 
-include_directories (include solver_code/include)
+list (APPEND
+      cpg_include
+      ${CMAKE_CURRENT_SOURCE_DIR}/include
+      ${CMAKE_CURRENT_SOURCE_DIR}/solver_code/include
+)
+
+include_directories (${cpg_include})
 
 add_subdirectory (solver_code)
 
@@ -28,9 +34,10 @@ list (APPEND
       ${solver_src}
 )
 
-add_executable (cpg_example ${cpg_head} src/cpg_example.c ${cpg_src})
+add_executable (cpg_example ${cpg_head} ${cpg_src} ${CMAKE_CURRENT_SOURCE_DIR}/src/cpg_example.c)
 
 add_library(cpg STATIC ${cpg_head} ${cpg_src})
 
+set(cpg_include "${cpg_include}" PARENT_SCOPE)
 set(cpg_head "${cpg_head}" PARENT_SCOPE)
 set(cpg_src "${cpg_src}" PARENT_SCOPE)

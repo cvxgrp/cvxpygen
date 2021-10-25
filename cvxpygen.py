@@ -321,13 +321,12 @@ def generate_code(problem, code_dir='CPG_code', compile_module=True, explicit=Fa
         # adjust top-level CMakeLists.txt
         with open(os.path.join(code_dir, 'c', 'CMakeLists.txt'), 'r') as f:
             CMakeLists_data = f.read()
-        indent = ' ' * 21
-        CMakeLists_data = CMakeLists_data.replace('include solver_code/include',
-                                                  'include\n' +
-                                                  indent + 'solver_code/include\n' +
-                                                  indent + 'solver_code/external/SuiteSparse_config\n' +
-                                                  indent + 'solver_code/external/amd/include\n' +
-                                                  indent + 'solver_code/external/ldl/include')
+        indent = ' ' * 6
+        CMakeLists_data = CMakeLists_data.replace('${CMAKE_CURRENT_SOURCE_DIR}/solver_code/include',
+                                                  '${CMAKE_CURRENT_SOURCE_DIR}/solver_code/include\n' +
+                                                  indent + '${CMAKE_CURRENT_SOURCE_DIR}/solver_code/external/SuiteSparse_config\n' +
+                                                  indent + '${CMAKE_CURRENT_SOURCE_DIR}/solver_code/external/amd/include\n' +
+                                                  indent + '${CMAKE_CURRENT_SOURCE_DIR}/solver_code/external/ldl/include')
         with open(os.path.join(code_dir, 'c', 'CMakeLists.txt'), 'w') as f:
             f.write(CMakeLists_data)
 
