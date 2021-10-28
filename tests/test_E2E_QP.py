@@ -212,13 +212,12 @@ def assign_data(prob, name, seed):
 
 N_RAND = 100
 
-name_solver_style_seed = [['actuator', 'ADP', 'MPC', 'portfolio'],
+name_solver_style_seed = [['actuator', 'MPC', 'portfolio'],
                           ['OSQP', 'ECOS'],
                           ['explicit', 'implicit'],
                           list(np.arange(N_RAND))]
 
 name_to_prob = {'actuator': actuator_problem(),
-                'ADP': ADP_problem(),
                 'MPC': MPC_problem(),
                 'portfolio': portfolio_problem()}
 
