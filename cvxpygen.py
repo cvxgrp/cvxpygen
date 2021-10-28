@@ -14,7 +14,7 @@ from subprocess import call
 from platform import system
 
 
-def generate_code(problem, code_dir='CPG_code', compile_module=True, explicit=False, problem_name=''):
+def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True, explicit=False, problem_name=''):
     """
     Generate C code for CVXPY problem and (optionally) python wrapper
     """
@@ -29,7 +29,7 @@ def generate_code(problem, code_dir='CPG_code', compile_module=True, explicit=Fa
     shutil.copytree(os.path.join(current_directory, 'TEMPLATE'), code_dir)
 
     # get problem data
-    data, solving_chain, inverse_data = problem.get_problem_data(solver=None, gp=False, enforce_dpp=True,
+    data, solving_chain, inverse_data = problem.get_problem_data(solver=solver, gp=False, enforce_dpp=True,
                                                                  verbose=False)
 
     solver_name = solving_chain.solver.name()

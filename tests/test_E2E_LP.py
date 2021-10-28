@@ -90,37 +90,45 @@ def assign_data(prob, name, seed):
 
 N_RAND = 10
 
-name_style_seed = [['network', 'resource'],
-                   ['explicit', 'implicit'],
-                   list(np.arange(N_RAND))]
+name_solver_style_seed = [['network', 'resource'],
+                          ['ECOS'],
+                          ['explicit', 'implicit'],
+                          list(np.arange(N_RAND))]
 
 
 name_to_prob = {'network': network_problem(), 'resource': resource_problem()}
 
 
-@pytest.mark.parametrize('name, style, seed', list(itertools.product(*name_style_seed)))
-def test(name, style, seed):
+@pytest.mark.parametrize('name, solver, style, seed', list(itertools.product(*name_solver_style_seed)))
+def test(name, solver, style, seed):
 
     prob = name_to_prob[name]
 
     if seed == 0:
         if style == 'explicit':
-            cpg.generate_code(prob, code_dir='test_%s_explicit' % name, explicit=True, problem_name='%s_ex' % name)
-            assert len(glob.glob(os.path.join('test_%s_explicit' % name, 'cpg_module.*'))) > 0
+            cpg.generate_code(prob, code_dir='test_%s_%s_explicit' % (name, solver), solver=solver, explicit=True,
+                              problem_name='%s_%s_ex' % (name, solver))
+            assert len(glob.glob(os.path.join('test_%s_%s_explicit' % (name, solver), 'cpg_module.*'))) > 0
         if style == 'implicit':
-            cpg.generate_code(prob, code_dir='test_%s_implicit' % name, explicit=False, problem_name='%s_im' % name)
-            assert len(glob.glob(os.path.join('test_%s_implicit' % name, 'cpg_module.*'))) > 0
+            cpg.generate_code(prob, code_dir='test_%s_%s_implicit' % (name, solver), solver=solver, explicit=False,
+                              problem_name='%s_%s_im' % (name, solver))
+            assert len(glob.glob(os.path.join('test_%s_%s_implicit' % (name, solver), 'cpg_module.*'))) > 0
 
-    with open('test_%s_%s/problem.pickle' % (name, style), 'rb') as f:
+    with open('test_%s_%s_%s/problem.pickle' % (name, solver, style), 'rb') as f:
         prob = pickle.load(f)
 
-    module = importlib.import_module('test_%s_%s.cpg_solver' % (name, style))
+    module = importlib.import_module('test_%s_%s_%s.cpg_solver' % (name, solver, style))
     prob.register_solve('CPG', module.cpg_solve)
 
     prob = assign_data(prob, name, seed)
 
-    val_py = prob.solve()
-    val_ex = prob.solve(method='CPG')
+    if solver == 'OSQP':
+        val_py = prob.solve(eps_abs=1e-3, eps_rel=1e-3, max_iter=4000, polish=False, adaptive_rho_interval=int(1e6),
+                            warm_start=False)
+        val_ex = prob.solve(method='CPG', warm_start=False)
+    else:
+        val_py = prob.solve()
+        val_ex = prob.solve(method='CPG')
 
     if not np.isinf(val_py):
         assert abs((val_ex - val_py) / val_py) < 0.1
