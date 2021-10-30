@@ -318,6 +318,13 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
         shutil.copyfile(os.path.join(current_directory, 'solver', 'ecos', 'CMakeLists.txt'),
                         os.path.join(solver_code_dir, 'CMakeLists.txt'))
 
+        # adjust print level
+        with open(os.path.join(code_dir, 'c', 'solver_code', 'include', 'glblopts.h'), 'r') as f:
+            glbl_opts_data = f.read()
+        glbl_opts_data = glbl_opts_data.replace('#define PRINTLEVEL (2)', '#define PRINTLEVEL (0)')
+        with open(os.path.join(code_dir, 'c', 'solver_code', 'include', 'glblopts.h'), 'w') as f:
+            f.write(glbl_opts_data)
+
         # adjust top-level CMakeLists.txt
         with open(os.path.join(code_dir, 'c', 'CMakeLists.txt'), 'r') as f:
             CMakeLists_data = f.read()
