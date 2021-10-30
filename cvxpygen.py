@@ -390,7 +390,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
 
     # 'example' definitions
     with open(os.path.join(code_dir, 'c', 'src', 'cpg_example.c'), 'a') as f:
-        utils.write_example_def(f, user_p_writable, var_name_to_size)
+        utils.write_example_def(f, solver_name, user_p_writable, var_name_to_size)
 
     # adapt solver CMakeLists.txt
     with open(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'), 'a') as f:
@@ -402,7 +402,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
 
     # binding module definition
     with open(os.path.join(code_dir, 'cpp', 'src', 'cpg_module.cpp'), 'a') as f:
-        utils.write_module_def(f, solver_name, user_p_name_to_size, var_name_to_size, canon_settings_names, problem_name)
+        utils.write_module_def(f, user_p_name_to_size, var_name_to_size, canon_settings_names, problem_name)
 
     # custom CVXPY solve method
     with open(os.path.join(code_dir, 'cpg_solver.py'), 'a') as f:

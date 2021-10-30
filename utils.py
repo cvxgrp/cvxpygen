@@ -273,10 +273,7 @@ def write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable,
         f.write('\n// Vector containing flattened user-defined parameters\n')
         osqp_utils.write_vec(f, user_p_flat, 'CPG_Params_Vec', 'c_float')
 
-    f.write('\n// Value of the objective function\n')
-    f.write('c_float objective_value = 0;\n')
-
-    results_cast = ['']
+    results_cast = []
 
     f.write('\n// User-defined variables\n')
     for (name, value), symm in zip(var_init.items(), var_symmetric):
@@ -286,15 +283,26 @@ def write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable,
                 f.write('c_float %s = %.20f;\n' % (name, value))
             else:
                 osqp_utils.write_vec(f, value.flatten(order='F'), name, 'c_float')
+    results_cast.append('')
 
-    f.write('\n// Struct containing CPG objective value and solution\n')
-    CPG_Result_fields = ['objective_value'] + list(var_init.keys())
-    CPG_Result_values = ['&objective_value']
+    f.write('\n// Struct containing solver info\n')
+    CPG_Info_fields = ['obj_val', 'iter', 'status', 'pri_res', 'dua_res']
+    if solver_name == 'OSQP':
+        CPG_Info_values = ['0', '0', '"unknown"', '0', '0']
+    elif solver_name == 'ECOS':
+        CPG_Info_values = ['0', '0', '0', '0', '0']
+    info_cast = ['', '', '', '', '']
+    write_struct_def(f, CPG_Info_fields, info_cast, CPG_Info_values, 'CPG_Info', 'CPG_Info_t')
+
+    f.write('\n// Struct containing solution and info\n')
+    CPG_Result_fields = list(var_init.keys()) + ['info']
+    CPG_Result_values = []
     for (name, symm, offset) in zip(var_init.keys(), var_symmetric, var_offsets):
         if symm or solver_name == 'ECOS':
             CPG_Result_values.append('&' + name)
         else:
             CPG_Result_values.append('&xsolution + %d' % offset)
+    CPG_Result_values.append('&CPG_Info')
     write_struct_def(f, CPG_Result_fields, results_cast, CPG_Result_values, 'CPG_Result', 'CPG_Result_t')
 
     # Boolean struct for outdated parameter flags
@@ -367,10 +375,20 @@ def write_workspace_prot(f, solver_name, explicit, user_p_names, user_p_writable
         f.write('} CPG_Params_t;\n\n')
 
     f.write('typedef struct {\n')
-    f.write('    c_float     *objective_value;     ///< Objective function value\n')
+    f.write('    c_float     obj_val;     ///< Objective function value\n')
+    f.write('    c_int       iter;        ///< Number of iterations\n')
+    if solver_name == 'OSQP':
+        f.write('    char        *status;     ///< Solver status\n')
+    elif solver_name == 'ECOS':
+        f.write('    c_int       status;      ///< Solver status\n')
+    f.write('    c_float     pri_res;     ///< Primal residual\n')
+    f.write('    c_float     dua_res;     ///< Dual residual\n')
+    f.write('} CPG_Info_t;\n\n')
 
+    f.write('typedef struct {\n')
     for name in var_init.keys():
-        f.write('    c_float     *%s;              ///< Your variable %s\n' % (name, name))
+        f.write('    c_float     *%s;                   ///< Your variable %s\n' % (name, name))
+    f.write('    CPG_Info_t  *info;                ///< Solver info\n')
 
     f.write('} CPG_Result_t;\n\n')
 
@@ -418,9 +436,6 @@ def write_workspace_prot(f, solver_name, explicit, user_p_names, user_p_writable
         f.write('\n// Vector containing flattened user-defined parameters\n')
         osqp_utils.write_vec_extern(f, user_p_flat, 'CPG_Params_Vec', 'c_float')
 
-    f.write('\n// Value of the objective function\n')
-    f.write('extern c_float objective_value;\n')
-
     if any(var_symmetric) or solver_name == 'ECOS':
         f.write('\n// User-defined variables\n')
         for (name, value), symm in zip(var_init.items(), var_symmetric):
@@ -430,7 +445,10 @@ def write_workspace_prot(f, solver_name, explicit, user_p_names, user_p_writable
                 else:
                     osqp_utils.write_vec_extern(f, value.flatten(order='F'), name, 'c_float')
 
-    f.write('\n// Struct containing CPG objective value and solution\n')
+    f.write('\n// Struct containing solver info\n')
+    write_struct_prot(f, 'CPG_Info', 'CPG_Info_t')
+
+    f.write('\n// Struct containing solution and info\n')
     write_struct_prot(f, 'CPG_Result', 'CPG_Result_t')
 
 
@@ -498,9 +516,6 @@ def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_
                 write_canonicalize(f, canon_name, s, mapping)
             f.write('}\n')
 
-    f.write('\n// retrieve user-defined objective function value\n')
-    f.write('void retrieve_value(){\n')
-
     if solver_name == 'OSQP':
         obj_str = 'workspace.info->obj_val'
         sol_str = 'workspace.solution->x'
@@ -509,13 +524,6 @@ def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_
         sol_str = 'ecos_workspace->x'
     else:
         raise ValueError("Only OSQP and ECOS are supported!")
-
-    if is_maximization:
-        f.write('objective_value = -(%s + *Canon_Params.d);\n' % obj_str)
-    else:
-        f.write('objective_value = %s + *Canon_Params.d;\n' % obj_str)
-
-    f.write('}\n\n')
 
     f.write('// retrieve solution in terms of user-defined variables\n')
     f.write('void retrieve_solution(){\n')
@@ -528,6 +536,24 @@ def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_
                 for i, idx in enumerate(indices):
                     f.write('%s[%d] = %s[%d];\n' % (var_id, i, sol_str, idx))
 
+    f.write('}\n\n')
+
+    f.write('// retrieve solver info\n')
+    f.write('void retrieve_info(){\n')
+    if is_maximization:
+        f.write('CPG_Info.obj_val = -(%s + *Canon_Params.d);\n' % obj_str)
+    else:
+        f.write('CPG_Info.obj_val = %s + *Canon_Params.d;\n' % obj_str)
+    if solver_name == 'OSQP':
+        f.write('CPG_Info.iter = workspace.info->iter;\n')
+        f.write('CPG_Info.status = workspace.info->status;\n')
+        f.write('CPG_Info.pri_res = workspace.info->pri_res;\n')
+        f.write('CPG_Info.dua_res = workspace.info->dua_res;\n')
+    elif solver_name == 'ECOS':
+        f.write('CPG_Info.iter = ecos_workspace->info->iter;\n')
+        f.write('CPG_Info.status = ecos_flag;\n')
+        f.write('CPG_Info.pri_res = ecos_workspace->info->pres;\n')
+        f.write('CPG_Info.dua_res = ecos_workspace->info->dres;\n')
     f.write('}\n\n')
 
     f.write('// perform one ASA sequence to solve a problem instance\n')
@@ -619,8 +645,8 @@ def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_
             f.write('ecos_workspace->stgs->%s = Canon_Settings.%s;\n' % (name, name))
         f.write('ecos_flag = ECOS_solve(ecos_workspace);\n')
 
-    f.write('retrieve_value();\n')
     f.write('retrieve_solution();\n')
+    f.write('retrieve_info();\n')
 
     if solver_name == 'ECOS':
         f.write('ECOS_cleanup(ecos_workspace, 0);\n')
@@ -661,11 +687,11 @@ def write_solve_prot(f, solver_name, canon_p_ids, user_p_name_to_size, canon_set
     for canon_p_id in canon_p_ids:
         f.write('extern void canonicalize_Canon_%s();\n' % canon_p_id)
 
-    f.write('\n// retrieve user-defined objective function value\n')
-    f.write('extern void retrieve_value();\n')
-
     f.write('\n// retrieve solution in terms of user-defined variables\n')
     f.write('extern void retrieve_solution();\n')
+
+    f.write('\n// retrieve solver info\n')
+    f.write('extern void retrieve_info();\n')
 
     f.write('\n// perform one ASA sequence to solve a problem instance\n')
     f.write('extern void solve();\n')
@@ -684,7 +710,7 @@ def write_solve_prot(f, solver_name, canon_p_ids, user_p_name_to_size, canon_set
         f.write('extern void set_solver_%s(%s %s_new);\n' % (name, typ, name))
 
 
-def write_example_def(f, user_p_writable, var_name_to_size):
+def write_example_def(f, solver_name, user_p_writable, var_name_to_size):
     """
     Write main function to file
     """
@@ -703,16 +729,21 @@ def write_example_def(f, user_p_writable, var_name_to_size):
     f.write('solve();\n\n')
 
     f.write('// printing objective function value for demonstration purpose\n')
-    f.write('printf("f = %f \\n", objective_value);\n\n')
+    f.write('printf("f = %f \\n", CPG_Result.info->obj_val);\n\n')
 
     f.write('// printing solution for demonstration purpose\n')
+
+    if solver_name == 'OSQP':
+        int_format_str = 'lld'
+    else:
+        int_format_str = 'd'
 
     for name, size in var_name_to_size.items():
         if size == 1:
             f.write('printf("%s = %%f \\n", *CPG_Result.%s);\n' % (name, name))
         else:
             f.write('for(i = 0; i < %d; i++) {\n' % size)
-            f.write('printf("%s[%%lld] = %%f \\n", i, CPG_Result.%s[i]);\n' % (name, name))
+            f.write('printf("%s[%%%s] = %%f \\n", i, CPG_Result.%s[i]);\n' % (name, int_format_str, name))
             f.write('}\n')
 
     f.write('return 0;\n')
@@ -732,7 +763,7 @@ def write_canon_CMakeLists(f, solver_name):
         f.write('\nset(solver_src "${ecos_sources}" PARENT_SCOPE)')
 
 
-def write_module_def(f, solver_name, user_p_name_to_size, var_name_to_size, canon_settings_names, problem_name):
+def write_module_def(f, user_p_name_to_size, var_name_to_size, canon_settings_names, problem_name):
     """
     Write c++ file for pbind11 wrapper
     """
@@ -740,8 +771,6 @@ def write_module_def(f, solver_name, user_p_name_to_size, var_name_to_size, cano
     f.write('extern "C" {\n')
     f.write('    #include "include/cpg_workspace.h"\n')
     f.write('    #include "include/cpg_solve.h"\n')
-    if solver_name == 'OSQP':
-        f.write('    #include "solver_code/include/workspace.h"\n')
     f.write('}\n\n')
     f.write('namespace py = pybind11;\n\n')
     f.write('static int i;\n\n')
@@ -771,17 +800,8 @@ def write_module_def(f, solver_name, user_p_name_to_size, var_name_to_size, cano
     # arrange and return results
     f.write('    // arrange and return results\n')
     f.write('    CPG_Info_%s_cpp_t CPG_Info_cpp {};\n' % problem_name)
-    f.write('    CPG_Info_cpp.obj_val = objective_value;\n')
-    if solver_name == 'OSQP':
-        f.write('    CPG_Info_cpp.iter = workspace.info->iter;\n')
-        f.write('    CPG_Info_cpp.status = workspace.info->status;\n')
-        f.write('    CPG_Info_cpp.pri_res = workspace.info->pri_res;\n')
-        f.write('    CPG_Info_cpp.dua_res = workspace.info->dua_res;\n')
-    elif solver_name == 'ECOS':
-        f.write('    CPG_Info_cpp.iter = ecos_workspace->info->iter;\n')
-        f.write('    CPG_Info_cpp.status = ecos_flag;\n')
-        f.write('    CPG_Info_cpp.pri_res = ecos_workspace->info->pres;\n')
-        f.write('    CPG_Info_cpp.dua_res = ecos_workspace->info->dres;\n')
+    for field in ['obj_val', 'iter', 'status', 'pri_res', 'dua_res']:
+        f.write('    CPG_Info_cpp.%s = CPG_Info.%s;\n' % (field, field))
     f.write('    CPG_Info_cpp.ASA_proc_time = 1000.0 * (ASA_end-ASA_start) / CLOCKS_PER_SEC;\n')
 
     f.write('    CPG_Result_%s_cpp_t CPG_Result_cpp {};\n' % problem_name)
@@ -1052,9 +1072,9 @@ def replace_html_data(code_dir, solver_name, explicit, text, user_p_name_to_size
     # type definition of CPG_Result_t
     CPGRESULTTYPEDEF = '// Struct type with user-defined objective value and solution as fields\n'
     CPGRESULTTYPEDEF += 'typedef struct {\n'
-    CPGRESULTTYPEDEF += '    c_float     *objective_value;///< Objective function value\n'
     for name in var_name_to_size.keys():
         CPGRESULTTYPEDEF += ('    c_float     *%s;' % name).ljust(33) + ('///< Your variable %s\n' % name)
+    CPGRESULTTYPEDEF += '    CPG_Info_t  *info;           ///< Solve info\n'
     CPGRESULTTYPEDEF += '} CPG_Result_t;\n'
 
     text = text.replace('$CPGRESULTTYPEDEF', CPGRESULTTYPEDEF)

@@ -66,6 +66,15 @@ $CPGBASICTYPEDEF
 $CPGCANONPARAMSTYPEDEF
 $CPGOUTDATEDTYPEDEF
 $CPGUSERPARAMSTYPEDEF
+// Struct containing solver info
+typedef struct {
+    c_float     obj_val;         ///< Objective function value
+    c_int       iter;            ///< Number of iterations
+    c_int       status;          ///< Solver status
+    c_float     pri_res;         ///< Primal residual
+    c_float     dua_res;         ///< Dual residual
+} CPG_Info_t;
+
 $CPGRESULTTYPEDEF
           </code></pre>
         </dd>
@@ -81,10 +90,10 @@ Canon_Outdated_t Canon_Outdated;
 $CPGCANONPARAMDECLARATIONS
 $CPGCANONPARAMSTRUCTDECLARATIONS
 $CPGPARAMDECLARATIONS
-// Value of the objective function
-c_float objective_value;
-
 $CPGVARIABLEDECLARATIONS
+// Struct containing solver info
+CPG_Info_t CPG_Info;
+
 // Struct containing user-defined objective value and solution
 CPG_Result_t CPG_Result;
           </code></pre>
@@ -93,11 +102,11 @@ CPG_Result_t CPG_Result;
         <dd>
           <pre><code><!-- language: lang-c -->
 $CPGCANONICALIZEDECLARATIONS
-// retrieve user-defined objective function value
-void retrieve_value();
-
 // retrieve solution in terms of user-defined variables
 void retrieve_solution();
+
+// retrieve solver info
+void retrieve_info();
 
 // perform one ASA sequence to solve a problem instance
 void solve();
