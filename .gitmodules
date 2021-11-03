@@ -1,3 +1,6 @@
 [submodule "solver/ecos"]
 	path = solver/ecos
 	url = https://github.com/embotech/ecos
+[submodule "osqp-python"]
+	path = solver/osqp-python
+	url = https://github.com/osqp/osqp-python

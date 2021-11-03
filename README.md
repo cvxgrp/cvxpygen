@@ -14,6 +14,9 @@ Solving a DPP-compliant problem repeatedly for different values of the parameter
 For now, CVXPYGEN is a separate module, until it will be integrated into CVXPY.
 As of today, CVXPYGEN works with linear and quadratic programs.
 
+**Important: When generating code with the ECOS solver, the generated code is licenced 
+under the [GNU General Public License v3.0](https://github.com/embotech/ecos/blob/develop/COPYING).**
+
 ## Installation
 
 1. Clone this repository via SSH,

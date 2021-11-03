@@ -22,6 +22,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
     sys.stdout.write('Generating code with CVXPYGEN ...\n')
 
     current_directory = os.path.dirname(os.path.realpath(__file__))
+    solver_code_dir = os.path.join(code_dir, 'c', 'solver_code')
 
     # copy TEMPLATE
     if os.path.isdir(code_dir):
@@ -268,6 +269,12 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
         osqp_obj.codegen(os.path.join(code_dir, 'c', 'solver_code'), project_type=cmake_generator,
                          parameters='matrices', force_rewrite=True)
 
+        # copy license files
+        shutil.copyfile(os.path.join(current_directory, 'solver', 'osqp-python', 'LICENSE'),
+                        os.path.join(solver_code_dir, 'LICENSE'))
+        shutil.copyfile(os.path.join(current_directory, 'LICENSE'),
+                        os.path.join(code_dir, 'LICENSE'))
+
     elif solver_name == 'ECOS':
 
         # solver settings
@@ -276,7 +283,6 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
         canon_settins_defaults = ['1e-8', '1e-8', '1e-8', '1e-4', '5e-5', '5e-5', '100']
 
         # copy sources
-        solver_code_dir = os.path.join(code_dir, 'c', 'solver_code')
         if os.path.isdir(solver_code_dir):
             shutil.rmtree(solver_code_dir)
         os.mkdir(solver_code_dir)
@@ -285,6 +291,10 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
             shutil.copytree(os.path.join(current_directory, 'solver', 'ecos', dtc), os.path.join(solver_code_dir, dtc))
         shutil.copyfile(os.path.join(current_directory, 'solver', 'ecos', 'CMakeLists.txt'),
                         os.path.join(solver_code_dir, 'CMakeLists.txt'))
+        shutil.copyfile(os.path.join(current_directory, 'solver', 'ecos', 'COPYING'),
+                        os.path.join(solver_code_dir, 'COPYING'))
+        shutil.copyfile(os.path.join(current_directory, 'solver', 'ecos', 'COPYING'),
+                        os.path.join(code_dir, 'COPYING'))
 
         # adjust print level
         with open(os.path.join(code_dir, 'c', 'solver_code', 'include', 'glblopts.h'), 'r') as f:
