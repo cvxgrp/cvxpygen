@@ -211,7 +211,8 @@ def write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable,
     f.write('// Canonical parameters\n')
     for canon_p_id in canon_p_ids:
         write_param_def(f, replace_inf(canon_p[canon_p_id]), canon_p_id, '')
-        write_param_def(f, replace_inf(canon_p[canon_p_id]), canon_p_id, '_ECOS')
+        if solver_name == 'ECOS':
+            write_param_def(f, replace_inf(canon_p[canon_p_id]), canon_p_id, '_ECOS')
         if canon_p_id.isupper() or canon_p_id == 'd':
             canon_casts.append('')
         else:
@@ -220,7 +221,8 @@ def write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable,
     f.write('\n// Struct containing parameters accepted by canonical solver\n')
 
     struct_values = []
-    struct_values_ECOS = []
+    if solver_name == 'ECOS':
+        struct_values_ECOS = []
     for canon_p_id in canon_p_ids:
         if type(canon_p[canon_p_id]) == dict:
             length = len(canon_p[canon_p_id]['x'])
@@ -228,13 +230,16 @@ def write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable,
             length = len(canon_p[canon_p_id])
         if length > 0:
             struct_values.append('&Canon_%s' % canon_p_id)
-            struct_values_ECOS.append('&Canon_%s_ECOS' % canon_p_id)
+            if solver_name == 'ECOS':
+                struct_values_ECOS.append('&Canon_%s_ECOS' % canon_p_id)
         else:
             struct_values.append('0')
-            struct_values_ECOS.append('0')
+            if solver_name == 'ECOS':
+                struct_values_ECOS.append('0')
 
     write_struct_def(f, canon_p_ids, canon_casts, struct_values, 'Canon_Params', 'Canon_Params_t')
-    write_struct_def(f, canon_p_ids, canon_casts, struct_values_ECOS, 'Canon_Params_ECOS', 'Canon_Params_t')
+    if solver_name == 'ECOS':
+        write_struct_def(f, canon_p_ids, canon_casts, struct_values_ECOS, 'Canon_Params_ECOS', 'Canon_Params_t')
 
     if solver_name == 'ECOS':
         f.write('\n// Struct containing solver settings\n')
@@ -411,11 +416,13 @@ def write_workspace_prot(f, solver_name, explicit, user_p_names, user_p_writable
     f.write('\n// Canonical parameters\n')
     for canon_p_id in canon_p_ids:
         write_param_prot(f, canon_p[canon_p_id], canon_p_id, '')
-        write_param_prot(f, canon_p[canon_p_id], canon_p_id, '_ECOS')
+        if solver_name == 'ECOS':
+            write_param_prot(f, canon_p[canon_p_id], canon_p_id, '_ECOS')
 
     f.write('\n// Struct containing canonical parameters\n')
     write_struct_prot(f, 'Canon_Params', 'Canon_Params_t')
-    write_struct_prot(f, 'Canon_Params_ECOS', 'Canon_Params_t')
+    if solver_name == 'ECOS':
+        write_struct_prot(f, 'Canon_Params_ECOS', 'Canon_Params_t')
 
     if explicit:
         f.write('\n// User-defined parameters\n')
@@ -505,7 +512,7 @@ def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_
 
     for canon_name, mapping in zip(canon_p_ids, mappings):
         if mapping.nnz > 0:
-            f.write('void canonicalize_Canon_%s(){\n' % canon_name)
+            f.write('void canonicalize_%s(){\n' % canon_name)
             if canon_name.isupper():
                 s = '->x'
             else:
@@ -563,60 +570,60 @@ def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_
 
         if canon_p_to_changes['P'] and canon_p_to_changes['A']:
             f.write('if (Canon_Outdated.P && Canon_Outdated.A) {\n')
-            f.write('canonicalize_Canon_P();\n')
-            f.write('canonicalize_Canon_A();\n')
+            f.write('canonicalize_P();\n')
+            f.write('canonicalize_A();\n')
             f.write('osqp_update_P_A(&workspace, Canon_Params.P->x, 0, 0, Canon_Params.A->x, 0, 0);\n')
             f.write('} else if (Canon_Outdated.P) {\n')
-            f.write('canonicalize_Canon_P();\n')
+            f.write('canonicalize_P();\n')
             f.write('osqp_update_P(&workspace, Canon_Params.P->x, 0, 0);\n')
             f.write('} else if (Canon_Outdated.A) {\n')
-            f.write('canonicalize_Canon_A();\n')
+            f.write('canonicalize_A();\n')
             f.write('osqp_update_A(&workspace, Canon_Params.A->x, 0, 0);\n')
             f.write('}\n')
         else:
             if canon_p_to_changes['P']:
                 f.write('if (Canon_Outdated.P) {\n')
-                f.write('canonicalize_Canon_P();\n')
+                f.write('canonicalize_P();\n')
                 f.write('osqp_update_P(&workspace, Canon_Params.P->x, 0, 0);\n')
                 f.write('}\n')
             if canon_p_to_changes['A']:
                 f.write('if (Canon_Outdated.A) {\n')
-                f.write('canonicalize_Canon_A();\n')
+                f.write('canonicalize_A();\n')
                 f.write('osqp_update_A(&workspace, Canon_Params.A->x, 0, 0);\n')
                 f.write('}\n')
 
         if canon_p_to_changes['q']:
             f.write('if (Canon_Outdated.q) {\n')
-            f.write('canonicalize_Canon_q();\n')
+            f.write('canonicalize_q();\n')
             f.write('osqp_update_lin_cost(&workspace, Canon_Params.q);\n')
             f.write('}\n')
 
         if canon_p_to_changes['d']:
             f.write('if (Canon_Outdated.d) {\n')
-            f.write('canonicalize_Canon_d();\n')
+            f.write('canonicalize_d();\n')
             f.write('}\n')
 
         if canon_p_to_changes['l'] and canon_p_to_changes['u']:
             f.write('if (Canon_Outdated.l && Canon_Outdated.u) {\n')
-            f.write('canonicalize_Canon_l();\n')
-            f.write('canonicalize_Canon_u();\n')
+            f.write('canonicalize_l();\n')
+            f.write('canonicalize_u();\n')
             f.write('osqp_update_bounds(&workspace, Canon_Params.l, Canon_Params.u);\n')
             f.write('} else if (Canon_Outdated.l) {\n')
-            f.write('canonicalize_Canon_l();\n')
+            f.write('canonicalize_l();\n')
             f.write('osqp_update_lower_bound(&workspace, Canon_Params.l);\n')
             f.write('} else if (Canon_Outdated.u) {\n')
-            f.write('canonicalize_Canon_u();\n')
+            f.write('canonicalize_u();\n')
             f.write('osqp_update_upper_bound(&workspace, Canon_Params.u);\n')
             f.write('}\n')
         else:
             if canon_p_to_changes['l']:
                 f.write('if (Canon_Outdated.l) {\n')
-                f.write('canonicalize_Canon_l();\n')
+                f.write('canonicalize_l();\n')
                 f.write('osqp_update_lower_bound(&workspace, Canon_Params.l);\n')
                 f.write('}\n')
             if canon_p_to_changes['u']:
                 f.write('if (Canon_Outdated.u) {\n')
-                f.write('canonicalize_Canon_u();\n')
+                f.write('canonicalize_u();\n')
                 f.write('osqp_update_upper_bound(&workspace, Canon_Params.u);\n')
                 f.write('}\n')
 
@@ -625,7 +632,7 @@ def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_
         for canon_p, changes in canon_p_to_changes.items():
             if changes:
                 f.write('if (Canon_Outdated.%s) {\n' % canon_p)
-                f.write('canonicalize_Canon_%s();\n' % canon_p)
+                f.write('canonicalize_%s();\n' % canon_p)
                 f.write('}\n')
 
     if solver_name == 'OSQP':
@@ -685,7 +692,7 @@ def write_solve_prot(f, solver_name, canon_p_ids, user_p_name_to_size, canon_set
 
     f.write('// map user-defined to canonical parameters\n')
     for canon_p_id in canon_p_ids:
-        f.write('extern void canonicalize_Canon_%s();\n' % canon_p_id)
+        f.write('extern void canonicalize_%s();\n' % canon_p_id)
 
     f.write('\n// retrieve solution in terms of user-defined variables\n')
     f.write('extern void retrieve_solution();\n')
@@ -1146,7 +1153,7 @@ def replace_html_data(code_dir, solver_name, explicit, text, user_p_name_to_size
     # canonicalize declarations
     CPGCANONICALIZEDECLARATIONS = '// map user-defined to canonical parameters\n'
     for p_id in canon_p_ids:
-        CPGCANONICALIZEDECLARATIONS += 'void canonicalize_Canon_%s();\n' % p_id
+        CPGCANONICALIZEDECLARATIONS += 'void canonicalize_%s();\n' % p_id
     text = text.replace('$CPGCANONICALIZEDECLARATIONS', CPGCANONICALIZEDECLARATIONS)
 
     # update declarations

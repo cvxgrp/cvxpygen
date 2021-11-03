@@ -92,12 +92,11 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
         return np.array(user_p_id_to_param[user_p_id].value)
     user_p_flat = cI.get_parameter_vector(user_p_total_size, user_p_id_to_col, user_p_id_to_size, user_p_value)
 
-    canon_p = {}
     canon_mappings = []
+    canon_p = {}
     canon_p_to_changes = {}
-    canon_constants = {}
     canon_p_id_to_size = {}
-    canon_settings_names_to_default = {}
+    canon_constants = {}
 
     if solver_name == 'OSQP':
 
@@ -105,110 +104,95 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
         n_eq = data['n_eq']
         n_ineq = data['n_ineq']
 
-        # extract csc values for individual osqp parameters (Alu -> A, lu)
-        (indices_P, indptr_P, shape_P) = p_prob.problem_data_index_P
-        (indices_Alu, indptr_Alu, shape_Alu) = p_prob.problem_data_index_A
-        indices_A, indptr_A, shape_A = indices_Alu[:indptr_Alu[-2]], indptr_Alu[:-1], (shape_Alu[0], shape_Alu[1] - 1)
-        indices_lu, indptr_lu, shape_lu = indices_Alu[indptr_Alu[-2]:indptr_Alu[-1]], indptr_Alu[-2:] - indptr_Alu[-2], \
-                                                    (shape_Alu[0], 1)
-        P_data_length = p_prob.reduced_P.shape[0]
-        A_data_length = len(indices_A)
-        lu_data_length = len(indices_lu)
-        l_data_length = np.count_nonzero(indices_lu < n_eq)
-
-        # osqp parameters
+        # affine mapping for each OSQP parameter
         canon_p_ids = ['P', 'q', 'd', 'A', 'l', 'u']
-        osqp_p_ids_lu = canon_p_ids[:-2] + ['lu']
-        osqp_p_id_to_i = {k: v for v, k in enumerate(canon_p_ids)}
-        osqp_p_num = len(canon_p_ids)
-        osqp_p_sizes_lu = [P_data_length, n_var, 1, A_data_length, lu_data_length]
-        osqp_p_id_to_size_lu = {k: v for k, v in zip(osqp_p_ids_lu, osqp_p_sizes_lu)}
-        osqp_p_id_to_col_lu = {k: v for k, v in zip(osqp_p_ids_lu, np.cumsum([0] + osqp_p_sizes_lu[:-1] + [0]))}
+        adjacency = np.zeros(shape=(len(canon_p_ids), user_p_num), dtype=bool)
+
+        (indices_P, indptr_P, shape_P) = p_prob.problem_data_index_P
+        indices_Alu, indptr_Alu, shape_Alu = p_prob.problem_data_index_A
+        n_data_Alu = len(indices_Alu)
+        n_data_lu = indptr_Alu[-1] - indptr_Alu[-2]
+        n_data_A = n_data_Alu - n_data_lu
+
+        for i, p_id in enumerate(canon_p_ids):
+
+            mapping_rows = []
+            indices = []
+            indptr = []
+            shape = ()
+
+            if p_id == 'P':
+                mapping = p_prob.reduced_P
+                indices = indices_P
+                shape = (n_var, n_var)
+            elif p_id == 'q':
+                mapping = p_prob.q[:-1]
+            elif p_id == 'd':
+                mapping = p_prob.q[-1]
+            elif p_id == 'A':
+                mapping = p_prob.reduced_A[:n_data_A]
+                indices = indices_Alu[:n_data_A]
+                shape = (n_eq+n_ineq, n_var)
+            elif p_id == 'l':
+                mapping_rows_eq = np.nonzero(indices_Alu < n_eq)[0]
+                mapping_rows = mapping_rows_eq[mapping_rows_eq >= n_data_A]  # mapping to the finite part of l
+                shape = (n_eq, 1)
+            elif p_id == 'u':
+                mapping_rows = np.arange(n_data_A, n_data_Alu)
+                shape = (n_eq+n_ineq, 1)
+            else:
+                raise ValueError('Unknown OSQP parameter name: "%s"' % p_id)
+
+            if p_id == 'P':
+                indptr = indptr_P
+            elif p_id == 'A':
+                indptr = indptr_Alu[:-1]
+            elif p_id in ['l', 'u']:
+                indices = indices_Alu[mapping_rows]
+                mapping_to_sparse = -p_prob.reduced_A[mapping_rows]
+                mapping_to_dense = sparse.lil_matrix(np.zeros((shape[0], mapping_to_sparse.shape[1])))
+                for i_data in range(mapping_to_sparse.shape[0]):
+                    mapping_to_dense[indices[i_data], :] = mapping_to_sparse[i_data, :]
+                mapping = sparse.csc_matrix(mapping_to_dense)
+
+            canon_mappings.append(mapping.tocsr())
+            canon_p_to_changes[p_id] = mapping[:, :-1].nnz > 0
+            canon_p_id_to_size[p_id] = mapping.shape[0]
+
+            for j in range(user_p_num):
+                column_slice = slice(user_p_id_to_col[user_p_ids[j]], user_p_id_to_col[user_p_ids[j + 1]])
+                if mapping[:, column_slice].nnz > 0:
+                    adjacency[i, j] = True
+
+            canon_p_data = mapping @ user_p_flat
+
+            if p_id.isupper():
+                csc_mat = sparse.csc_matrix((canon_p_data, indices, indptr), shape=shape)
+                canon_p[p_id+'_sp'] = csc_mat
+                canon_p[p_id] = utils.csc_to_dict(csc_mat)
+            elif p_id == 'l':
+                canon_p[p_id] = np.concatenate((canon_p_data, -np.inf*np.ones(n_ineq)), axis=0)
+            else:
+                canon_p[p_id] = canon_p_data
 
         # OSQP settings
-        canon_settings_names = ['rho', 'max_iter', 'eps_abs', 'eps_rel', 'eps_prim_inf', 'eps_dual_inf', 'alpha',
-                                'scaled_termination', 'check_termination', 'warm_start']
+        canon_settings_names = ['rho', 'max_iter', 'eps_abs', 'eps_rel', 'eps_prim_inf', 'eps_dual_inf',
+                                'alpha', 'scaled_termination', 'check_termination', 'warm_start']
         canon_settings_types = ['c_float', 'c_int', 'c_float', 'c_float', 'c_float', 'c_float', 'c_float',
                                 'c_int', 'c_int', 'c_int']
-        canon_settings_names_to_types = {name: typ for name, typ in zip(canon_settings_names, canon_settings_types)}
-
-        # adjacency matrix describing OSQP_params - user_params dependencies
-        adjacency = np.zeros(shape=(osqp_p_num, user_p_num), dtype=bool)
-
-        # adjacency P, q, d
-        for j in range(user_p_num):
-            column_slice = slice(user_p_id_to_col[user_p_ids[j]], user_p_id_to_col[user_p_ids[j + 1]])
-            if p_prob.reduced_P[:, column_slice].data.size > 0:
-                adjacency[0, j] = True
-            if p_prob.q[:-1, column_slice].data.size > 0:
-                adjacency[1, j] = True
-            if p_prob.q[-1, column_slice].data.size > 0:
-                adjacency[2, j] = True
-
-        # adjacency A, l, u
-        Alu_dummy = sparse.csc_matrix((np.zeros((len(indices_Alu),)), indices_Alu, indptr_Alu), shape=shape_Alu).tocoo()
-        for j in range(user_p_num):
-            column_slice = slice(user_p_id_to_col[user_p_ids[j]], user_p_id_to_col[user_p_ids[j + 1]])
-            flat_adjacent_idx = np.unique(p_prob.reduced_A[:, column_slice].tocoo().row)
-            Alu_rows = Alu_dummy.row[flat_adjacent_idx]
-            Alu_columns = Alu_dummy.col[flat_adjacent_idx]
-            if Alu_rows.size > 0:
-                if np.min(Alu_columns) < n_var:
-                    adjacency[osqp_p_id_to_i['A'], j] = True
-                if np.max(Alu_columns) >= n_var:
-                    adjacency[osqp_p_id_to_i['u'], j] = True
-                    if np.min(Alu_rows) < n_eq:
-                        adjacency[osqp_p_id_to_i['l'], j] = True
-
-        # default values of OSQP parameters via one big affine mapping
-        MAP = sparse.vstack([p_prob.reduced_P, p_prob.q, p_prob.reduced_A])
-        OSQP_p_flat = MAP @ user_p_flat
-        data_P = OSQP_p_flat[osqp_p_id_to_col_lu['P']:osqp_p_id_to_col_lu['P'] + osqp_p_id_to_size_lu['P']]
-        canon_p['P_csc'] = sparse.csc_matrix((data_P, indices_P, indptr_P), shape=shape_P)
-        canon_p['P'] = utils.csc_to_dict(canon_p['P_csc'])
-        canon_p['q'] = OSQP_p_flat[osqp_p_id_to_col_lu['q']:osqp_p_id_to_col_lu['q'] + osqp_p_id_to_size_lu['q']]
-        canon_p['d'] = OSQP_p_flat[osqp_p_id_to_col_lu['d']:osqp_p_id_to_col_lu['d'] + osqp_p_id_to_size_lu['d']]
-        data_A = OSQP_p_flat[osqp_p_id_to_col_lu['A']:osqp_p_id_to_col_lu['A'] + osqp_p_id_to_size_lu['A']]
-        canon_p['A_csc'] = sparse.csc_matrix((data_A, indices_A, indptr_A), shape=shape_A)
-        canon_p['A'] = utils.csc_to_dict(canon_p['A_csc'])
-        data_lu = OSQP_p_flat[osqp_p_id_to_col_lu['lu']:osqp_p_id_to_col_lu['lu'] + osqp_p_id_to_size_lu['lu']]
-        lu = sparse.csc_matrix((data_lu, indices_lu, indptr_lu), shape=shape_lu).toarray().squeeze()
-        canon_p['l'] = np.concatenate((-lu[:n_eq], -np.inf * np.ones(n_ineq)))
-        canon_p['u'] = -lu
-
-        # affine mapping for each OSQP parameter
-        for osqp_name in canon_p_ids:
-            if osqp_name in ['l', 'u']:
-                if osqp_name == 'l':
-                    data_length = l_data_length
-                    vec_length = n_eq
-                else:
-                    data_length = lu_data_length
-                    vec_length = n_eq+n_ineq
-                row_slice = slice(osqp_p_id_to_col_lu['lu'], osqp_p_id_to_col_lu['lu'] + data_length)
-                mapping_to_sparse_vec = -MAP[row_slice, :]
-                mapping_to_dense_vec = sparse.lil_matrix(np.zeros((vec_length, mapping_to_sparse_vec.shape[1])))
-                for i_data in range(data_length):
-                    mapping_to_dense_vec[indices_lu[i_data], :] = mapping_to_sparse_vec[i_data, :]
-                mapping = sparse.csr_matrix(mapping_to_dense_vec)
-            else:
-                row_slice = slice(osqp_p_id_to_col_lu[osqp_name],
-                                  osqp_p_id_to_col_lu[osqp_name] + osqp_p_id_to_size_lu[osqp_name])
-                mapping = MAP[row_slice, :]
-            canon_mappings.append(mapping)
-            canon_p_to_changes[osqp_name] = mapping[:, :-1].nnz > 0
+        canon_settins_defaults = []
 
         # OSQP codegen
-        myOSQP = osqp.OSQP()
-        myOSQP.setup(P=canon_p['P_csc'], q=canon_p['q'], A=canon_p['A_csc'], l=canon_p['l'], u=canon_p['u'])
+        osqp_obj = osqp.OSQP()
+        osqp_obj.setup(P=canon_p['P_sp'], q=canon_p['q'], A=canon_p['A_sp'], l=canon_p['l'], u=canon_p['u'])
         if system() == 'Windows':
             cmake_generator = 'MinGW Makefiles'
         elif system() == 'Linux' or system() == 'Darwin':
             cmake_generator = 'Unix Makefiles'
         else:
             raise OSError('Unknown operating system!')
-        myOSQP.codegen(os.path.join(code_dir, 'c', 'solver_code'), project_type=cmake_generator, parameters='matrices',
-                       force_rewrite=True)
+        osqp_obj.codegen(os.path.join(code_dir, 'c', 'solver_code'), project_type=cmake_generator,
+                         parameters='matrices', force_rewrite=True)
 
     elif solver_name == 'ECOS':
 
@@ -224,7 +208,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
         canon_constants['q'] = np.array(p_prob.cone_dims.soc)
         canon_constants['e'] = p_prob.cone_dims.exp
 
-        # affine mapping for each OSQP parameter
+        # affine mapping for each ECOS parameter
         canon_p_ids = ['c', 'd', 'A', 'b', 'G', 'h']
         adjacency = np.zeros(shape=(len(canon_p_ids), user_p_num), dtype=bool)
 
@@ -267,7 +251,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
             elif p_id in ['G', 'h']:
                 indices = indices_AGbh[mapping_rows] - n_eq
 
-            if p_id in ['A', 'G']:
+            if p_id.isupper():
                 mapping = -p_prob.reduced_A[mapping_rows]
                 indptr_original = indptr_AGbh[:-1]
             elif p_id in ['b', 'h']:
@@ -296,16 +280,13 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
                             indptr[c + 1:] += 1
                             break
                 csc_mat = sparse.csc_matrix((canon_p_data, indices, indptr), shape=shape)
-                if p_id in ['A', 'G']:
-                    canon_p[p_id] = utils.csc_to_dict(csc_mat)
+                canon_p[p_id] = utils.csc_to_dict(csc_mat)
             else:
                 canon_p[p_id] = canon_p_data
 
         canon_settings_names = ['feastol', 'abstol', 'reltol', 'feastol_inacc', 'abstol_inacc', 'reltol_inacc', 'maxit']
         canon_settings_types = ['c_float', 'c_float', 'c_float', 'c_float', 'c_float', 'c_float', 'c_int']
         canon_settins_defaults = ['1e-8', '1e-8', '1e-8', '1e-4', '5e-5', '5e-5', '100']
-        canon_settings_names_to_types = {name: typ for name, typ in zip(canon_settings_names, canon_settings_types)}
-        canon_settings_names_to_default = {name: typ for name, typ in zip(canon_settings_names, canon_settins_defaults)}
 
         # copy sources
         solver_code_dir = os.path.join(code_dir, 'c', 'solver_code')
@@ -363,6 +344,9 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
 
     user_p_to_canon_outdated = {user_p_name: [canon_p_ids[j] for j in np.nonzero(adjacency[:, i])[0]]
                                 for i, user_p_name in enumerate(user_p_names)}
+
+    canon_settings_names_to_types = {name: typ for name, typ in zip(canon_settings_names, canon_settings_types)}
+    canon_settings_names_to_default = {name: typ for name, typ in zip(canon_settings_names, canon_settins_defaults)}
 
     # 'workspace' prototypes
     with open(os.path.join(code_dir, 'c', 'include', 'cpg_workspace.h'), 'a') as f:
