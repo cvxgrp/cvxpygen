@@ -28,14 +28,14 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
         shutil.rmtree(code_dir)
     shutil.copytree(os.path.join(current_directory, 'TEMPLATE'), code_dir)
 
-    # get problem data
+    # problem data
     data, solving_chain, inverse_data = problem.get_problem_data(solver=solver, gp=False, enforce_dpp=True,
                                                                  verbose=False)
 
     solver_name = solving_chain.solver.name()
     p_prob = data['param_prob']
 
-    # get variable information
+    # variable information
     variables = problem.variables()
     var_names = [var.name() for var in variables]
     var_ids = [var.id for var in variables]
@@ -96,86 +96,160 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
     canon_p = {}
     canon_p_to_changes = {}
     canon_p_id_to_size = {}
-    canon_constants = {}
+
+    # dimensions and information specific to solver
 
     if solver_name == 'OSQP':
 
+        canon_p_ids = ['P', 'q', 'd', 'A', 'l', 'u']
+        canon_p_ids_constr_vec = ['l', 'u']
+        sign_constr_vec = -1
         n_var = data['n_var']
         n_eq = data['n_eq']
         n_ineq = data['n_ineq']
 
-        # affine mapping for each OSQP parameter
-        canon_p_ids = ['P', 'q', 'd', 'A', 'l', 'u']
-        adjacency = np.zeros(shape=(len(canon_p_ids), user_p_num), dtype=bool)
+        indices_obj, indptr_obj, shape_obj = p_prob.problem_data_index_P
+        indices_constr, indptr_constr, shape_constr = p_prob.problem_data_index_A
 
-        (indices_P, indptr_P, shape_P) = p_prob.problem_data_index_P
-        indices_Alu, indptr_Alu, shape_Alu = p_prob.problem_data_index_A
-        n_data_Alu = len(indices_Alu)
-        n_data_lu = indptr_Alu[-1] - indptr_Alu[-2]
-        n_data_A = n_data_Alu - n_data_lu
+        canon_constants = {}
 
-        for i, p_id in enumerate(canon_p_ids):
+    elif solver_name == 'ECOS':
 
-            mapping_rows = []
-            indices = []
-            indptr = []
-            shape = ()
+        canon_p_ids = ['c', 'd', 'A', 'b', 'G', 'h']
+        canon_p_ids_constr_vec = ['b', 'h']
+        sign_constr_vec = 1
+        n_var = p_prob.x.size
+        n_eq = p_prob.cone_dims.zero
+        n_ineq = data['G'].shape[0]
+
+        indices_obj, indptr_obj, shape_obj = None, None, None
+        indices_constr, indptr_constr, shape_constr = p_prob.problem_data_index
+
+        canon_constants = {'n': n_var, 'm': n_ineq, 'p': n_eq, 'l': p_prob.cone_dims.nonneg,
+                           'n_cones': len(p_prob.cone_dims.soc), 'q': np.array(p_prob.cone_dims.soc),
+                           'e': p_prob.cone_dims.exp}
+
+    else:
+        raise ValueError("Problem class cannot be addressed by the OSQP or ECOS solver!")
+
+    n_data_constr = len(indices_constr)
+    n_data_constr_vec = indptr_constr[-1] - indptr_constr[-2]
+    n_data_constr_mat = n_data_constr - n_data_constr_vec
+
+    mapping_rows_eq = np.nonzero(indices_constr < n_eq)[0]
+    mapping_rows_ineq = np.nonzero(indices_constr >= n_eq)[0]
+
+    adjacency = np.zeros(shape=(len(canon_p_ids), user_p_num), dtype=bool)
+
+    for i, p_id in enumerate(canon_p_ids):
+
+        # compute affine mapping for each canonical parameter
+        mapping_rows = []
+        mapping = []
+        indices = []
+        indptr = []
+        shape = ()
+
+        if solver_name == 'OSQP':
 
             if p_id == 'P':
                 mapping = p_prob.reduced_P
-                indices = indices_P
+                indices = indices_obj
                 shape = (n_var, n_var)
             elif p_id == 'q':
                 mapping = p_prob.q[:-1]
             elif p_id == 'd':
                 mapping = p_prob.q[-1]
             elif p_id == 'A':
-                mapping = p_prob.reduced_A[:n_data_A]
-                indices = indices_Alu[:n_data_A]
+                mapping = p_prob.reduced_A[:n_data_constr_mat]
+                indices = indices_constr[:n_data_constr_mat]
                 shape = (n_eq+n_ineq, n_var)
             elif p_id == 'l':
-                mapping_rows_eq = np.nonzero(indices_Alu < n_eq)[0]
-                mapping_rows = mapping_rows_eq[mapping_rows_eq >= n_data_A]  # mapping to the finite part of l
+                mapping_rows_eq = np.nonzero(indices_constr < n_eq)[0]
+                mapping_rows = mapping_rows_eq[mapping_rows_eq >= n_data_constr_mat]  # mapping to the finite part of l
+                indices = indices_constr[mapping_rows]
                 shape = (n_eq, 1)
             elif p_id == 'u':
-                mapping_rows = np.arange(n_data_A, n_data_Alu)
+                mapping_rows = np.arange(n_data_constr_mat, n_data_constr)
+                indices = indices_constr[mapping_rows]
                 shape = (n_eq+n_ineq, 1)
             else:
                 raise ValueError('Unknown OSQP parameter name: "%s"' % p_id)
 
-            if p_id == 'P':
-                indptr = indptr_P
+        elif solver_name == 'ECOS':
+
+            if p_id == 'c':
+                mapping = p_prob.c[:-1]
+            elif p_id == 'd':
+                mapping = p_prob.c[-1]
             elif p_id == 'A':
-                indptr = indptr_Alu[:-1]
-            elif p_id in ['l', 'u']:
-                indices = indices_Alu[mapping_rows]
-                mapping_to_sparse = -p_prob.reduced_A[mapping_rows]
-                mapping_to_dense = sparse.lil_matrix(np.zeros((shape[0], mapping_to_sparse.shape[1])))
-                for i_data in range(mapping_to_sparse.shape[0]):
-                    mapping_to_dense[indices[i_data], :] = mapping_to_sparse[i_data, :]
-                mapping = sparse.csc_matrix(mapping_to_dense)
+                mapping_rows = mapping_rows_eq[mapping_rows_eq < n_data_constr_mat]
+                shape = (n_eq, n_var)
+            elif p_id == 'G':
+                mapping_rows = mapping_rows_ineq[mapping_rows_ineq < n_data_constr_mat]
+                shape = (n_ineq, n_var)
+            elif p_id == 'b':
+                mapping_rows = mapping_rows_eq[mapping_rows_eq >= n_data_constr_mat]
+                shape = (n_eq, 1)
+            elif p_id == 'h':
+                mapping_rows = mapping_rows_ineq[mapping_rows_ineq >= n_data_constr_mat]
+                shape = (n_ineq, 1)
+            else:
+                raise ValueError('Unknown ECOS parameter name: "%s"' % p_id)
 
-            canon_mappings.append(mapping.tocsr())
-            canon_p_to_changes[p_id] = mapping[:, :-1].nnz > 0
-            canon_p_id_to_size[p_id] = mapping.shape[0]
-
-            for j in range(user_p_num):
-                column_slice = slice(user_p_id_to_col[user_p_ids[j]], user_p_id_to_col[user_p_ids[j + 1]])
-                if mapping[:, column_slice].nnz > 0:
-                    adjacency[i, j] = True
-
-            canon_p_data = mapping @ user_p_flat
+            if p_id in ['A', 'b']:
+                indices = indices_constr[mapping_rows]
+            elif p_id in ['G', 'h']:
+                indices = indices_constr[mapping_rows] - n_eq
 
             if p_id.isupper():
-                csc_mat = sparse.csc_matrix((canon_p_data, indices, indptr), shape=shape)
-                canon_p[p_id+'_sp'] = csc_mat
-                canon_p[p_id] = utils.csc_to_dict(csc_mat)
-            elif p_id == 'l':
-                canon_p[p_id] = np.concatenate((canon_p_data, -np.inf*np.ones(n_ineq)), axis=0)
-            else:
-                canon_p[p_id] = canon_p_data
+                mapping = -p_prob.reduced_A[mapping_rows]
 
-        # OSQP settings
+        if p_id in canon_p_ids_constr_vec:
+            mapping_to_sparse = sign_constr_vec*p_prob.reduced_A[mapping_rows]
+            mapping_to_dense = sparse.lil_matrix(np.zeros((shape[0], mapping_to_sparse.shape[1])))
+            for i_data in range(mapping_to_sparse.shape[0]):
+                mapping_to_dense[indices[i_data], :] = mapping_to_sparse[i_data, :]
+            mapping = sparse.csc_matrix(mapping_to_dense)
+
+        canon_mappings.append(mapping.tocsr())
+        canon_p_to_changes[p_id] = mapping[:, :-1].nnz > 0
+        canon_p_id_to_size[p_id] = mapping.shape[0]
+
+        # compute adjacency matrix
+        for j in range(user_p_num):
+            column_slice = slice(user_p_id_to_col[user_p_ids[j]], user_p_id_to_col[user_p_ids[j + 1]])
+            if mapping[:, column_slice].nnz > 0:
+                adjacency[i, j] = True
+
+        # compute default values of canonical parameters
+        canon_p_data = mapping @ user_p_flat
+        if p_id.isupper():
+            # compute 'indptr' to construct sparse matrix from 'canon_p_data' and 'indices'
+            if solver_name == 'OSQP':
+                if p_id == 'P':
+                    indptr = indptr_obj
+                elif p_id == 'A':
+                    indptr = indptr_constr[:-1]
+            elif solver_name == 'ECOS':
+                indptr_original = indptr_constr[:-1]
+                indptr = 0 * indptr_original
+                for r in mapping_rows:
+                    for c in range(shape[1]):
+                        if indptr_original[c] <= r < indptr_original[c + 1]:
+                            indptr[c + 1:] += 1
+                            break
+            csc_mat = sparse.csc_matrix((canon_p_data, indices, indptr), shape=shape)
+            canon_p[p_id + '_sp'] = csc_mat
+            canon_p[p_id] = utils.csc_to_dict(csc_mat)
+        elif solver_name == 'OSQP' and p_id == 'l':
+            canon_p[p_id] = np.concatenate((canon_p_data, -np.inf * np.ones(n_ineq)), axis=0)
+        else:
+            canon_p[p_id] = canon_p_data
+
+    if solver_name == 'OSQP':
+
+        # solver settings
         canon_settings_names = ['rho', 'max_iter', 'eps_abs', 'eps_rel', 'eps_prim_inf', 'eps_dual_inf',
                                 'alpha', 'scaled_termination', 'check_termination', 'warm_start']
         canon_settings_types = ['c_float', 'c_int', 'c_float', 'c_float', 'c_float', 'c_float', 'c_float',
@@ -196,94 +270,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
 
     elif solver_name == 'ECOS':
 
-        n_var = p_prob.x.size
-        n_eq = p_prob.cone_dims.zero
-        n_ineq = data['G'].shape[0]
-
-        canon_constants['n'] = n_var
-        canon_constants['m'] = n_ineq
-        canon_constants['p'] = n_eq
-        canon_constants['l'] = p_prob.cone_dims.nonneg
-        canon_constants['n_cones'] = len(p_prob.cone_dims.soc)
-        canon_constants['q'] = np.array(p_prob.cone_dims.soc)
-        canon_constants['e'] = p_prob.cone_dims.exp
-
-        # affine mapping for each ECOS parameter
-        canon_p_ids = ['c', 'd', 'A', 'b', 'G', 'h']
-        adjacency = np.zeros(shape=(len(canon_p_ids), user_p_num), dtype=bool)
-
-        indices_AGbh, indptr_AGbh, shape_AGbh = p_prob.problem_data_index
-        n_data_AGbh = len(indices_AGbh)
-        n_data_bh = indptr_AGbh[-1] - indptr_AGbh[-2]
-        n_data_AG = n_data_AGbh - n_data_bh
-
-        mapping_rows_eq = np.nonzero(indices_AGbh < n_eq)[0]
-        mapping_rows_ineq = np.nonzero(indices_AGbh >= n_eq)[0]
-
-        for i, p_id in enumerate(canon_p_ids):
-
-            mapping_rows = []
-            indices = []
-            indptr_original = []
-            shape = ()
-
-            if p_id == 'c':
-                mapping = p_prob.c[:-1]
-            elif p_id == 'd':
-                mapping = p_prob.c[-1]
-            elif p_id == 'A':
-                mapping_rows = mapping_rows_eq[mapping_rows_eq < n_data_AG]
-                shape = (n_eq, n_var)
-            elif p_id == 'G':
-                mapping_rows = mapping_rows_ineq[mapping_rows_ineq < n_data_AG]
-                shape = (n_ineq, n_var)
-            elif p_id == 'b':
-                mapping_rows = mapping_rows_eq[mapping_rows_eq >= n_data_AG]
-                shape = (n_eq, 1)
-            elif p_id == 'h':
-                mapping_rows = mapping_rows_ineq[mapping_rows_ineq >= n_data_AG]
-                shape = (n_ineq, 1)
-            else:
-                raise ValueError('Unknown ECOS parameter name: "%s"' % p_id)
-
-            if p_id in ['A', 'b']:
-                indices = indices_AGbh[mapping_rows]
-            elif p_id in ['G', 'h']:
-                indices = indices_AGbh[mapping_rows] - n_eq
-
-            if p_id.isupper():
-                mapping = -p_prob.reduced_A[mapping_rows]
-                indptr_original = indptr_AGbh[:-1]
-            elif p_id in ['b', 'h']:
-                mapping_to_sparse = p_prob.reduced_A[mapping_rows]
-                mapping_to_dense = sparse.lil_matrix(np.zeros((shape[0], mapping_to_sparse.shape[1])))
-                for i_data in range(mapping_to_sparse.shape[0]):
-                    mapping_to_dense[indices[i_data], :] = mapping_to_sparse[i_data, :]
-                mapping = sparse.csc_matrix(mapping_to_dense)
-
-            canon_mappings.append(mapping.tocsr())
-            canon_p_to_changes[p_id] = mapping[:, :-1].nnz > 0
-            canon_p_id_to_size[p_id] = mapping.shape[0]
-
-            for j in range(user_p_num):
-                column_slice = slice(user_p_id_to_col[user_p_ids[j]], user_p_id_to_col[user_p_ids[j + 1]])
-                if mapping[:, column_slice].nnz > 0:
-                    adjacency[i, j] = True
-
-            canon_p_data = mapping @ user_p_flat
-
-            if p_id.isupper():
-                indptr = 0 * indptr_original
-                for r in mapping_rows:
-                    for c in range(shape[1]):
-                        if indptr_original[c] <= r < indptr_original[c + 1]:
-                            indptr[c + 1:] += 1
-                            break
-                csc_mat = sparse.csc_matrix((canon_p_data, indices, indptr), shape=shape)
-                canon_p[p_id] = utils.csc_to_dict(csc_mat)
-            else:
-                canon_p[p_id] = canon_p_data
-
+        # solver settings
         canon_settings_names = ['feastol', 'abstol', 'reltol', 'feastol_inacc', 'abstol_inacc', 'reltol_inacc', 'maxit']
         canon_settings_types = ['c_float', 'c_float', 'c_float', 'c_float', 'c_float', 'c_float', 'c_int']
         canon_settins_defaults = ['1e-8', '1e-8', '1e-8', '1e-4', '5e-5', '5e-5', '100']
@@ -344,7 +331,6 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
 
     user_p_to_canon_outdated = {user_p_name: [canon_p_ids[j] for j in np.nonzero(adjacency[:, i])[0]]
                                 for i, user_p_name in enumerate(user_p_names)}
-
     canon_settings_names_to_types = {name: typ for name, typ in zip(canon_settings_names, canon_settings_types)}
     canon_settings_names_to_default = {name: typ for name, typ in zip(canon_settings_names, canon_settins_defaults)}
 
