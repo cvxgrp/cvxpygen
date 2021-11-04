@@ -169,17 +169,17 @@ Especially for smaller problems like this, the new solve method ``'CPG'`` is sig
 
 ### 3. Executable
 
-In the C code, all of your parameters are stored as vectors via Fortran-style flattening (vertical index moves fastest).
-For example, the `(i, j)`-th entry of the original matrix with height `h` will be the `i+j*h`-th entry of the parameter in C.
-For sparse parameters, i.e. matrices, the `k`-th entry of the C parameter is the `k`-th nonzero entry encountered when proceeding
-through the matrix column by column.
+In the C code, all of your parameters and variables are stored as vectors via Fortran-style flattening (vertical index moves fastest).
+For example, the `(i, j)`-th entry of the original matrix with height `h` will be the `i+j*h`-th entry of the flattened matrix in C.
+For sparse *parameters*, i.e. matrices, the `k`-th entry of the C array is the `k`-th nonzero entry encountered when proceeding
+through the parameter column by column.
 
 If you wish to compile the example executable on a Unix platform, please run the following commands in your terminal.
 
 ```bash
 cd CPG_code/c/build
 cmake ..
-make
+cmake --build . --target cpg_example
 ```
 
 To run the compiled program, type

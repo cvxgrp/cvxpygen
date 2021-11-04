@@ -1,18 +1,19 @@
 
 import os
+import sys
 import shutil
-import numpy as np
-from scipy import sparse
-from cvxpy.cvxcore.python import canonInterface as cI
-from cvxpy.expressions.variable import upper_tri_to_full
-import cvxpy as cp
+import pickle
+import warnings
 import osqp
 import utils
-import pickle
-import sys
-import warnings
+import cvxpy as cp
+import numpy as np
+from scipy import sparse
 from subprocess import call
 from platform import system
+from cvxpy.problems.objective import Maximize
+from cvxpy.cvxcore.python import canonInterface as cI
+from cvxpy.expressions.variable import upper_tri_to_full
 
 
 def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True, explicit=False, problem_name=''):
@@ -24,6 +25,10 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
 
     current_directory = os.path.dirname(os.path.realpath(__file__))
     solver_code_dir = os.path.join(code_dir, 'c', 'solver_code')
+
+    # adjust problem_name
+    if problem_name != '':
+        problem_name = '_' + problem_name
 
     # copy TEMPLATE
     if os.path.isdir(code_dir):
@@ -106,7 +111,8 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
     for p in p_prob.parameters:
         if p.attributes['sparsity'] is not None:
             user_p_name_to_size_usp[p.name()] = len(p.attributes['sparsity'])
-            user_p_name_to_sparsity[p.name()] = np.sort([coord[0]+p.shape[0]*coord[1] for coord in p.attributes['sparsity']])
+            user_p_name_to_sparsity[p.name()] = np.sort([coord[0]+p.shape[0]*coord[1]
+                                                         for coord in p.attributes['sparsity']])
             user_p_sparsity_mask[user_p_id_to_col[p.id]:user_p_id_to_col[p.id]+user_p_id_to_size[p.id]] = False
             user_p_sparsity_mask[user_p_id_to_col[p.id] + user_p_name_to_sparsity[p.name()]] = True
     user_p_sizes_usp = list(user_p_name_to_size_usp.values())
@@ -144,6 +150,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
     canon_p = {}
     canon_p_to_changes = {}
     canon_p_id_to_size = {}
+    nonzero_d = True
 
     # dimensions and information specific to solver
 
@@ -374,11 +381,12 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
         with open(os.path.join(code_dir, 'c', 'CMakeLists.txt'), 'r') as f:
             CMakeLists_data = f.read()
         indent = ' ' * 6
-        CMakeLists_data = CMakeLists_data.replace('${CMAKE_CURRENT_SOURCE_DIR}/solver_code/include',
-                                                  '${CMAKE_CURRENT_SOURCE_DIR}/solver_code/include\n' +
-                                                  indent + '${CMAKE_CURRENT_SOURCE_DIR}/solver_code/external/SuiteSparse_config\n' +
-                                                  indent + '${CMAKE_CURRENT_SOURCE_DIR}/solver_code/external/amd/include\n' +
-                                                  indent + '${CMAKE_CURRENT_SOURCE_DIR}/solver_code/external/ldl/include')
+        sdir = '${CMAKE_CURRENT_SOURCE_DIR}/solver_code/'
+        CMakeLists_data = CMakeLists_data.replace(sdir + 'include',
+                                                  sdir + 'include\n' +
+                                                  indent + sdir + 'external/SuiteSparse_config\n' +
+                                                  indent + sdir + 'external/amd/include\n' +
+                                                  indent + sdir + 'external/ldl/include')
         with open(os.path.join(code_dir, 'c', 'CMakeLists.txt'), 'w') as f:
             f.write(CMakeLists_data)
 
@@ -426,13 +434,14 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
 
     # 'solve' prototypes
     with open(os.path.join(code_dir, 'c', 'include', 'cpg_solve.h'), 'a') as f:
-        utils.write_solve_prot(f, solver_name, canon_p_ids, user_p_name_to_size_usp, canon_settings_names_to_types)
+        utils.write_solve_prot(f, solver_name, canon_p_ids, user_p_name_to_size_usp, canon_settings_names_to_types,
+                               var_symmetric)
 
     # 'solve' definitions
     with open(os.path.join(code_dir, 'c', 'src', 'cpg_solve.c'), 'a') as f:
         utils.write_solve_def(f, solver_name, explicit, canon_p_ids, canon_mappings, user_p_col_to_name_usp,
                               user_p_sizes_usp, var_name_to_indices, canon_p_id_to_size,
-                              type(problem.objective) == cp.problems.objective.Maximize, user_p_to_canon_outdated,
+                              type(problem.objective) == Maximize, user_p_to_canon_outdated,
                               canon_settings_names_to_types, canon_settings_names_to_default, var_symmetric,
                               canon_p_to_changes, canon_constants, nonzero_d)
 
