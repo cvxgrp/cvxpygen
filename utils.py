@@ -48,7 +48,7 @@ def param_is_empty(param):
         return param.size == 0
 
 
-def write_canonicalize_explicit(f, canon_name, s, mapping, base_cols, user_p_sizes, user_p_col_to_name):
+def write_canonicalize_explicit(f, canon_name, s, mapping, base_cols, user_p_sizes_usp, user_p_col_to_name_usp):
     """
     Write function to compute canonical parameter value
     """
@@ -61,9 +61,9 @@ def write_canonicalize_explicit(f, canon_name, s, mapping, base_cols, user_p_siz
         for (datum, col) in zip(data, columns):
             ex = '(%.20f)+' % datum
             for i, user_p_col in enumerate(base_cols):
-                if user_p_col + user_p_sizes[i] > col:
+                if user_p_col + user_p_sizes_usp[i] > col:
                     expr_is_const = False
-                    user_name = user_p_col_to_name[user_p_col]
+                    user_name = user_p_col_to_name_usp[user_p_col]
                     if abs(datum) == 1:
                         ex = '(%sCPG_Params.%s[%d])+' % (sign_to_str[datum], user_name, col - user_p_col)
                     else:
@@ -198,7 +198,7 @@ def write_ecos_setup(f, canon_constants):
             (n, m, p, l, n_cones, ecos_q_str, e, Ax_str, Ap_str, Ai_str, b_str))
 
 
-def write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable, user_p_flat, var_init, canon_p_ids,
+def write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable, user_p_flat_usp, var_init, canon_p_ids,
                         canon_p, canon_mappings, var_symmetric, var_offsets, canon_constants,
                         canon_settings_names_to_default):
 
@@ -276,7 +276,7 @@ def write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable,
                 osqp_utils.write_mat(f, csc_to_dict(mapping), 'Canon_%s_map' % name)
 
         f.write('\n// Vector containing flattened user-defined parameters\n')
-        osqp_utils.write_vec(f, user_p_flat, 'CPG_Params_Vec', 'c_float')
+        osqp_utils.write_vec(f, user_p_flat_usp, 'CPG_Params_Vec', 'c_float')
 
     results_cast = []
 
@@ -319,8 +319,9 @@ def write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable,
     f.write('};\n')
 
 
-def write_workspace_prot(f, solver_name, explicit, user_p_names, user_p_writable, user_p_flat, var_init, canon_p_ids,
-                         canon_p, canon_maps, var_symmetric, canon_constants, canon_settings_names_to_types):
+def write_workspace_prot(f, solver_name, explicit, user_p_names, user_p_writable, user_p_flat_usp, var_init,
+                         canon_p_ids, canon_p, canon_maps, var_symmetric, canon_constants,
+                         canon_settings_names_to_types):
     """"
     Write workspace initialization to file
     """
@@ -441,7 +442,7 @@ def write_workspace_prot(f, solver_name, explicit, user_p_names, user_p_writable
                 osqp_utils.write_mat_extern(f, csc_to_dict(mapping), 'Canon_%s_map' % name)
 
         f.write('\n// Vector containing flattened user-defined parameters\n')
-        osqp_utils.write_vec_extern(f, user_p_flat, 'CPG_Params_Vec', 'c_float')
+        osqp_utils.write_vec_extern(f, user_p_flat_usp, 'CPG_Params_Vec', 'c_float')
 
     if any(var_symmetric) or solver_name == 'ECOS':
         f.write('\n// User-defined variables\n')
@@ -459,10 +460,10 @@ def write_workspace_prot(f, solver_name, explicit, user_p_names, user_p_writable
     write_struct_prot(f, 'CPG_Result', 'CPG_Result_t')
 
 
-def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_to_name, user_p_sizes,
+def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_to_name_usp, user_p_sizes_usp,
                     var_id_to_indices, canon_p_id_to_size, is_maximization, user_p_to_canon_outdated,
                     canon_settings_names_to_types, canon_settings_names_to_default, var_symm, canon_p_to_changes,
-                    canon_constants):
+                    canon_constants, nonzero_d):
     """
     Write parameter initialization function to file
     """
@@ -480,11 +481,11 @@ def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_
     if explicit and solver_name == 'ECOS':
         f.write('\nstatic c_int i;\n')
 
-    base_cols = list(user_p_col_to_name.keys())
+    base_cols = list(user_p_col_to_name_usp.keys())
 
     f.write('\n// update user-defined parameters\n')
     if explicit:
-        for (user_p_name, Canon_outdated_names), user_p_size in zip(user_p_to_canon_outdated.items(), user_p_sizes):
+        for (user_p_name, Canon_outdated_names), user_p_size in zip(user_p_to_canon_outdated.items(), user_p_sizes_usp):
             if user_p_size == 1:
                 f.write('void update_%s(c_float val){\n' % user_p_name)
                 f.write('*CPG_Params.%s = val;\n' % user_p_name)
@@ -497,7 +498,7 @@ def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_
     else:
         for base_col, (user_p_name, Canon_outdated_names), user_p_size in zip(base_cols,
                                                                               user_p_to_canon_outdated.items(),
-                                                                              user_p_sizes):
+                                                                              user_p_sizes_usp):
             if user_p_size == 1:
                 f.write('void update_%s(c_float val){\n' % user_p_name)
                 f.write('CPG_Params_Vec[%d] = val;\n' % base_col)
@@ -518,7 +519,7 @@ def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_
             else:
                 s = ''
             if explicit:
-                write_canonicalize_explicit(f, canon_name, s, mapping, base_cols, user_p_sizes, user_p_col_to_name)
+                write_canonicalize_explicit(f, canon_name, s, mapping, base_cols, user_p_sizes_usp, user_p_col_to_name_usp)
             else:
                 write_canonicalize(f, canon_name, s, mapping)
             f.write('}\n')
@@ -547,10 +548,14 @@ def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_
 
     f.write('// retrieve solver info\n')
     f.write('void retrieve_info(){\n')
-    if is_maximization:
-        f.write('CPG_Info.obj_val = -(%s + *Canon_Params.d);\n' % obj_str)
+    if nonzero_d:
+        d_str = ' + *Canon_Params.d'
     else:
-        f.write('CPG_Info.obj_val = %s + *Canon_Params.d;\n' % obj_str)
+        d_str = ''
+    if is_maximization:
+        f.write('CPG_Info.obj_val = -(%s%s);\n' % (obj_str, d_str))
+    else:
+        f.write('CPG_Info.obj_val = %s%s;\n' % (obj_str, d_str))
     if solver_name == 'OSQP':
         f.write('CPG_Info.iter = workspace.info->iter;\n')
         f.write('CPG_Info.status = workspace.info->status;\n')
@@ -680,7 +685,7 @@ def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_
         f.write('}\n')
 
 
-def write_solve_prot(f, solver_name, canon_p_ids, user_p_name_to_size, canon_settings_names_to_types):
+def write_solve_prot(f, solver_name, canon_p_ids, user_p_name_to_size_usp, canon_settings_names_to_types):
     """
     Write function declarations to file
     """
@@ -705,7 +710,7 @@ def write_solve_prot(f, solver_name, canon_p_ids, user_p_name_to_size, canon_set
 
     f.write('\n// update user-defined parameter values\n')
 
-    for name, size in user_p_name_to_size.items():
+    for name, size in user_p_name_to_size_usp.items():
         if size == 1:
             f.write('extern void update_%s(c_float val);\n' % name)
         else:
@@ -770,7 +775,7 @@ def write_canon_CMakeLists(f, solver_name):
         f.write('\nset(solver_src "${ecos_sources}" PARENT_SCOPE)')
 
 
-def write_module_def(f, user_p_name_to_size, var_name_to_size, canon_settings_names, problem_name):
+def write_module_def(f, user_p_name_to_size_usp, var_name_to_size, canon_settings_names, problem_name):
     """
     Write c++ file for pbind11 wrapper
     """
@@ -788,7 +793,7 @@ def write_module_def(f, user_p_name_to_size, var_name_to_size, canon_settings_na
             % (problem_name, problem_name, problem_name))
 
     f.write('    // pass changed user-defined parameter values to the solver\n')
-    for name, size in user_p_name_to_size.items():
+    for name, size in user_p_name_to_size_usp.items():
         f.write('    if (CPG_Updated_cpp.%s) {\n' % name)
         if size == 1:
             f.write('        update_%s(CPG_Params_cpp.%s);\n' % (name, name))
@@ -830,13 +835,13 @@ def write_module_def(f, user_p_name_to_size, var_name_to_size, canon_settings_na
 
     f.write('    py::class_<CPG_Params_%s_cpp_t>(m, "cpg_params")\n' % problem_name)
     f.write('            .def(py::init<>())\n')
-    for name in user_p_name_to_size.keys():
+    for name in user_p_name_to_size_usp.keys():
         f.write('            .def_readwrite("%s", &CPG_Params_%s_cpp_t::%s)\n' % (name, problem_name, name))
     f.write('            ;\n\n')
 
     f.write('    py::class_<CPG_Updated_%s_cpp_t>(m, "cpg_updated")\n' % problem_name)
     f.write('            .def(py::init<>())\n')
-    for name in user_p_name_to_size.keys():
+    for name in user_p_name_to_size_usp.keys():
         f.write('            .def_readwrite("%s", &CPG_Updated_%s_cpp_t::%s)\n' % (name, problem_name, name))
     f.write('            ;\n\n')
 
@@ -866,7 +871,7 @@ def write_module_def(f, user_p_name_to_size, var_name_to_size, canon_settings_na
     f.write('\n}')
 
 
-def write_module_prot(f, solver_name, user_p_name_to_size, var_name_to_size, problem_name):
+def write_module_prot(f, solver_name, user_p_name_to_size_usp, var_name_to_size, problem_name):
     """
     Write c++ file for pbind11 wrapper
     """
@@ -886,7 +891,7 @@ def write_module_prot(f, solver_name, user_p_name_to_size, var_name_to_size, pro
 
     # cpp struct containing user-defined parameters
     f.write('struct CPG_Params_%s_cpp_t {\n' % problem_name)
-    for name, size in user_p_name_to_size.items():
+    for name, size in user_p_name_to_size_usp.items():
         if size == 1:
             f.write('    double %s;\n' % name)
         else:
@@ -895,7 +900,7 @@ def write_module_prot(f, solver_name, user_p_name_to_size, var_name_to_size, pro
 
     # cpp struct containing update flags for user-defined parameters
     f.write('struct CPG_Updated_%s_cpp_t {\n' % problem_name)
-    for name in user_p_name_to_size.keys():
+    for name in user_p_name_to_size_usp.keys():
         f.write('    bool %s;\n' % name)
     f.write('};\n\n')
 
@@ -915,7 +920,7 @@ def write_module_prot(f, solver_name, user_p_name_to_size, var_name_to_size, pro
             % (problem_name, problem_name, problem_name))
 
 
-def write_method(f, solver_name, code_dir, user_p_name_to_size, var_name_to_shape):
+def write_method(f, solver_name, code_dir, user_p_name_to_size_usp, user_p_name_to_sparsity, var_name_to_shape):
     """
     Write function to be registered as custom CVXPY solve method
     """
@@ -940,7 +945,7 @@ def write_method(f, solver_name, code_dir, user_p_name_to_size, var_name_to_shap
     f.write('def cpg_solve(prob, updated_params=None, **kwargs):\n\n')
     f.write('    if updated_params is None:\n')
     p_list_string = ''
-    for name in user_p_name_to_size.keys():
+    for name in user_p_name_to_size_usp.keys():
         p_list_string += '"%s", ' % name
     f.write('        updated_params = [%s]\n' % p_list_string[:-2])
     f.write('\n    upd = cpg_module.cpg_updated()\n')
@@ -962,11 +967,27 @@ def write_method(f, solver_name, code_dir, user_p_name_to_size, var_name_to_shap
 
     f.write('    par = cpg_module.cpg_params()\n')
 
-    for name, size in user_p_name_to_size.items():
-        if size == 1:
-            f.write('    par.%s = prob.param_dict[\'%s\'].value\n' % (name, name))
+    for name, size in user_p_name_to_size_usp.items():
+        if name in user_p_name_to_sparsity.keys():
+            if size == 1:
+                f.write('    coordinate = prob.param_dict[%s].attributes[\'sparsity\']\n' % name)
+                f.write('    par.%s = prob.param_dict[\'%s\'].value[coordinate]\n' % (name, name))
+            else:
+                f.write('    %s_coordinates = prob.param_dict[\'%s\'].attributes[\'sparsity\']\n' % (name, name))
+                f.write('    %s_value = []\n' % name)
+                f.write('    for j in range(prob.param_dict[\'%s\'].shape[1]):\n' % name)
+                f.write('        for i in range(prob.param_dict[\'%s\'].shape[0]):\n' % name)
+                f.write('            if (i, j) in %s_coordinates:\n' % name)
+                f.write('                %s_value.append(prob.param_dict[\'%s\'].value[i, j])\n' % (name, name))
+                f.write('            elif prob.param_dict[\'%s\'].value[i, j] != 0:\n' % name)
+                f.write('                warnings.warn(\'Ignoring nonzero value outside of '
+                        'sparsity pattern for parameter %s!\')\n' % name)
+                f.write('    par.%s = %s_value\n' % (name, name))
         else:
-            f.write('    par.%s = list(prob.param_dict[\'%s\'].value.flatten(order=\'F\'))\n' % (name, name))
+            if size == 1:
+                f.write('    par.%s = prob.param_dict[\'%s\'].value\n' % (name, name))
+            else:
+                f.write('    par.%s = list(prob.param_dict[\'%s\'].value.flatten(order=\'F\'))\n' % (name, name))
 
     f.write('\n    t0 = time.time()\n')
     f.write('    res = cpg_module.solve(upd, par)\n')
@@ -1008,7 +1029,7 @@ def write_method(f, solver_name, code_dir, user_p_name_to_size, var_name_to_shap
     f.write('    return prob.value\n')
 
 
-def replace_html_data(code_dir, solver_name, explicit, text, user_p_name_to_size, user_p_writable, var_name_to_size,
+def replace_html_data(code_dir, solver_name, explicit, text, user_p_name_to_size_usp, user_p_writable, var_name_to_size,
                       user_p_total_size, canon_p_ids, canon_p_id_to_size, canon_settings_names_to_types, canon_constants):
     """
     Replace placeholder strings in html documentation file
@@ -1069,7 +1090,7 @@ def replace_html_data(code_dir, solver_name, explicit, text, user_p_name_to_size
     if explicit:
         CPGUSERPARAMSTYPEDEF = '// Struct type with user-defined parameters as fields\n'
         CPGUSERPARAMSTYPEDEF += 'typedef struct {\n'
-        for name in user_p_name_to_size.keys():
+        for name in user_p_name_to_size_usp.keys():
             CPGUSERPARAMSTYPEDEF += ('    c_float     *%s;' % name).ljust(33) + ('///< Your parameter %s\n' % name)
         CPGUSERPARAMSTYPEDEF += '} CPG_Params_t;\n'
     else:
@@ -1158,7 +1179,7 @@ def replace_html_data(code_dir, solver_name, explicit, text, user_p_name_to_size
 
     # update declarations
     CPGUPDATEDECLARATIONS = '// update user-defined parameter values\n'
-    for name, size in user_p_name_to_size.items():
+    for name, size in user_p_name_to_size_usp.items():
         if size == 1:
             CPGUPDATEDECLARATIONS += 'void update_%s(c_float value);\n' % name
         else:

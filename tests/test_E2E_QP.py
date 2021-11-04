@@ -40,29 +40,6 @@ def actuator_problem():
     return cp.Problem(objective, constraints)
 
 
-def ADP_problem():
-
-    # define dimensions
-    n, m = 6, 3
-
-    # define variables
-    u = cp.Variable(m, name='u')
-
-    # define parameters
-    Rsqrt = cp.Parameter((m, m), name='Rsqrt')
-    f = cp.Parameter(n, name='f')
-    G = cp.Parameter((n, m), name='G')
-
-    # define objective
-    objective = cp.Minimize(cp.sum_squares(f + G @ u) + cp.sum_squares(Rsqrt @ u))
-
-    # define constraints
-    constraints = [cp.norm(u, 'inf') <= 1]
-
-    # define problem
-    return cp.Problem(objective, constraints)
-
-
 def MPC_problem():
 
     # define dimensions
@@ -73,11 +50,11 @@ def MPC_problem():
     X = cp.Variable((n, H + 1), name='X')
 
     # define parameters
-    Psqrt = cp.Parameter((n, n), name='Psqrt')
-    Qsqrt = cp.Parameter((n, n), name='Qsqrt')
-    Rsqrt = cp.Parameter((m, m), name='Rsqrt')
-    A = cp.Parameter((n, n), name='A')
-    B = cp.Parameter((n, m), name='B')
+    Psqrt = cp.Parameter((n, n), name='Psqrt', diag=True)
+    Qsqrt = cp.Parameter((n, n), name='Qsqrt', diag=True)
+    Rsqrt = cp.Parameter((m, m), name='Rsqrt', diag=True)
+    A = cp.Parameter((n, n), name='A', sparsity=[(i, i) for i in range(n)] + [(i, 3+i) for i in range(n // 2)])
+    B = cp.Parameter((n, m), name='B', sparsity=[(3+i, i) for i in range(n // 2)])
     x_init = cp.Parameter(n, name='x_init')
 
     # define objective
@@ -146,30 +123,6 @@ def assign_data(prob, name, seed):
         prob.param_dict['u_min'].value = -np.ones(8)
         prob.param_dict['u_max'].value = np.ones(8)
 
-    elif name == 'ADP':
-
-        def dynamics(x):
-            # continuous-time dynmaics
-            A_cont = np.array([[0, 0, 0, 1, 0, 0],
-                               [0, 0, 0, 0, 1, 0],
-                               [0, 0, 0, 0, 0, 1],
-                               [0, 0, 0, -x[3], 0, 0],
-                               [0, 0, 0, 0, -x[4], 0],
-                               [0, 0, 0, 0, 0, -x[5]]])
-            mass = 1
-            B_cont = np.concatenate((np.zeros((3, 3)),
-                                     (1 / mass) * np.diag(x[3:])), axis=0)
-            # discrete-time dynamics
-            td = 0.1
-            return np.eye(6) + td * A_cont, td * B_cont
-
-        state = -2*np.ones(6) + 4*np.random.rand(6)
-        Psqrt = np.eye(6)
-        A, B = dynamics(state)
-        prob.param_dict['Rsqrt'].value = np.sqrt(0.1) * np.eye(3)
-        prob.param_dict['f'].value = np.matmul(Psqrt, np.matmul(A, state))
-        prob.param_dict['G'].value = np.matmul(Psqrt, B)
-
     elif name == 'MPC':
 
         # continuous-time dynmaics
@@ -210,7 +163,7 @@ def assign_data(prob, name, seed):
     return prob
 
 
-N_RAND = 100
+N_RAND = 10
 
 name_solver_style_seed = [['actuator', 'MPC', 'portfolio'],
                           ['OSQP', 'ECOS'],

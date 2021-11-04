@@ -71,7 +71,7 @@ m, n = 3, 2
 W = cp.Variable((n, n), name='W')
 x = cp.Variable(n, name='x')
 y = cp.Variable(name='y')
-A = cp.Parameter((m, n), name='A')
+A = cp.Parameter((m, n), name='A', sparsity=[(0, 0), (0, 1), (1, 1)])
 b = cp.Parameter(m, name='b')
 c = cp.Parameter(nonneg=True, name='c')
 
@@ -83,6 +83,9 @@ constraints = [0 <= x, x <= 1]
 prob = cp.Problem(objective, constraints)
 ```
 
+The attribute `sparsity` is a list of 2-tuples that indicate the coordinates 
+of nonzero entries of matrix `A`.
+
 Assign parameter values and solve the problem.
 
 ```python
@@ -90,7 +93,10 @@ import numpy as np
 
 # assign parameter values and solve
 np.random.seed(0)
-A.value = np.random.randn(m, n)
+A.value = np.zeros((m, n))
+A.value[0, 0] = np.random.randn()
+A.value[0, 1] = np.random.randn()
+A.value[1, 1] = np.random.randn()
 b.value = np.random.randn(m)
 c.value = np.random.rand()
 val = prob.solve()
@@ -128,8 +134,11 @@ with open('CPG_code/problem.pickle', 'rb') as f:
 
 # assign parameter values
 np.random.seed(0)
-prob.param_dict['A'].value = np.random.randn(3, 2)
-prob.param_dict['b'].value = np.random.randn(3,)
+prob.param_dict['A'].value = np.zeros((m, n))
+prob.param_dict['A'].value[0, 0] = np.random.randn()
+prob.param_dict['A'].value[0, 1] = np.random.randn()
+prob.param_dict['A'].value[1, 1] = np.random.randn()
+prob.param_dict['b'].value = np.random.randn(m,)
 prob.param_dict['c'].value = np.random.rand()
 
 # solve problem conventionally
@@ -155,11 +164,15 @@ print('C solution: x = ', prob.var_dict['x'].value)
 print('C objective function value:', val)
 ```
 
-Comparing python and C results for this example, both the solutions and objective values are almost identical.
-In general, there might be differences due to the different step size dynamics of the OSQP solver with or without code generation. 
+Comparing python and C results for this example, both the solutions and objective values are close.
 Especially for smaller problems like this, the new solve method ``'CPG'`` is significantly faster than solving without CVXPYGEN.
 
 ### 3. Executable
+
+In the C code, all of your parameters are stored as vectors via Fortran-style flattening (vertical index moves fastest).
+For example, the `(i, j)`-th entry of the original matrix with height `h` will be the `i+j*h`-th entry of the parameter in C.
+For sparse parameters, i.e. matrices, the `k`-th entry of the C parameter is the `k`-th nonzero entry encountered when proceeding
+through the matrix column by column.
 
 If you wish to compile the example executable on a Unix platform, please run the following commands in your terminal.
 

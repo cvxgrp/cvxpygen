@@ -16,7 +16,7 @@ m, n = 3, 2
 W = cp.Variable((n, n), name='W')
 x = cp.Variable(n, name='x')
 y = cp.Variable(name='y')
-A = cp.Parameter((m, n), name='A')
+A = cp.Parameter((m, n), name='A', sparsity=[(0, 0), (0, 1), (1, 1)])
 b = cp.Parameter(m, name='b')
 c = cp.Parameter(nonneg=True, name='c')
 
@@ -29,7 +29,10 @@ prob = cp.Problem(objective, constraints)
 
 # assign parameter values and solve
 np.random.seed(0)
-A.value = np.random.randn(m, n)
+A.value = np.zeros((m, n))
+A.value[0, 0] = np.random.randn()
+A.value[0, 1] = np.random.randn()
+A.value[1, 1] = np.random.randn()
 b.value = np.random.randn(m)
 c.value = np.random.rand()
 val = prob.solve()
@@ -52,8 +55,11 @@ with open(os.path.join('CPG_code', 'problem.pickle'), 'rb') as f:
 
 # assign parameter values
 np.random.seed(0)
-prob.param_dict['A'].value = np.random.randn(3, 2)
-prob.param_dict['b'].value = np.random.randn(3,)
+prob.param_dict['A'].value = np.zeros((m, n))
+prob.param_dict['A'].value[0, 0] = np.random.randn()
+prob.param_dict['A'].value[0, 1] = np.random.randn()
+prob.param_dict['A'].value[1, 1] = np.random.randn()
+prob.param_dict['b'].value = np.random.randn(m)
 prob.param_dict['c'].value = np.random.rand()
 
 # solve problem conventionally

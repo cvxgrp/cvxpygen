@@ -21,7 +21,7 @@ def ADP_problem():
     u = cp.Variable(m, name='u')
 
     # define parameters
-    Rsqrt = cp.Parameter((m, m), name='Rsqrt')
+    Rsqrt = cp.Parameter((m, m), name='Rsqrt', diag=True)
     f = cp.Parameter(n, name='f')
     G = cp.Parameter((n, m), name='G')
 
@@ -66,7 +66,7 @@ def assign_data(prob, name, seed):
     return prob
 
 
-N_RAND = 100
+N_RAND = 10
 
 name_solver_style_seed = [['ADP'],
                           ['ECOS'],

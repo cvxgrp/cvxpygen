@@ -10,6 +10,7 @@ import osqp
 import utils
 import pickle
 import sys
+import warnings
 from subprocess import call
 from platform import system
 
@@ -35,6 +36,31 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
 
     solver_name = solving_chain.solver.name()
     p_prob = data['param_prob']
+
+    # checks in sparsity
+    for p in p_prob.parameters:
+        if p.attributes['sparsity'] is not None:
+            if p.size == 1:
+                warnings.warn('Ignoring sparsity pattern for scalar parameter %s!' % p.name())
+                p.attributes['sparsity'] = None
+            elif max(p.shape) == p.size:
+                warnings.warn('Ignoring sparsity pattern for vector parameter %s!' % p.name())
+                p.attributes['sparsity'] = None
+            else:
+                for coord in p.attributes['sparsity']:
+                    if coord[0] < 0 or coord[1] < 0 or coord[0] >= p.shape[0] or coord[1] >= p.shape[1]:
+                        warnings.warn('Invalid sparsity pattern for parameter %s - out of range! '
+                                      'Ignoring sparsity pattern.' % p.name())
+                        p.attributes['sparsity'] = None
+                        break
+        if p.attributes['diag']:
+            p.attributes['sparsity'] = [(i, i) for i in range(p.shape[0])]
+        if p.attributes['sparsity'] is not None and p.value is not None:
+            for i in range(p.shape[0]):
+                for j in range(p.shape[1]):
+                    if (i, j) not in p.attributes['sparsity'] and p.value[i, j] != 0:
+                        warnings.warn('Ignoring nonzero value outside of sparsity pattern for parameter %s!' % p.name())
+                        p.value[i, j] = 0
 
     # variable information
     variables = problem.variables()
@@ -71,11 +97,24 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
     user_p_names = [par.name() for par in p_prob.parameters]
     user_p_ids = list(p_prob.param_id_to_col.keys())
     user_p_id_to_col = p_prob.param_id_to_col
-    user_p_col_to_name = {k: v for k, v in zip(user_p_id_to_col.values(), user_p_names)}
     user_p_id_to_size = p_prob.param_id_to_size
     user_p_id_to_param = p_prob.id_to_param
     user_p_total_size = p_prob.total_param_size
-    user_p_name_to_size = {name: size for name, size in zip(user_p_names, user_p_id_to_size.values())}
+    user_p_name_to_size_usp = {name: size for name, size in zip(user_p_names, user_p_id_to_size.values())}
+    user_p_name_to_sparsity = {}
+    user_p_sparsity_mask = np.ones(user_p_total_size + 1, dtype=bool)
+    for p in p_prob.parameters:
+        if p.attributes['sparsity'] is not None:
+            user_p_name_to_size_usp[p.name()] = len(p.attributes['sparsity'])
+            user_p_name_to_sparsity[p.name()] = np.sort([coord[0]+p.shape[0]*coord[1] for coord in p.attributes['sparsity']])
+            user_p_sparsity_mask[user_p_id_to_col[p.id]:user_p_id_to_col[p.id]+user_p_id_to_size[p.id]] = False
+            user_p_sparsity_mask[user_p_id_to_col[p.id] + user_p_name_to_sparsity[p.name()]] = True
+    user_p_sizes_usp = list(user_p_name_to_size_usp.values())
+    user_p_col_to_name_usp = {}
+    cum_sum = 0
+    for name, size in user_p_name_to_size_usp.items():
+        user_p_col_to_name_usp[cum_sum] = name
+        cum_sum += size
     user_p_writable = dict()
     for p_name, p in zip(user_p_names, p_prob.parameters):
         if p.value is None:
@@ -87,11 +126,19 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
             user_p_writable[p_name] = p.value
         else:
             # dealing with matrix
-            user_p_writable[p_name] = p.value.flatten(order='F')
+            if p_name in user_p_name_to_sparsity.keys():
+                dense_value = p.value.flatten(order='F')
+                sparse_value = np.zeros(len(user_p_name_to_sparsity[p_name]))
+                for i, idx in enumerate(user_p_name_to_sparsity[p_name]):
+                    sparse_value[i] = dense_value[idx]
+                user_p_writable[p_name] = sparse_value
+            else:
+                user_p_writable[p_name] = p.value.flatten(order='F')
 
     def user_p_value(user_p_id):
         return np.array(user_p_id_to_param[user_p_id].value)
     user_p_flat = cI.get_parameter_vector(user_p_total_size, user_p_id_to_col, user_p_id_to_size, user_p_value)
+    user_p_flat_usp = user_p_flat[user_p_sparsity_mask]
 
     canon_mappings = []
     canon_p = {}
@@ -213,9 +260,8 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
                 mapping_to_dense[indices[i_data], :] = mapping_to_sparse[i_data, :]
             mapping = sparse.csc_matrix(mapping_to_dense)
 
-        canon_mappings.append(mapping.tocsr())
-        canon_p_to_changes[p_id] = mapping[:, :-1].nnz > 0
-        canon_p_id_to_size[p_id] = mapping.shape[0]
+        if p_id == 'd':
+            nonzero_d = mapping.nnz > 0
 
         # compute adjacency matrix
         for j in range(user_p_num):
@@ -223,9 +269,15 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
             if mapping[:, column_slice].nnz > 0:
                 adjacency[i, j] = True
 
+        # take sparsity into account
+        mapping = mapping[:, user_p_sparsity_mask]
+
         # compute default values of canonical parameters
-        canon_p_data = mapping @ user_p_flat
         if p_id.isupper():
+            rows_nonzero, _ = mapping.nonzero()
+            canon_p_data_nonzero = np.sort(np.unique(rows_nonzero))
+            mapping = mapping[canon_p_data_nonzero, :]
+            canon_p_data = mapping @ user_p_flat_usp
             # compute 'indptr' to construct sparse matrix from 'canon_p_data' and 'indices'
             if solver_name == 'OSQP':
                 if p_id == 'P':
@@ -240,13 +292,28 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
                         if indptr_original[c] <= r < indptr_original[c + 1]:
                             indptr[c + 1:] += 1
                             break
-            csc_mat = sparse.csc_matrix((canon_p_data, indices, indptr), shape=shape)
-            canon_p[p_id + '_sp'] = csc_mat
+            # compute 'indices_usp' and 'indptr_usp'
+            indices_usp = indices[canon_p_data_nonzero]
+            indptr_usp = 0 * indptr
+            for r in canon_p_data_nonzero:
+                for c in range(shape[1]):
+                    if indptr[c] <= r < indptr[c + 1]:
+                        indptr_usp[c + 1:] += 1
+                        break
+            csc_mat = sparse.csc_matrix((canon_p_data, indices_usp, indptr_usp), shape=shape)
+            if solver_name == 'OSQP':
+                canon_p[p_id + '_osqp'] = csc_mat
             canon_p[p_id] = utils.csc_to_dict(csc_mat)
-        elif solver_name == 'OSQP' and p_id == 'l':
-            canon_p[p_id] = np.concatenate((canon_p_data, -np.inf * np.ones(n_ineq)), axis=0)
         else:
-            canon_p[p_id] = canon_p_data
+            canon_p_data = mapping @ user_p_flat_usp
+            if solver_name == 'OSQP' and p_id == 'l':
+                canon_p[p_id] = np.concatenate((canon_p_data, -np.inf * np.ones(n_ineq)), axis=0)
+            else:
+                canon_p[p_id] = canon_p_data
+
+        canon_mappings.append(mapping.tocsr())
+        canon_p_to_changes[p_id] = mapping[:, :-1].nnz > 0
+        canon_p_id_to_size[p_id] = mapping.shape[0]
 
     if solver_name == 'OSQP':
 
@@ -259,7 +326,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
 
         # OSQP codegen
         osqp_obj = osqp.OSQP()
-        osqp_obj.setup(P=canon_p['P_sp'], q=canon_p['q'], A=canon_p['A_sp'], l=canon_p['l'], u=canon_p['u'])
+        osqp_obj.setup(P=canon_p['P_osqp'], q=canon_p['q'], A=canon_p['A_osqp'], l=canon_p['l'], u=canon_p['u'])
         if system() == 'Windows':
             cmake_generator = 'MinGW Makefiles'
         elif system() == 'Linux' or system() == 'Darwin':
@@ -346,27 +413,27 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
 
     # 'workspace' prototypes
     with open(os.path.join(code_dir, 'c', 'include', 'cpg_workspace.h'), 'a') as f:
-        utils.write_workspace_prot(f, solver_name, explicit, user_p_names, user_p_writable, user_p_flat, var_init,
+        utils.write_workspace_prot(f, solver_name, explicit, user_p_names, user_p_writable, user_p_flat_usp, var_init,
                                    canon_p_ids, canon_p, canon_mappings, var_symmetric, canon_constants,
                                    canon_settings_names_to_types)
 
     # 'workspace' definitions
     with open(os.path.join(code_dir, 'c', 'src', 'cpg_workspace.c'), 'a') as f:
-        utils.write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable, user_p_flat, var_init,
+        utils.write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable, user_p_flat_usp, var_init,
                                   canon_p_ids, canon_p, canon_mappings, var_symmetric, var_offsets, canon_constants,
                                   canon_settings_names_to_default)
 
     # 'solve' prototypes
     with open(os.path.join(code_dir, 'c', 'include', 'cpg_solve.h'), 'a') as f:
-        utils.write_solve_prot(f, solver_name, canon_p_ids, user_p_name_to_size, canon_settings_names_to_types)
+        utils.write_solve_prot(f, solver_name, canon_p_ids, user_p_name_to_size_usp, canon_settings_names_to_types)
 
     # 'solve' definitions
     with open(os.path.join(code_dir, 'c', 'src', 'cpg_solve.c'), 'a') as f:
-        utils.write_solve_def(f, solver_name, explicit, canon_p_ids, canon_mappings, user_p_col_to_name,
-                              list(user_p_id_to_size.values()), var_name_to_indices, canon_p_id_to_size,
+        utils.write_solve_def(f, solver_name, explicit, canon_p_ids, canon_mappings, user_p_col_to_name_usp,
+                              user_p_sizes_usp, var_name_to_indices, canon_p_id_to_size,
                               type(problem.objective) == cp.problems.objective.Maximize, user_p_to_canon_outdated,
                               canon_settings_names_to_types, canon_settings_names_to_default, var_symmetric,
-                              canon_p_to_changes, canon_constants)
+                              canon_p_to_changes, canon_constants, nonzero_d)
 
     # 'example' definitions
     with open(os.path.join(code_dir, 'c', 'src', 'cpg_example.c'), 'a') as f:
@@ -378,15 +445,16 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
 
     # binding module prototypes
     with open(os.path.join(code_dir, 'cpp', 'include', 'cpg_module.hpp'), 'a') as f:
-        utils.write_module_prot(f, solver_name, user_p_name_to_size, var_name_to_size, problem_name)
+        utils.write_module_prot(f, solver_name, user_p_name_to_size_usp, var_name_to_size, problem_name)
 
     # binding module definition
     with open(os.path.join(code_dir, 'cpp', 'src', 'cpg_module.cpp'), 'a') as f:
-        utils.write_module_def(f, user_p_name_to_size, var_name_to_size, canon_settings_names, problem_name)
+        utils.write_module_def(f, user_p_name_to_size_usp, var_name_to_size, canon_settings_names, problem_name)
 
     # custom CVXPY solve method
     with open(os.path.join(code_dir, 'cpg_solver.py'), 'a') as f:
-        utils.write_method(f, solver_name, code_dir, user_p_name_to_size, var_name_to_shape)
+        utils.write_method(f, solver_name, code_dir, user_p_name_to_size_usp, user_p_name_to_sparsity,
+                           var_name_to_shape)
 
     # serialize problem formulation
     with open(os.path.join(code_dir, 'problem.pickle'), 'wb') as f:
@@ -404,7 +472,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
     # html documentation file
     with open(os.path.join(code_dir, 'README.html'), 'r') as f:
         html_data = f.read()
-    html_data = utils.replace_html_data(code_dir, solver_name, explicit, html_data, user_p_name_to_size,
+    html_data = utils.replace_html_data(code_dir, solver_name, explicit, html_data, user_p_name_to_size_usp,
                                         user_p_writable, var_name_to_size, user_p_total_size, canon_p_ids,
                                         canon_p_id_to_size, canon_settings_names_to_types, canon_constants)
     with open(os.path.join(code_dir, 'README.html'), 'w') as f:
