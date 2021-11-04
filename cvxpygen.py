@@ -400,6 +400,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
                                         indent+"os.path.join('c', 'solver_code', 'external', 'SuiteSparse_config'),\n" +
                                         indent+"os.path.join('c', 'solver_code', 'external', 'amd', 'include'),\n" +
                                         indent+"os.path.join('c', 'solver_code', 'external', 'ldl', 'include'),")
+        setup_text = setup_text.replace("license='Apache 2.0'", "license='GPL 3.0'")
         with open(os.path.join(code_dir, 'setup.py'), 'w') as f:
             f.write(setup_text)
 
