@@ -48,7 +48,8 @@ def param_is_empty(param):
         return param.size == 0
 
 
-def write_canonicalize_explicit(f, canon_name, s, mapping, base_cols, user_p_sizes_usp, user_p_col_to_name_usp):
+def write_canonicalize_explicit(f, canon_name, s, mapping, base_cols, user_p_sizes_usp, user_p_col_to_name_usp,
+                                prob_name):
     """
     Write function to compute canonical parameter value
     """
@@ -65,55 +66,56 @@ def write_canonicalize_explicit(f, canon_name, s, mapping, base_cols, user_p_siz
                     expr_is_const = False
                     user_name = user_p_col_to_name_usp[user_p_col]
                     if abs(datum) == 1:
-                        ex = '(%sCPG_Params.%s[%d])+' % (sign_to_str[datum], user_name, col - user_p_col)
+                        ex = '(%s%sCPG_Params.%s[%d])+' % (sign_to_str[datum], prob_name, user_name, col - user_p_col)
                     else:
-                        ex = '(%.20f*CPG_Params.%s[%d])+' % (datum, user_name, col - user_p_col)
+                        ex = '(%.20f*%sCPG_Params.%s[%d])+' % (datum, prob_name, user_name, col - user_p_col)
                     break
             expr += ex
         expr = expr[:-1]
         if data.size > 0 and expr_is_const is False:
-            f.write('  Canon_Params.%s%s[%d] = %s;\n' % (canon_name, s, row, expr))
+            f.write('  %sCanon_Params.%s%s[%d] = %s;\n' % (prob_name, canon_name, s, row, expr))
 
 
-def write_canonicalize(f, canon_name, s, mapping):
+def write_canonicalize(f, canon_name, s, mapping, prob_name):
     """
     Write function to compute canonical parameter value
     """
 
     f.write('  for(i=0; i<%d; i++){\n' % mapping.shape[0])
-    f.write('    Canon_Params.%s%s[i] = 0;\n' % (canon_name, s))
-    f.write('    for(j=Canon_%s_map.p[i]; j<Canon_%s_map.p[i+1]; j++){\n' % (canon_name, canon_name))
-    f.write('      Canon_Params.%s%s[i] += Canon_%s_map.x[j]*CPG_Params_Vec[Canon_%s_map.i[j]];\n' %
-            (canon_name, s, canon_name, canon_name))
+    f.write('    %sCanon_Params.%s%s[i] = 0;\n' % (prob_name, canon_name, s))
+    f.write('    for(j=%sCanon_%s_map.p[i]; j<%sCanon_%s_map.p[i+1]; j++){\n' %
+            (prob_name, canon_name, prob_name, canon_name))
+    f.write('      %sCanon_Params.%s%s[i] += %sCanon_%s_map.x[j]*%sCPG_Params_Vec[%sCanon_%s_map.i[j]];\n' %
+            (prob_name, canon_name, s, prob_name, canon_name, prob_name, prob_name, canon_name))
     f.write('    }\n')
     f.write('  }\n')
 
 
-def write_param_def(f, param, name, suffix):
+def write_param_def(f, param, name, suffix, prob_name):
     """
     Use osqp.codegen.utils for writing vectors and matrices
     """
     if not param_is_empty(param):
         if name.isupper():
-            osqp_utils.write_mat(f, param, 'Canon_%s%s' % (name, suffix))
+            osqp_utils.write_mat(f, param, '%sCanon_%s%s' % (prob_name, name, suffix))
         elif name == 'd':
-            f.write('c_float Canon_d%s = %.20f;\n' % (suffix, param[0]))
+            f.write('c_float %sCanon_d%s = %.20f;\n' % (prob_name, suffix, param[0]))
         else:
-            osqp_utils.write_vec(f, param, 'Canon_%s%s' % (name, suffix), 'c_float')
+            osqp_utils.write_vec(f, param, '%sCanon_%s%s' % (prob_name, name, suffix), 'c_float')
         f.write('\n')
 
 
-def write_param_prot(f, param, name, suffix):
+def write_param_prot(f, param, name, suffix, prob_name):
     """
     Use osqp.codegen.utils for writing vectors and matrices
     """
     if not param_is_empty(param):
         if name.isupper():
-            osqp_utils.write_mat_extern(f, param, 'Canon_%s%s' % (name, suffix))
+            osqp_utils.write_mat_extern(f, param, '%sCanon_%s%s' % (prob_name, name, suffix))
         elif name == 'd':
-            f.write('extern c_float Canon_d%s;\n' % suffix)
+            f.write('extern c_float %sCanon_d%s;\n' % (prob_name, suffix))
         else:
-            osqp_utils.write_vec_extern(f, param, 'Canon_%s%s' % (name, suffix), 'c_float')
+            osqp_utils.write_vec_extern(f, param, '%sCanon_%s%s' % (prob_name, name, suffix), 'c_float')
 
 
 def write_dense_mat_def(f, mat, name):
@@ -163,7 +165,7 @@ def write_struct_prot(f, name, typ):
     f.write("extern %s %s;\n" % (typ, name))
 
 
-def write_ecos_setup(f, canon_constants):
+def write_ecos_setup(f, canon_constants, prob_name):
     """
     Write ECOS setup function to file
     """
@@ -177,26 +179,26 @@ def write_ecos_setup(f, canon_constants):
     if p == 0:
         Ax_str = Ap_str = Ai_str = b_str = '0'
     else:
-        Ax_str = 'Canon_Params_ECOS.A->x'
-        Ap_str = 'Canon_Params_ECOS.A->p'
-        Ai_str = 'Canon_Params_ECOS.A->i'
-        b_str = 'Canon_Params_ECOS.b'
+        Ax_str = '%sCanon_Params_ECOS.A->x' % prob_name
+        Ap_str = '%sCanon_Params_ECOS.A->p' % prob_name
+        Ai_str = '%sCanon_Params_ECOS.A->i' % prob_name
+        b_str = '%sCanon_Params_ECOS.b' % prob_name
 
     if n_cones == 0:
         ecos_q_str = '0'
     else:
-        ecos_q_str = '(int *) &ecos_q'
+        ecos_q_str = '(int *) &%secos_q' % prob_name
 
-    f.write('  ecos_workspace = ECOS_setup(%d, %d, %d, %d, %d, %s, %d, '
-            'Canon_Params_ECOS.G->x, Canon_Params_ECOS.G->p, Canon_Params_ECOS.G->i, '
-            '%s, %s, %s, '
-            'Canon_Params_ECOS.c, Canon_Params_ECOS.h, %s);\n' %
-            (n, m, p, l, n_cones, ecos_q_str, e, Ax_str, Ap_str, Ai_str, b_str))
+    f.write('  %secos_workspace = ECOS_setup(%d, %d, %d, %d, %d, %s, %d, '
+            '%sCanon_Params_ECOS.G->x, %sCanon_Params_ECOS.G->p, %sCanon_Params_ECOS.G->i, '
+            '%s, %s, %s, %sCanon_Params_ECOS.c, %sCanon_Params_ECOS.h, %s);\n' %
+            (prob_name, n, m, p, l, n_cones, ecos_q_str, e, prob_name, prob_name, prob_name, Ax_str, Ap_str, Ai_str,
+             prob_name, prob_name, b_str))
 
 
 def write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable, user_p_flat_usp, var_init, canon_p_ids,
                         canon_p, canon_mappings, var_symmetric, var_offsets, canon_constants,
-                        canon_settings_names_to_default):
+                        canon_settings_names_to_default, prob_name):
 
     f.write('\n#include "cpg_workspace.h"\n')
     if solver_name == 'OSQP':
@@ -207,30 +209,31 @@ def write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable,
         user_casts = []
         for name, value in user_p_writable.items():
             if np.isscalar(value):
-                f.write('c_float %s = %.20f;\n\n' % (name, value))
+                f.write('c_float %s%s = %.20f;\n\n' % (prob_name, name, value))
                 user_casts.append('')
             else:
-                osqp_utils.write_vec(f, value, name, 'c_float')
+                osqp_utils.write_vec(f, value, prob_name+name, 'c_float')
                 f.write('\n')
                 user_casts.append('(c_float *) ')
         f.write('// Struct containing all user-defined parameters\n')
-        write_struct_def(f, user_p_names, user_casts, ['&'+name for name in user_p_names], 'CPG_Params', 'CPG_Params_t')
+        write_struct_def(f, user_p_names, user_casts, ['&'+prob_name+name for name in user_p_names],
+                         '%sCPG_Params' % prob_name, 'CPG_Params_t')
         f.write('\n')
     else:
         f.write('\n// Vector containing flattened user-defined parameters\n')
-        osqp_utils.write_vec(f, user_p_flat_usp, 'CPG_Params_Vec', 'c_float')
+        osqp_utils.write_vec(f, user_p_flat_usp, '%sCPG_Params_Vec' % prob_name, 'c_float')
         f.write('\n// Sparse mappings from user-defined to canonical parameters\n')
         for name, mapping in zip(canon_p_ids, canon_mappings):
             if mapping.nnz > 0:
-                osqp_utils.write_mat(f, csc_to_dict(mapping), 'Canon_%s_map' % name)
+                osqp_utils.write_mat(f, csc_to_dict(mapping), '%sCanon_%s_map' % (prob_name, name))
                 f.write('\n')
 
     canon_casts = []
     f.write('// Canonical parameters\n')
     for canon_p_id in canon_p_ids:
-        write_param_def(f, replace_inf(canon_p[canon_p_id]), canon_p_id, '')
+        write_param_def(f, replace_inf(canon_p[canon_p_id]), canon_p_id, '', prob_name)
         if solver_name == 'ECOS':
-            write_param_def(f, replace_inf(canon_p[canon_p_id]), canon_p_id, '_ECOS')
+            write_param_def(f, replace_inf(canon_p[canon_p_id]), canon_p_id, '_ECOS', prob_name)
         if canon_p_id.isupper() or canon_p_id == 'd':
             canon_casts.append('')
         else:
@@ -246,23 +249,24 @@ def write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable,
         else:
             length = len(canon_p[canon_p_id])
         if length > 0:
-            struct_values.append('&Canon_%s' % canon_p_id)
+            struct_values.append('&%sCanon_%s' % (prob_name, canon_p_id))
             if solver_name == 'ECOS':
-                struct_values_ECOS.append('&Canon_%s_ECOS' % canon_p_id)
+                struct_values_ECOS.append('&%sCanon_%s_ECOS' % (prob_name, canon_p_id))
         else:
             struct_values.append('0')
             if solver_name == 'ECOS':
                 struct_values_ECOS.append('0')
 
-    write_struct_def(f, canon_p_ids, canon_casts, struct_values, 'Canon_Params', 'Canon_Params_t')
+    write_struct_def(f, canon_p_ids, canon_casts, struct_values, '%sCanon_Params' % prob_name, 'Canon_Params_t')
     f.write('\n')
     if solver_name == 'ECOS':
-        write_struct_def(f, canon_p_ids, canon_casts, struct_values_ECOS, 'Canon_Params_ECOS', 'Canon_Params_t')
+        write_struct_def(f, canon_p_ids, canon_casts, struct_values_ECOS, '%sCanon_Params_ECOS' % prob_name,
+                         'Canon_Params_t')
         f.write('\n')
 
     # Boolean struct for outdated parameter flags
     f.write('// Struct containing flags for outdated canonical parameters\n')
-    f.write('Canon_Outdated_t Canon_Outdated = {\n')
+    f.write('Canon_Outdated_t %sCanon_Outdated = {\n' % prob_name)
     for canon_p_id in canon_p_ids:
         f.write('.%s = 0,\n' % canon_p_id)
     f.write('};\n\n')
@@ -274,9 +278,9 @@ def write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable,
         results_cast.append('(c_float *) ')
         if symm or solver_name == 'ECOS':
             if np.isscalar(value):
-                f.write('c_float %s = %.20f;\n\n' % (name, value))
+                f.write('c_float %s = %.20f;\n\n' % (prob_name+name, value))
             else:
-                osqp_utils.write_vec(f, value.flatten(order='F'), name, 'c_float')
+                osqp_utils.write_vec(f, value.flatten(order='F'), prob_name+name, 'c_float')
                 f.write('\n')
     results_cast.append('')
 
@@ -289,37 +293,37 @@ def write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable,
     else:
         raise ValueError("Problem class cannot be addressed by the OSQP or ECOS solver!")
     info_cast = ['', '', '', '', '']
-    write_struct_def(f, CPG_Info_fields, info_cast, CPG_Info_values, 'CPG_Info', 'CPG_Info_t')
+    write_struct_def(f, CPG_Info_fields, info_cast, CPG_Info_values, '%sCPG_Info' % prob_name, 'CPG_Info_t')
 
     f.write('\n// Struct containing solution and info\n')
     CPG_Result_fields = list(var_init.keys()) + ['info']
     CPG_Result_values = []
     for (name, symm, offset) in zip(var_init.keys(), var_symmetric, var_offsets):
         if symm or solver_name == 'ECOS':
-            CPG_Result_values.append('&' + name)
+            CPG_Result_values.append('&' + prob_name + name)
         else:
             CPG_Result_values.append('&xsolution + %d' % offset)
-    CPG_Result_values.append('&CPG_Info')
-    write_struct_def(f, CPG_Result_fields, results_cast, CPG_Result_values, 'CPG_Result', 'CPG_Result_t')
+    CPG_Result_values.append('&%sCPG_Info' % prob_name)
+    write_struct_def(f, CPG_Result_fields, results_cast, CPG_Result_values, '%sCPG_Result' % prob_name, 'CPG_Result_t')
 
     if solver_name == 'ECOS':
         f.write('\n// Struct containing solver settings\n')
-        f.write('Canon_Settings_t Canon_Settings = {\n')
+        f.write('Canon_Settings_t %sCanon_Settings = {\n' % prob_name)
         for name, default in canon_settings_names_to_default.items():
             f.write('.%s = %s,\n' % (name, default))
         f.write('};\n')
         if canon_constants['n_cones'] > 0:
             f.write('\n// ECOS array of SOC dimensions\n')
-            osqp_utils.write_vec(f, canon_constants['q'], 'ecos_q', 'c_int')
+            osqp_utils.write_vec(f, canon_constants['q'], '%secos_q' % prob_name, 'c_int')
         f.write('\n// ECOS workspace\n')
-        f.write('pwork* ecos_workspace = 0;\n')
+        f.write('pwork* %secos_workspace = 0;\n' % prob_name)
         f.write('\n// ECOS exit flag\n')
-        f.write('c_int ecos_flag = -99;\n')
+        f.write('c_int %secos_flag = -99;\n' % prob_name)
 
 
 def write_workspace_prot(f, solver_name, explicit, user_p_names, user_p_writable, user_p_flat_usp, var_init,
                          canon_p_ids, canon_p, canon_maps, var_symmetric, canon_constants,
-                         canon_settings_names_to_types):
+                         canon_settings_names_to_types, prob_name):
     """"
     Write workspace initialization to file
     """
@@ -408,64 +412,64 @@ def write_workspace_prot(f, solver_name, explicit, user_p_names, user_p_writable
         f.write('\n// User-defined parameters\n')
         for name, value in user_p_writable.items():
             if np.isscalar(value):
-                f.write("extern c_float %s;\n" % name)
+                f.write("extern c_float %s;\n" % (prob_name+name))
             else:
-                osqp_utils.write_vec_extern(f, value, name, 'c_float')
+                osqp_utils.write_vec_extern(f, value, prob_name+name, 'c_float')
         f.write('\n// Struct containing all user-defined parameters\n')
-        write_struct_prot(f, 'CPG_Params', 'CPG_Params_t')
+        write_struct_prot(f, '%sCPG_Params' % prob_name, 'CPG_Params_t')
     else:
         f.write('\n// Vector containing flattened user-defined parameters\n')
-        osqp_utils.write_vec_extern(f, user_p_flat_usp, 'CPG_Params_Vec', 'c_float')
+        osqp_utils.write_vec_extern(f, user_p_flat_usp, '%sCPG_Params_Vec' % prob_name, 'c_float')
         f.write('\n// Sparse mappings from user-defined to canonical parameters\n')
         for name, mapping in zip(canon_p_ids, canon_maps):
             if mapping.nnz > 0:
-                osqp_utils.write_mat_extern(f, csc_to_dict(mapping), 'Canon_%s_map' % name)
+                osqp_utils.write_mat_extern(f, csc_to_dict(mapping), '%sCanon_%s_map' % (prob_name, name))
 
     f.write('\n// Canonical parameters\n')
     for canon_p_id in canon_p_ids:
-        write_param_prot(f, canon_p[canon_p_id], canon_p_id, '')
+        write_param_prot(f, canon_p[canon_p_id], canon_p_id, '', prob_name)
         if solver_name == 'ECOS':
-            write_param_prot(f, canon_p[canon_p_id], canon_p_id, '_ECOS')
+            write_param_prot(f, canon_p[canon_p_id], canon_p_id, '_ECOS', prob_name)
 
     f.write('\n// Struct containing canonical parameters\n')
-    write_struct_prot(f, 'Canon_Params', 'Canon_Params_t')
+    write_struct_prot(f, '%sCanon_Params' % prob_name, 'Canon_Params_t')
     if solver_name == 'ECOS':
-        write_struct_prot(f, 'Canon_Params_ECOS', 'Canon_Params_t')
+        write_struct_prot(f, '%sCanon_Params_ECOS' % prob_name, 'Canon_Params_t')
 
     f.write('\n// Struct containing flags for outdated canonical parameters\n')
-    f.write('extern Canon_Outdated_t Canon_Outdated;\n')
+    f.write('extern Canon_Outdated_t %sCanon_Outdated;\n' % prob_name)
 
     if any(var_symmetric) or solver_name == 'ECOS':
         f.write('\n// User-defined variables\n')
         for (name, value), symm in zip(var_init.items(), var_symmetric):
             if symm or solver_name == 'ECOS':
                 if np.isscalar(value):
-                    f.write('extern c_float %s;\n' % name)
+                    f.write('extern c_float %s;\n' % (prob_name+name))
                 else:
-                    osqp_utils.write_vec_extern(f, value.flatten(order='F'), name, 'c_float')
+                    osqp_utils.write_vec_extern(f, value.flatten(order='F'), prob_name+name, 'c_float')
 
     f.write('\n// Struct containing solver info\n')
-    write_struct_prot(f, 'CPG_Info', 'CPG_Info_t')
+    write_struct_prot(f, '%sCPG_Info' % prob_name, 'CPG_Info_t')
 
     f.write('\n// Struct containing solution and info\n')
-    write_struct_prot(f, 'CPG_Result', 'CPG_Result_t')
+    write_struct_prot(f, '%sCPG_Result' % prob_name, 'CPG_Result_t')
 
     if solver_name == 'ECOS':
         f.write('\n// Struct containing solver settings\n')
-        write_struct_prot(f, 'Canon_Settings', 'Canon_Settings_t')
+        write_struct_prot(f, '%sCanon_Settings' % prob_name, 'Canon_Settings_t')
         if canon_constants['n_cones'] > 0:
             f.write('\n// ECOS array of SOC dimensions\n')
-            osqp_utils.write_vec_extern(f, canon_constants['q'], 'ecos_q', 'c_int')
+            osqp_utils.write_vec_extern(f, canon_constants['q'], '%secos_q' % prob_name, 'c_int')
         f.write('\n// ECOS workspace\n')
-        f.write('extern pwork* ecos_workspace;\n')
+        f.write('extern pwork* %secos_workspace;\n' % prob_name)
         f.write('\n// ECOS exit flag\n')
-        f.write('extern c_int ecos_flag;\n')
+        f.write('extern c_int %secos_flag;\n' % prob_name)
 
 
 def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_to_name_usp, user_p_sizes_usp,
                     var_id_to_indices, canon_p_id_to_size, is_maximization, user_p_to_canon_outdated,
                     canon_settings_names_to_types, canon_settings_names_to_default, var_symm, canon_p_to_changes,
-                    canon_constants, nonzero_d):
+                    canon_constants, nonzero_d, prob_name):
     """
     Write parameter initialization function to file
     """
@@ -489,157 +493,159 @@ def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_
     if explicit:
         for (user_p_name, Canon_outdated_names), user_p_size in zip(user_p_to_canon_outdated.items(), user_p_sizes_usp):
             if user_p_size == 1:
-                f.write('void update_%s(c_float val){\n' % user_p_name)
-                f.write('  *CPG_Params.%s = val;\n' % user_p_name)
+                f.write('void %supdate_%s(c_float val){\n' % (prob_name, user_p_name))
+                f.write('  *%sCPG_Params.%s = val;\n' % (prob_name, user_p_name))
             else:
-                f.write('void update_%s(c_int idx, c_float val){\n' % user_p_name)
-                f.write('  CPG_Params.%s[idx] = val;\n' % user_p_name)
+                f.write('void %supdate_%s(c_int idx, c_float val){\n' % (prob_name, user_p_name))
+                f.write('  %sCPG_Params.%s[idx] = val;\n' % (prob_name, user_p_name))
             for Canon_outdated_name in Canon_outdated_names:
-                f.write('  Canon_Outdated.%s = 1;\n' % Canon_outdated_name)
+                f.write('  %sCanon_Outdated.%s = 1;\n' % (prob_name, Canon_outdated_name))
             f.write('}\n\n')
     else:
         for base_col, (user_p_name, Canon_outdated_names), user_p_size in zip(base_cols,
                                                                               user_p_to_canon_outdated.items(),
                                                                               user_p_sizes_usp):
             if user_p_size == 1:
-                f.write('void update_%s(c_float val){\n' % user_p_name)
-                f.write('  CPG_Params_Vec[%d] = val;\n' % base_col)
+                f.write('void %supdate_%s(c_float val){\n' % (prob_name, user_p_name))
+                f.write('  %sCPG_Params_Vec[%d] = val;\n' % (prob_name, base_col))
             else:
-                f.write('void update_%s(c_int idx, c_float val){\n' % user_p_name)
-                f.write('  CPG_Params_Vec[idx+%d] = val;\n' % base_col)
+                f.write('void %supdate_%s(c_int idx, c_float val){\n' % (prob_name, user_p_name))
+                f.write('  %sCPG_Params_Vec[idx+%d] = val;\n' % (prob_name, base_col))
             for Canon_outdated_name in Canon_outdated_names:
-                f.write('  Canon_Outdated.%s = 1;\n' % Canon_outdated_name)
+                f.write('  %sCanon_Outdated.%s = 1;\n' % (prob_name, Canon_outdated_name))
             f.write('}\n\n')
 
     f.write('// Map user-defined to canonical parameters\n')
 
     for canon_name, mapping in zip(canon_p_ids, mappings):
         if mapping.nnz > 0:
-            f.write('void canonicalize_%s(){\n' % canon_name)
+            f.write('void %scanonicalize_%s(){\n' % (prob_name, canon_name))
             if canon_name.isupper():
                 s = '->x'
             else:
                 s = ''
             if explicit:
                 write_canonicalize_explicit(f, canon_name, s, mapping, base_cols, user_p_sizes_usp,
-                                            user_p_col_to_name_usp)
+                                            user_p_col_to_name_usp, prob_name)
             else:
-                write_canonicalize(f, canon_name, s, mapping)
+                write_canonicalize(f, canon_name, s, mapping, prob_name)
             f.write('}\n\n')
 
     if solver_name == 'OSQP':
         obj_str = 'workspace.info->obj_val'
         sol_str = 'workspace.solution->x'
     elif solver_name == 'ECOS':
-        obj_str = 'ecos_workspace->info->pcost'
-        sol_str = 'ecos_workspace->x'
+        obj_str = '%secos_workspace->info->pcost' % prob_name
+        sol_str = '%secos_workspace->x' % prob_name
     else:
         raise ValueError("Only OSQP and ECOS are supported!")
 
     if any(var_symm) or solver_name == 'ECOS':
         f.write('// Retrieve solution in terms of user-defined variables\n')
-        f.write('void retrieve_solution(){\n')
+        f.write('void %sretrieve_solution(){\n' % prob_name)
         for symm, (var_id, indices) in zip(var_symm, var_id_to_indices.items()):
             if symm or solver_name == 'ECOS':
                 if len(indices) == 1:
-                    f.write('  %s = %s[%d];\n' % (var_id, sol_str, indices[0]))
+                    f.write('  %s = %s[%d];\n' % (prob_name+var_id, sol_str, indices[0]))
                 else:
                     for i, idx in enumerate(indices):
-                        f.write('  %s[%d] = %s[%d];\n' % (var_id, i, sol_str, idx))
+                        f.write('  %s[%d] = %s[%d];\n' % (prob_name+var_id, i, sol_str, idx))
         f.write('}\n\n')
 
     f.write('// Retrieve solver info\n')
-    f.write('void retrieve_info(){\n')
+    f.write('void %sretrieve_info(){\n' % prob_name)
     if nonzero_d:
-        d_str = ' + *Canon_Params.d'
+        d_str = ' + *%sCanon_Params.d' % prob_name
     else:
         d_str = ''
     if is_maximization:
-        f.write('  CPG_Info.obj_val = -(%s%s);\n' % (obj_str, d_str))
+        f.write('  %sCPG_Info.obj_val = -(%s%s);\n' % (prob_name, obj_str, d_str))
     else:
-        f.write('  CPG_Info.obj_val = %s%s;\n' % (obj_str, d_str))
+        f.write('  %sCPG_Info.obj_val = %s%s;\n' % (prob_name, obj_str, d_str))
     if solver_name == 'OSQP':
-        f.write('  CPG_Info.iter = workspace.info->iter;\n')
-        f.write('  CPG_Info.status = workspace.info->status;\n')
-        f.write('  CPG_Info.pri_res = workspace.info->pri_res;\n')
-        f.write('  CPG_Info.dua_res = workspace.info->dua_res;\n')
+        f.write('  %sCPG_Info.iter = workspace.info->iter;\n' % prob_name)
+        f.write('  %sCPG_Info.status = workspace.info->status;\n' % prob_name)
+        f.write('  %sCPG_Info.pri_res = workspace.info->pri_res;\n' % prob_name)
+        f.write('  %sCPG_Info.dua_res = workspace.info->dua_res;\n' % prob_name)
     elif solver_name == 'ECOS':
-        f.write('  CPG_Info.iter = ecos_workspace->info->iter;\n')
-        f.write('  CPG_Info.status = ecos_flag;\n')
-        f.write('  CPG_Info.pri_res = ecos_workspace->info->pres;\n')
-        f.write('  CPG_Info.dua_res = ecos_workspace->info->dres;\n')
+        f.write('  %sCPG_Info.iter = %secos_workspace->info->iter;\n' % (prob_name, prob_name))
+        f.write('  %sCPG_Info.status = %secos_flag;\n' % (prob_name, prob_name))
+        f.write('  %sCPG_Info.pri_res = %secos_workspace->info->pres;\n' % (prob_name, prob_name))
+        f.write('  %sCPG_Info.dua_res = %secos_workspace->info->dres;\n' % (prob_name, prob_name))
     f.write('}\n\n')
 
     f.write('// Solve via canonicalization, canonical solve, retrieval\n')
-    f.write('void solve(){\n')
+    f.write('void %ssolve(){\n' % prob_name)
     f.write('  // Canonicalize if necessary\n')
     if solver_name == 'OSQP':
 
         if canon_p_to_changes['P'] and canon_p_to_changes['A']:
-            f.write('  if (Canon_Outdated.P && Canon_Outdated.A) {\n')
-            f.write('    canonicalize_P();\n')
-            f.write('    canonicalize_A();\n')
-            f.write('    osqp_update_P_A(&workspace, Canon_Params.P->x, 0, 0, Canon_Params.A->x, 0, 0);\n')
-            f.write('  } else if (Canon_Outdated.P) {\n')
-            f.write('    canonicalize_P();\n')
-            f.write('    osqp_update_P(&workspace, Canon_Params.P->x, 0, 0);\n')
-            f.write('  } else if (Canon_Outdated.A) {\n')
-            f.write('    canonicalize_A();\n')
-            f.write('    osqp_update_A(&workspace, Canon_Params.A->x, 0, 0);\n')
+            f.write('  if (%sCanon_Outdated.P && %sCanon_Outdated.A) {\n' % (prob_name, prob_name))
+            f.write('    %scanonicalize_P();\n' % prob_name)
+            f.write('    %scanonicalize_A();\n' % prob_name)
+            f.write('    osqp_update_P_A(&workspace, %sCanon_Params.P->x, 0, 0, %sCanon_Params.A->x, 0, 0);\n'
+                    % (prob_name, prob_name))
+            f.write('  } else if (%sCanon_Outdated.P) {\n' % prob_name)
+            f.write('    %scanonicalize_P();\n' % prob_name)
+            f.write('    osqp_update_P(&workspace, %sCanon_Params.P->x, 0, 0);\n' % prob_name)
+            f.write('  } else if (%sCanon_Outdated.A) {\n' % prob_name)
+            f.write('    %scanonicalize_A();\n' % prob_name)
+            f.write('    osqp_update_A(&workspace, %sCanon_Params.A->x, 0, 0);\n' % prob_name)
             f.write('  }\n')
         else:
             if canon_p_to_changes['P']:
-                f.write('  if (Canon_Outdated.P) {\n')
-                f.write('    canonicalize_P();\n')
-                f.write('    osqp_update_P(&workspace, Canon_Params.P->x, 0, 0);\n')
+                f.write('  if (%sCanon_Outdated.P) {\n' % prob_name)
+                f.write('    %scanonicalize_P();\n' % prob_name)
+                f.write('    osqp_update_P(&workspace, %sCanon_Params.P->x, 0, 0);\n' % prob_name)
                 f.write('  }\n')
             if canon_p_to_changes['A']:
-                f.write('  if (Canon_Outdated.A) {\n')
-                f.write('    canonicalize_A();\n')
-                f.write('    osqp_update_A(&workspace, Canon_Params.A->x, 0, 0);\n')
+                f.write('  if (%sCanon_Outdated.A) {\n' % prob_name)
+                f.write('    %scanonicalize_A();\n' % prob_name)
+                f.write('    osqp_update_A(&workspace, %sCanon_Params.A->x, 0, 0);\n' % prob_name)
                 f.write('  }\n')
 
         if canon_p_to_changes['q']:
-            f.write('  if (Canon_Outdated.q) {\n')
-            f.write('    canonicalize_q();\n')
-            f.write('    osqp_update_lin_cost(&workspace, Canon_Params.q);\n')
+            f.write('  if (%sCanon_Outdated.q) {\n' % prob_name)
+            f.write('    %scanonicalize_q();\n' % prob_name)
+            f.write('    osqp_update_lin_cost(&workspace, %sCanon_Params.q);\n' % prob_name)
             f.write('  }\n')
 
         if canon_p_to_changes['d']:
-            f.write('  if (Canon_Outdated.d) {\n')
-            f.write('    canonicalize_d();\n')
+            f.write('  if (%sCanon_Outdated.d) {\n' % prob_name)
+            f.write('    %scanonicalize_d();\n' % prob_name)
             f.write('  }\n')
 
         if canon_p_to_changes['l'] and canon_p_to_changes['u']:
-            f.write('  if (Canon_Outdated.l && Canon_Outdated.u) {\n')
-            f.write('    canonicalize_l();\n')
-            f.write('    canonicalize_u();\n')
-            f.write('    osqp_update_bounds(&workspace, Canon_Params.l, Canon_Params.u);\n')
-            f.write('  } else if (Canon_Outdated.l) {\n')
-            f.write('    canonicalize_l();\n')
-            f.write('    osqp_update_lower_bound(&workspace, Canon_Params.l);\n')
-            f.write('  } else if (Canon_Outdated.u) {\n')
-            f.write('    canonicalize_u();\n')
-            f.write('    osqp_update_upper_bound(&workspace, Canon_Params.u);\n')
+            f.write('  if (%sCanon_Outdated.l && %sCanon_Outdated.u) {\n' % (prob_name, prob_name))
+            f.write('    %scanonicalize_l();\n' % prob_name)
+            f.write('    %scanonicalize_u();\n' % prob_name)
+            f.write('    osqp_update_bounds(&workspace, %sCanon_Params.l, %sCanon_Params.u);\n'
+                    % (prob_name, prob_name))
+            f.write('  } else if (%sCanon_Outdated.l) {\n' % prob_name)
+            f.write('    %scanonicalize_l();\n' % prob_name)
+            f.write('    osqp_update_lower_bound(&workspace, %sCanon_Params.l);\n' % prob_name)
+            f.write('  } else if (%sCanon_Outdated.u) {\n' % prob_name)
+            f.write('    %scanonicalize_u();\n' % prob_name)
+            f.write('    osqp_update_upper_bound(&workspace, %sCanon_Params.u);\n' % prob_name)
             f.write('  }\n')
         else:
             if canon_p_to_changes['l']:
-                f.write('  if (Canon_Outdated.l) {\n')
-                f.write('    canonicalize_l();\n')
-                f.write('    osqp_update_lower_bound(&workspace, Canon_Params.l);\n')
+                f.write('  if (%sCanon_Outdated.l) {\n' % prob_name)
+                f.write('    %scanonicalize_l();\n' % prob_name)
+                f.write('    osqp_update_lower_bound(&workspace, %sCanon_Params.l);\n' % prob_name)
                 f.write('  }\n')
             if canon_p_to_changes['u']:
-                f.write('  if (Canon_Outdated.u) {\n')
-                f.write('    canonicalize_u();\n')
-                f.write('    osqp_update_upper_bound(&workspace, Canon_Params.u);\n')
+                f.write('  if (%sCanon_Outdated.u) {\n' % prob_name)
+                f.write('    %scanonicalize_u();\n' % prob_name)
+                f.write('    osqp_update_upper_bound(&workspace, %sCanon_Params.u);\n' % prob_name)
                 f.write('  }\n')
 
     elif solver_name == 'ECOS':
 
         for canon_p, changes in canon_p_to_changes.items():
             if changes:
-                f.write('  if (Canon_Outdated.%s) {\n' % canon_p)
-                f.write('    canonicalize_%s();\n' % canon_p)
+                f.write('  if (%sCanon_Outdated.%s) {\n' % (prob_name, canon_p))
+                f.write('    %scanonicalize_%s();\n' % (prob_name, canon_p))
                 f.write('  }\n')
 
     if solver_name == 'OSQP':
@@ -651,50 +657,53 @@ def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_
             if size > 0:
                 f.write('  for (i=0; i<%d; i++){\n' % size)
                 if p_pid.isupper():
-                    f.write('    Canon_Params_ECOS.%s->x[i] = Canon_Params.%s->x[i];\n' % (p_pid, p_pid))
+                    f.write('    %sCanon_Params_ECOS.%s->x[i] = %sCanon_Params.%s->x[i];\n'
+                            % (prob_name, p_pid, prob_name, p_pid))
                 else:
-                    f.write('    Canon_Params_ECOS.%s[i] = Canon_Params.%s[i];\n' % (p_pid, p_pid))
+                    f.write('    %sCanon_Params_ECOS.%s[i] = %sCanon_Params.%s[i];\n'
+                            % (prob_name, p_pid, prob_name, p_pid))
                 f.write('  }\n')
         f.write('  // Initialize ECOS workspace and settings\n')
-        write_ecos_setup(f, canon_constants)
+        write_ecos_setup(f, canon_constants, prob_name)
         for name in canon_settings_names_to_types.keys():
-            f.write('  ecos_workspace->stgs->%s = Canon_Settings.%s;\n' % (name, name))
+            f.write('  %secos_workspace->stgs->%s = %sCanon_Settings.%s;\n' % (prob_name, name, prob_name, name))
         f.write('  // Solve with ECOS\n')
-        f.write('  ecos_flag = ECOS_solve(ecos_workspace);\n')
+        f.write('  %secos_flag = ECOS_solve(%secos_workspace);\n' % (prob_name, prob_name))
 
     f.write('  // Retrieve results\n')
     if any(var_symm) or solver_name == 'ECOS':
-        f.write('  retrieve_solution();\n')
-    f.write('  retrieve_info();\n')
+        f.write('  %sretrieve_solution();\n' % prob_name)
+    f.write('  %sretrieve_info();\n' % prob_name)
 
     if solver_name == 'ECOS':
         f.write('  // Clean up ECOS workspace\n')
-        f.write('  ECOS_cleanup(ecos_workspace, 0);\n')
+        f.write('  ECOS_cleanup(%secos_workspace, 0);\n' % prob_name)
 
     f.write('  // Reset flags for outdated canonical parameters\n')
     for canon_p_id in canon_p_ids:
-        f.write('  Canon_Outdated.%s = 0;\n' % canon_p_id)
+        f.write('  %sCanon_Outdated.%s = 0;\n' % (prob_name, canon_p_id))
 
     f.write('}\n\n')
 
     f.write('// Update solver settings\n')
-    f.write('void set_solver_default_settings(){\n')
+    f.write('void %sset_solver_default_settings(){\n' % prob_name)
     if solver_name == 'OSQP':
         f.write('  osqp_set_default_settings(&settings);\n')
     elif solver_name == 'ECOS':
         for name, value in canon_settings_names_to_default.items():
-            f.write('  Canon_Settings.%s = %s;\n' % (name, value))
+            f.write('  %sCanon_Settings.%s = %s;\n' % (prob_name, name, value))
     f.write('}\n')
     for name, typ in canon_settings_names_to_types.items():
-        f.write('\nvoid set_solver_%s(%s %s_new){\n' % (name, typ, name))
+        f.write('\nvoid %sset_solver_%s(%s %s_new){\n' % (prob_name, name, typ, name))
         if solver_name == 'OSQP':
             f.write('  osqp_update_%s(&workspace, %s_new);\n' % (name, name))
         elif solver_name == 'ECOS':
-            f.write('  Canon_Settings.%s = %s_new;\n' % (name, name))
+            f.write('  %sCanon_Settings.%s = %s_new;\n' % (prob_name, name, name))
         f.write('}\n')
 
 
-def write_solve_prot(f, solver_name, canon_p_ids, user_p_name_to_size_usp, canon_settings_names_to_types, var_symm):
+def write_solve_prot(f, solver_name, canon_p_ids, user_p_name_to_size_usp, canon_settings_names_to_types, var_symm,
+                     prob_name):
     """
     Write function declarations to file
     """
@@ -707,31 +716,31 @@ def write_solve_prot(f, solver_name, canon_p_ids, user_p_name_to_size_usp, canon
     f.write('\n// Update user-defined parameter values\n')
     for name, size in user_p_name_to_size_usp.items():
         if size == 1:
-            f.write('extern void update_%s(c_float val);\n' % name)
+            f.write('extern void %supdate_%s(c_float val);\n' % (prob_name, name))
         else:
-            f.write('extern void update_%s(c_int idx, c_float val);\n' % name)
+            f.write('extern void %supdate_%s(c_int idx, c_float val);\n' % (prob_name, name))
 
     f.write('\n// Map user-defined to canonical parameters\n')
     for canon_p_id in canon_p_ids:
-        f.write('extern void canonicalize_%s();\n' % canon_p_id)
+        f.write('extern void %scanonicalize_%s();\n' % (prob_name, canon_p_id))
 
     if any(var_symm) or solver_name == 'ECOS':
         f.write('\n// Retrieve solution in terms of user-defined variables\n')
-        f.write('extern void retrieve_solution();\n')
+        f.write('extern void %sretrieve_solution();\n' % prob_name)
 
     f.write('\n// Retrieve solver information\n')
-    f.write('extern void retrieve_info();\n')
+    f.write('extern void %sretrieve_info();\n' % prob_name)
 
     f.write('\n// Solve via canonicalization, canonical solve, retrieval\n')
-    f.write('extern void solve();\n')
+    f.write('extern void %ssolve();\n' % prob_name)
 
     f.write('\n// Update solver settings\n')
-    f.write('extern void set_solver_default_settings();\n')
+    f.write('extern void %sset_solver_default_settings();\n' % prob_name)
     for name, typ in canon_settings_names_to_types.items():
-        f.write('extern void set_solver_%s(%s %s_new);\n' % (name, typ, name))
+        f.write('extern void %sset_solver_%s(%s %s_new);\n' % (prob_name, name, typ, name))
 
 
-def write_example_def(f, solver_name, user_p_writable, var_name_to_size):
+def write_example_def(f, solver_name, user_p_writable, var_name_to_size, prob_name):
     """
     Write main function to file
     """
@@ -741,16 +750,16 @@ def write_example_def(f, solver_name, user_p_writable, var_name_to_size):
     f.write('  // Initialize user-defined parameter values\n')
     for name, value in user_p_writable.items():
         if np.isscalar(value):
-            f.write('  update_%s(%.20f);\n' % (name, value))
+            f.write('  %supdate_%s(%.20f);\n' % (prob_name, name, value))
         else:
             for i in range(len(value)):
-                f.write('  update_%s(%d, %.20f);\n' % (name, i, value[i]))
+                f.write('  %supdate_%s(%d, %.20f);\n' % (prob_name, name, i, value[i]))
 
     f.write('\n  // Solve the problem instance\n')
-    f.write('  solve();\n\n')
+    f.write('  %ssolve();\n\n' % prob_name)
 
     f.write('  // Print objective function value\n')
-    f.write('  printf("obj = %f\\n", CPG_Result.info->obj_val);\n\n')
+    f.write('  printf("obj = %%f\\n", %sCPG_Result.info->obj_val);\n\n' % prob_name)
 
     f.write('  // Print solution\n')
 
@@ -761,14 +770,25 @@ def write_example_def(f, solver_name, user_p_writable, var_name_to_size):
 
     for name, size in var_name_to_size.items():
         if size == 1:
-            f.write('  printf("%s = %%f\\n", *CPG_Result.%s);\n\n' % (name, name))
+            f.write('  printf("%s = %%f\\n", *%sCPG_Result.%s);\n\n' % (name, prob_name, name))
         else:
             f.write('  for(i=0; i<%d; i++) {\n' % size)
-            f.write('    printf("%s[%%%s] = %%f\\n", i, CPG_Result.%s[i]);\n' % (name, int_format_str, name))
+            f.write('    printf("%s[%%%s] = %%f\\n", i, %sCPG_Result.%s[i]);\n'
+                    % (name, int_format_str, prob_name, name))
             f.write('  }\n\n')
 
     f.write('  return 0;\n\n')
     f.write('}\n')
+
+
+def replace_CMakeLists_data(CMakeLists_data, prob_name):
+    """
+    Add 'prob_name' prefix to directory/file lists in top-level CMakeLists.txt
+    """
+
+    CMakeLists_data = CMakeLists_data.replace('cpg_include', prob_name+'cpg_include')
+    CMakeLists_data = CMakeLists_data.replace('cpg_head', prob_name + 'cpg_head')
+    return CMakeLists_data.replace('cpg_src', prob_name + 'cpg_src')
 
 
 def write_canon_CMakeLists(f, solver_name):
@@ -784,48 +804,48 @@ def write_canon_CMakeLists(f, solver_name):
         f.write('\nset(solver_src "${ecos_sources}" PARENT_SCOPE)')
 
 
-def write_module_def(f, user_p_name_to_size_usp, var_name_to_size, canon_settings_names, problem_name):
+def write_module_def(f, user_p_name_to_size_usp, var_name_to_size, canon_settings_names, prob_name):
     """
     Write c++ file for pbind11 wrapper
     """
 
     # cpp function that maps parameters to results
-    f.write('CPG_Result%s_cpp_t solve_cpp(struct CPG_Updated%s_cpp_t& CPG_Updated_cpp, '
-            'struct CPG_Params%s_cpp_t& CPG_Params_cpp){\n\n'
-            % (problem_name, problem_name, problem_name))
+    f.write('%sCPG_Result_cpp_t %ssolve_cpp(struct %sCPG_Updated_cpp_t& CPG_Updated_cpp, '
+            'struct %sCPG_Params_cpp_t& CPG_Params_cpp){\n\n'
+            % (prob_name, prob_name, prob_name, prob_name))
 
     f.write('    // Pass changed user-defined parameter values to the solver\n')
     for name, size in user_p_name_to_size_usp.items():
         f.write('    if (CPG_Updated_cpp.%s) {\n' % name)
         if size == 1:
-            f.write('        update_%s(CPG_Params_cpp.%s);\n' % (name, name))
+            f.write('        %supdate_%s(CPG_Params_cpp.%s);\n' % (prob_name, name, name))
         else:
             f.write('        for(i=0; i<%d; i++) {\n' % size)
-            f.write('            update_%s(i, CPG_Params_cpp.%s[i]);\n' % (name, name))
+            f.write('            %supdate_%s(i, CPG_Params_cpp.%s[i]);\n' % (prob_name, name, name))
             f.write('        }\n')
         f.write('    }\n')
 
     # perform ASA procedure
     f.write('\n    // Solve\n')
     f.write('    std::clock_t ASA_start = std::clock();\n')
-    f.write('    solve();\n')
+    f.write('    %ssolve();\n' % prob_name)
     f.write('    std::clock_t ASA_end = std::clock();\n\n')
 
     # arrange and return results
     f.write('    // Arrange and return results\n')
-    f.write('    CPG_Info%s_cpp_t CPG_Info_cpp {};\n' % problem_name)
+    f.write('    %sCPG_Info_cpp_t CPG_Info_cpp {};\n' % prob_name)
     for field in ['obj_val', 'iter', 'status', 'pri_res', 'dua_res']:
-        f.write('    CPG_Info_cpp.%s = CPG_Info.%s;\n' % (field, field))
+        f.write('    CPG_Info_cpp.%s = %sCPG_Info.%s;\n' % (field, prob_name, field))
     f.write('    CPG_Info_cpp.ASA_proc_time = 1000.0 * (ASA_end-ASA_start) / CLOCKS_PER_SEC;\n')
 
-    f.write('    CPG_Result%s_cpp_t CPG_Result_cpp {};\n' % problem_name)
+    f.write('    %sCPG_Result_cpp_t CPG_Result_cpp {};\n' % prob_name)
     f.write('    CPG_Result_cpp.info = CPG_Info_cpp;\n')
     for name, size in var_name_to_size.items():
         if size == 1:
-            f.write('    CPG_Result_cpp.%s = *CPG_Result.%s;\n' % (name, name))
+            f.write('    CPG_Result_cpp.%s = *%sCPG_Result.%s;\n' % (name, prob_name, name))
         else:
             f.write('    for(i=0; i<%d; i++) {\n' % size)
-            f.write('        CPG_Result_cpp.%s[i] = CPG_Result.%s[i];\n' % (name, name))
+            f.write('        CPG_Result_cpp.%s[i] = %sCPG_Result.%s[i];\n' % (name, prob_name, name))
             f.write('    }\n')
 
     # return
@@ -835,52 +855,52 @@ def write_module_def(f, user_p_name_to_size_usp, var_name_to_size, canon_setting
     # module
     f.write('PYBIND11_MODULE(cpg_module, m) {\n\n')
 
-    f.write('    py::class_<CPG_Params%s_cpp_t>(m, "cpg_params")\n' % problem_name)
+    f.write('    py::class_<%sCPG_Params_cpp_t>(m, "cpg_params")\n' % prob_name)
     f.write('            .def(py::init<>())\n')
     for name in user_p_name_to_size_usp.keys():
-        f.write('            .def_readwrite("%s", &CPG_Params%s_cpp_t::%s)\n' % (name, problem_name, name))
+        f.write('            .def_readwrite("%s", &%sCPG_Params_cpp_t::%s)\n' % (name, prob_name, name))
     f.write('            ;\n\n')
 
-    f.write('    py::class_<CPG_Updated%s_cpp_t>(m, "cpg_updated")\n' % problem_name)
+    f.write('    py::class_<%sCPG_Updated_cpp_t>(m, "cpg_updated")\n' % prob_name)
     f.write('            .def(py::init<>())\n')
     for name in user_p_name_to_size_usp.keys():
-        f.write('            .def_readwrite("%s", &CPG_Updated%s_cpp_t::%s)\n' % (name, problem_name, name))
+        f.write('            .def_readwrite("%s", &%sCPG_Updated_cpp_t::%s)\n' % (name, prob_name, name))
     f.write('            ;\n\n')
 
-    f.write('    py::class_<CPG_Info%s_cpp_t>(m, "cpg_info")\n' % problem_name)
+    f.write('    py::class_<%sCPG_Info_cpp_t>(m, "cpg_info")\n' % prob_name)
     f.write('            .def(py::init<>())\n')
-    f.write('            .def_readwrite("obj_val", &CPG_Info%s_cpp_t::obj_val)\n' % problem_name)
-    f.write('            .def_readwrite("iter", &CPG_Info%s_cpp_t::iter)\n' % problem_name)
-    f.write('            .def_readwrite("status", &CPG_Info%s_cpp_t::status)\n' % problem_name)
-    f.write('            .def_readwrite("pri_res", &CPG_Info%s_cpp_t::pri_res)\n' % problem_name)
-    f.write('            .def_readwrite("dua_res", &CPG_Info%s_cpp_t::dua_res)\n' % problem_name)
-    f.write('            .def_readwrite("ASA_proc_time", &CPG_Info%s_cpp_t::ASA_proc_time)\n' % problem_name)
+    f.write('            .def_readwrite("obj_val", &%sCPG_Info_cpp_t::obj_val)\n' % prob_name)
+    f.write('            .def_readwrite("iter", &%sCPG_Info_cpp_t::iter)\n' % prob_name)
+    f.write('            .def_readwrite("status", &%sCPG_Info_cpp_t::status)\n' % prob_name)
+    f.write('            .def_readwrite("pri_res", &%sCPG_Info_cpp_t::pri_res)\n' % prob_name)
+    f.write('            .def_readwrite("dua_res", &%sCPG_Info_cpp_t::dua_res)\n' % prob_name)
+    f.write('            .def_readwrite("ASA_proc_time", &%sCPG_Info_cpp_t::ASA_proc_time)\n' % prob_name)
     f.write('            ;\n\n')
 
-    f.write('    py::class_<CPG_Result%s_cpp_t>(m, "cpg_result")\n' % problem_name)
+    f.write('    py::class_<%sCPG_Result_cpp_t>(m, "cpg_result")\n' % prob_name)
     f.write('            .def(py::init<>())\n')
-    f.write('            .def_readwrite("cpg_info", &CPG_Result%s_cpp_t::info)\n' % problem_name)
+    f.write('            .def_readwrite("cpg_info", &%sCPG_Result_cpp_t::info)\n' % prob_name)
     for name in var_name_to_size.keys():
-        f.write('            .def_readwrite("%s", &CPG_Result%s_cpp_t::%s)\n' % (name, problem_name, name))
+        f.write('            .def_readwrite("%s", &%sCPG_Result_cpp_t::%s)\n' % (name, prob_name, name))
     f.write('            ;\n\n')
 
-    f.write('    m.def("solve", &solve_cpp);\n\n')
+    f.write('    m.def("solve", &%ssolve_cpp);\n\n' % prob_name)
 
-    f.write('    m.def("set_solver_default_settings", &set_solver_default_settings);\n')
+    f.write('    m.def("set_solver_default_settings", &%sset_solver_default_settings);\n' % prob_name)
     for name in canon_settings_names:
-        f.write('    m.def("set_solver_%s", &set_solver_%s);\n' % (name, name))
+        f.write('    m.def("set_solver_%s", &%sset_solver_%s);\n' % (name, prob_name, name))
 
     f.write('\n}\n')
 
 
-def write_module_prot(f, solver_name, user_p_name_to_size_usp, var_name_to_size, problem_name):
+def write_module_prot(f, solver_name, user_p_name_to_size_usp, var_name_to_size, prob_name):
     """
     Write c++ file for pbind11 wrapper
     """
 
     # cpp struct containing user-defined parameters
     f.write('\n// User-defined parameters\n')
-    f.write('struct CPG_Params%s_cpp_t {\n' % problem_name)
+    f.write('struct %sCPG_Params_cpp_t {\n' % prob_name)
     for name, size in user_p_name_to_size_usp.items():
         if size == 1:
             f.write('    double %s;\n' % name)
@@ -890,14 +910,14 @@ def write_module_prot(f, solver_name, user_p_name_to_size_usp, var_name_to_size,
 
     # cpp struct containing update flags for user-defined parameters
     f.write('// Flags for updated user-defined parameters\n')
-    f.write('struct CPG_Updated%s_cpp_t {\n' % problem_name)
+    f.write('struct %sCPG_Updated_cpp_t {\n' % prob_name)
     for name in user_p_name_to_size_usp.keys():
         f.write('    bool %s;\n' % name)
     f.write('};\n\n')
 
     # cpp struct containing info on results
     f.write('// Solver information\n')
-    f.write('struct CPG_Info%s_cpp_t {\n' % problem_name)
+    f.write('struct %sCPG_Info_cpp_t {\n' % prob_name)
     f.write('    double obj_val;\n')
     f.write('    int iter;\n')
     if solver_name == 'OSQP':
@@ -911,8 +931,8 @@ def write_module_prot(f, solver_name, user_p_name_to_size_usp, var_name_to_size,
 
     # cpp struct containing objective value and user-defined variables
     f.write('// Solution and solver information\n')
-    f.write('struct CPG_Result%s_cpp_t {\n' % problem_name)
-    f.write('    CPG_Info%s_cpp_t info;\n' % problem_name)
+    f.write('struct %sCPG_Result_cpp_t {\n' % prob_name)
+    f.write('    %sCPG_Info_cpp_t info;\n' % prob_name)
     for name, size in var_name_to_size.items():
         if size == 1:
             f.write('    double %s;\n' % name)
@@ -922,9 +942,9 @@ def write_module_prot(f, solver_name, user_p_name_to_size_usp, var_name_to_size,
 
     # cpp function that maps parameters to results
     f.write('// Main solve function\n')
-    f.write('CPG_Result%s_cpp_t solve_cpp(struct CPG_Updated%s_cpp_t& CPG_Updated_cpp, '
-            'struct CPG_Params%s_cpp_t& CPG_Params_cpp);\n'
-            % (problem_name, problem_name, problem_name))
+    f.write('%sCPG_Result_cpp_t %ssolve_cpp(struct %sCPG_Updated_cpp_t& CPG_Updated_cpp, '
+            'struct %sCPG_Params_cpp_t& CPG_Params_cpp);\n'
+            % (prob_name, prob_name, prob_name, prob_name))
 
 
 def write_method(f, solver_name, code_dir, user_p_name_to_size_usp, user_p_name_to_sparsity, var_name_to_shape):
@@ -1041,7 +1061,8 @@ def write_method(f, solver_name, code_dir, user_p_name_to_size_usp, user_p_name_
 
 
 def replace_html_data(code_dir, solver_name, explicit, text, user_p_name_to_size_usp, user_p_writable, var_name_to_size,
-                      user_p_total_size, canon_p_ids, canon_p_id_to_size, canon_settings_names_to_types, canon_constants):
+                      user_p_total_size, canon_p_ids, canon_p_id_to_size, canon_settings_names_to_types,
+                      canon_constants, canon_maps, prob_name):
     """
     Replace placeholder strings in html documentation file
     """
@@ -1056,144 +1077,197 @@ def replace_html_data(code_dir, solver_name, explicit, text, user_p_name_to_size
         text = text.replace('$CPGSOLVERDOCUURL', 'https://osqp.org/docs/codegen/python.html')
     elif solver_name == 'ECOS':
         text = text.replace('$CPGSOLVERDOCUURL', 'https://github.com/embotech/ecos/wiki/Usage-from-C')
+
+    # CMake prefix
+    text = text.replace('$CPGCMAKELISTS', prob_name+'cpg')
         
     # basic type definitions
     if solver_name == 'ECOS':
-        CPGBASICTYPEDEF = 'typedef double c_float;\n'
+        CPGBASICTYPEDEF = '\ntypedef double c_float;\n'
         CPGBASICTYPEDEF += 'typedef int c_int;\n\n'
+        CPGBASICTYPEDEF += '\n// Compressed sparse column (csc) matrix\n'
         CPGBASICTYPEDEF += 'typedef struct {\n'
-        CPGBASICTYPEDEF += '  c_int    nzmax;\n'
-        CPGBASICTYPEDEF += '  c_int    n;\n'
-        CPGBASICTYPEDEF += '  c_int    m;\n'
-        CPGBASICTYPEDEF += '  c_int    *p;\n'
-        CPGBASICTYPEDEF += '  c_int    *i;\n'
-        CPGBASICTYPEDEF += '  c_float  *x;\n'
-        CPGBASICTYPEDEF += '  c_int    nz;\n'
-        CPGBASICTYPEDEF += '} csc;\n\n'
-        CPGBASICTYPEDEF += 'typedef struct {\n'
-        for name, typ in canon_settings_names_to_types.items():
-            CPGBASICTYPEDEF += '  %s    %s;\n' % (typ, name)
-        CPGBASICTYPEDEF += '} Canon_Settings_t;\n'
+        CPGBASICTYPEDEF += '  c_int      nzmax;\n'
+        CPGBASICTYPEDEF += '  c_int      n;\n'
+        CPGBASICTYPEDEF += '  c_int      m;\n'
+        CPGBASICTYPEDEF += '  c_int      *p;\n'
+        CPGBASICTYPEDEF += '  c_int      *i;\n'
+        CPGBASICTYPEDEF += '  c_float    *x;\n'
+        CPGBASICTYPEDEF += '  c_int      nz;\n'
+        CPGBASICTYPEDEF += '} csc;\n'
+        text = text.replace('$CPGBASICTYPEDEF', CPGBASICTYPEDEF)
     else:
-        CPGBASICTYPEDEF = ''
-    text = text.replace('$CPGBASICTYPEDEF', CPGBASICTYPEDEF)
+        text = text.replace('$CPGBASICTYPEDEF\n', '')
+
+    # type definition of CPG_Params_t or CPG_Params_Vec
+    if explicit:
+        CPGUSERPARAMSTYPEDEF = '\n// Struct type with user-defined parameters as fields\n'
+        CPGUSERPARAMSTYPEDEF += 'typedef struct {\n'
+        for name in user_p_name_to_size_usp.keys():
+            CPGUSERPARAMSTYPEDEF += ('  c_float    *%s   // Your parameter %s\n' % ((name+';').ljust(8), name))
+        CPGUSERPARAMSTYPEDEF += '} CPG_Params_t;\n'
+        text = text.replace('$CPGUSERPARAMSTYPEDEF', CPGUSERPARAMSTYPEDEF)
+    else:
+        text = text.replace('$CPGUSERPARAMSTYPEDEF\n', '')
 
     # type definition of Canon_Params_t
-    CPGCANONPARAMSTYPEDEF = '// Struct type with canoncial parameters as fields\n'
+    CPGCANONPARAMSTYPEDEF = '\n// Struct type with canonical parameters as fields\n'
     CPGCANONPARAMSTYPEDEF += 'typedef struct {\n'
     for name in canon_p_ids:
         if name.isupper():
-            CPGCANONPARAMSTYPEDEF += ('    csc         *%s;' % name).ljust(33) + ('///< Canonical parameter %s\n' % name)
+            CPGCANONPARAMSTYPEDEF += ('  csc        *%s   // Canonical parameter %s\n' % ((name+';').ljust(8), name))
         else:
-            CPGCANONPARAMSTYPEDEF += ('    c_float     *%s;' % name).ljust(33) + ('///< Canonical parameter %s\n' % name)
+            CPGCANONPARAMSTYPEDEF += ('  c_float    *%s   // Canonical parameter %s\n' % ((name+';').ljust(8), name))
     CPGCANONPARAMSTYPEDEF += '} Canon_Params_t;\n'
     text = text.replace('$CPGCANONPARAMSTYPEDEF', CPGCANONPARAMSTYPEDEF)
 
     # type definition of Canon_Outdated_t
-    CPGOUTDATEDTYPEDEF = '// Struct type with booleans as fields, indicating if respective canonical parameter is outdated\n'
+    CPGOUTDATEDTYPEDEF = '\n// Struct type with booleans as fields, indicating if respective canonical parameter is outdated\n'
     CPGOUTDATEDTYPEDEF += 'typedef struct {\n'
     for name in canon_p_ids:
-        CPGOUTDATEDTYPEDEF += ('    int     *%s;' % name).ljust(33) + ('///< bool, if canonical parameter %s outdated\n' % name)
+        CPGOUTDATEDTYPEDEF += ('  int        %s    // Bool, if canonical parameter %s outdated\n'
+                               % ((name + ';').ljust(8), name))
     CPGOUTDATEDTYPEDEF += '} Canon_Outdated_t;\n'
     text = text.replace('$CPGOUTDATEDTYPEDEF', CPGOUTDATEDTYPEDEF)
 
-    # type definition of CPG_Params_t or CPG_Params_Vec
-    if explicit:
-        CPGUSERPARAMSTYPEDEF = '// Struct type with user-defined parameters as fields\n'
-        CPGUSERPARAMSTYPEDEF += 'typedef struct {\n'
-        for name in user_p_name_to_size_usp.keys():
-            CPGUSERPARAMSTYPEDEF += ('    c_float     *%s;' % name).ljust(33) + ('///< Your parameter %s\n' % name)
-        CPGUSERPARAMSTYPEDEF += '} CPG_Params_t;\n'
-    else:
-        CPGUSERPARAMSTYPEDEF = ''
-    text = text.replace('$CPGUSERPARAMSTYPEDEF', CPGUSERPARAMSTYPEDEF)
+    # type definition of CPG_Info_t
+    CPGINFOTYPEDEF = '\n// Solver information\n'
+    CPGINFOTYPEDEF += 'typedef struct {\n'
+    CPGINFOTYPEDEF += '  c_float    obj_val;    // Objective function value\n'
+    CPGINFOTYPEDEF += '  c_int      iter;       // Number of iterations\n'
+    if solver_name == 'OSQP':
+        CPGINFOTYPEDEF += '  char       *status;    // Solver status\n'
+    elif solver_name == 'ECOS':
+        CPGINFOTYPEDEF += '  c_int      status;     // Solver status\n'
+    CPGINFOTYPEDEF += '  c_float    pri_res;    // Primal residual\n'
+    CPGINFOTYPEDEF += '  c_float    dua_res;    // Dual residual\n'
+    CPGINFOTYPEDEF += '} CPG_Info_t;\n'
+    text = text.replace('$CPGINFOTYPEDEF', CPGINFOTYPEDEF)
 
     # type definition of CPG_Result_t
-    CPGRESULTTYPEDEF = '// Struct type with user-defined objective value and solution as fields\n'
+    CPGRESULTTYPEDEF = '\n// Struct type with user-defined objective value and solution as fields\n'
     CPGRESULTTYPEDEF += 'typedef struct {\n'
     for name in var_name_to_size.keys():
-        CPGRESULTTYPEDEF += ('    c_float     *%s;' % name).ljust(33) + ('///< Your variable %s\n' % name)
-    CPGRESULTTYPEDEF += '    CPG_Info_t  *info;           ///< Solve info\n'
+        CPGRESULTTYPEDEF += ('  c_float    *%s   // Your variable %s\n' % ((name+';').ljust(8), name))
+    CPGRESULTTYPEDEF += '  CPG_Info_t *info;      // Solver information\n'
     CPGRESULTTYPEDEF += '} CPG_Result_t;\n'
-
     text = text.replace('$CPGRESULTTYPEDEF', CPGRESULTTYPEDEF)
 
-    # extra declarations
     if solver_name == 'ECOS':
-        CPGEXTRADECLARATIONS = '// Struct containing solver settings\n'
-        CPGEXTRADECLARATIONS += 'Canon_Settings_t Canon_Settings;\n\n'
-        CPGEXTRADECLARATIONS += '// ECOS array of SOC dimensions\n'
-        if canon_constants['n_cones'] > 0:
-            CPGEXTRADECLARATIONS += 'c_int ecos_q[%d];\n\n' % canon_constants['n_cones']
-        CPGEXTRADECLARATIONS += '// ECOS workspace\n'
-        CPGEXTRADECLARATIONS += 'pwork* ecos_workspace;\n\n'
-        CPGEXTRADECLARATIONS += '// ECOS exit flag\n'
-        CPGEXTRADECLARATIONS += 'c_int ecos_flag;\n'
+        CPGSETTINGSTYPEDEF = '\n// Solver settings\n'
+        CPGSETTINGSTYPEDEF += 'typedef struct {\n'
+        for name, typ in canon_settings_names_to_types.items():
+            CPGSETTINGSTYPEDEF += '  %s%s;\n' % (typ.ljust(11), name)
+        CPGSETTINGSTYPEDEF += '} Canon_Settings_t;\n'
+        text = text.replace('$CPGSETTINGSTYPEDEF', CPGSETTINGSTYPEDEF)
     else:
-        CPGEXTRADECLARATIONS = ''
-    text = text.replace('$CPGEXTRADECLARATIONS', CPGEXTRADECLARATIONS)
+        text = text.replace('$CPGSETTINGSTYPEDEF\n', '')
+
+    # parameter delarations
+    if explicit:
+        CPGPARAMDECLARATIONS = '\n// User-defined parameters\n'
+        for name, value in user_p_writable.items():
+            if np.isscalar(value):
+                CPGPARAMDECLARATIONS += 'c_float %s;\n' % (prob_name + name)
+            else:
+                CPGPARAMDECLARATIONS += 'c_float %s[%d];\n' % (prob_name + name, value.size)
+        CPGPARAMDECLARATIONS += '\n\n// Struct containing all user-defined parameters\n'
+        CPGPARAMDECLARATIONS += 'CPG_Params_t %sCPG_Params;\n' % prob_name
+    else:
+        CPGPARAMDECLARATIONS = '\n// Vector containing flattened user-defined parameters\n'
+        CPGPARAMDECLARATIONS += 'c_float %sCPG_Params_Vec[%d];\n' % (prob_name, user_p_total_size + 1)
+        CPGPARAMDECLARATIONS += '\n\n// Sparse mappings from user-defined to canonical parameters\n'
+        for name, mapping in zip(canon_p_ids, canon_maps):
+            if mapping.nnz > 0:
+                 CPGPARAMDECLARATIONS += 'csc %sCanon_%s_map;\n' % (prob_name, name)
+    text = text.replace('$CPGPARAMDECLARATIONS', CPGPARAMDECLARATIONS)
 
     # canonical parameter declarations
-    CPGCANONPARAMDECLARATIONS = '// Canonical parameters\n'
+    CPGCANONPARAMDECLARATIONS = '\n// Canonical parameters\n'
     for p_id, size in canon_p_id_to_size.items():
         if size > 0:
             if p_id.isupper():
-                CPGCANONPARAMDECLARATIONS += 'csc Canon_%s;\n' % p_id
+                CPGCANONPARAMDECLARATIONS += 'csc %sCanon_%s;\n' % (prob_name, p_id)
                 if solver_name == 'ECOS':
-                    CPGCANONPARAMDECLARATIONS += 'csc Canon_%s_ECOS;\n' % p_id
+                    CPGCANONPARAMDECLARATIONS += 'csc %sCanon_%s_ECOS;\n' % (prob_name, p_id)
             elif p_id == 'd':
-                CPGCANONPARAMDECLARATIONS += 'c_float Canon_d;\n'
+                CPGCANONPARAMDECLARATIONS += 'c_float %sCanon_d;\n' % prob_name
                 if solver_name == 'ECOS':
-                    CPGCANONPARAMDECLARATIONS += 'c_float Canon_d_ECOS;\n'
+                    CPGCANONPARAMDECLARATIONS += 'c_float %sCanon_d_ECOS;\n' % prob_name
             else:
-                CPGCANONPARAMDECLARATIONS += 'c_float Canon_%s[%d];\n' % (p_id, size)
+                CPGCANONPARAMDECLARATIONS += 'c_float %sCanon_%s[%d];\n' % (prob_name, p_id, size)
                 if solver_name == 'ECOS':
-                    CPGCANONPARAMDECLARATIONS += 'c_float Canon_%s_ECOS[%d];\n' % (p_id, size)
+                    CPGCANONPARAMDECLARATIONS += 'c_float %sCanon_%s_ECOS[%d];\n' % (prob_name, p_id, size)
+    CPGCANONPARAMDECLARATIONS += '\n\n// Struct containing canonical parameters\n'
+    CPGCANONPARAMDECLARATIONS += 'Canon_Params_t %sCanon_Params;\n' % prob_name
+    if solver_name == 'ECOS':
+        CPGCANONPARAMDECLARATIONS += 'Canon_Params_t %sCanon_Params_ECOS;\n' % prob_name
     text = text.replace('$CPGCANONPARAMDECLARATIONS', CPGCANONPARAMDECLARATIONS)
 
-    # canoncial parameter struct declarations
-    CPGCANONPARAMSTRUCTDECLARATIONS = '// Struct containing canonical parameters\n'
-    CPGCANONPARAMSTRUCTDECLARATIONS += 'Canon_Params_t Canon_Params;\n'
-    if solver_name == 'ECOS':
-        CPGCANONPARAMSTRUCTDECLARATIONS += 'Canon_Params_t Canon_Params_ECOS;\n'
-    text = text.replace('$CPGCANONPARAMSTRUCTDECLARATIONS', CPGCANONPARAMSTRUCTDECLARATIONS)
-
-    # parameter delarations
-    CPGPARAMDECLARATIONS = '// User-defined parameters\n'
-    if explicit:
-        for name, value in user_p_writable.items():
-            if np.isscalar(value):
-                CPGPARAMDECLARATIONS += 'c_float %s;\n' % name
-            else:
-                CPGPARAMDECLARATIONS += 'c_float %s[%d];\n' % (name, value.size)
-        CPGPARAMDECLARATIONS += '\n// Struct containing all user-defined parameters\n'
-        CPGPARAMDECLARATIONS += 'CPG_Params_t CPG_Params;\n'
-    else:
-        CPGPARAMDECLARATIONS += 'c_float CPG_Params_Vec[%d];' % (user_p_total_size+1)
-    text = text.replace('$CPGPARAMDECLARATIONS', CPGPARAMDECLARATIONS)
+    # outdated declarations
+    CPGCANONOUTDATEDDECLARATION = '\n// Struct containing flags for outdated canonical parameters\n'
+    CPGCANONOUTDATEDDECLARATION += 'Canon_Outdated_t %sCanon_Outdated;\n' % prob_name
+    text = text.replace('$CPGCANONOUTDATEDDECLARATION', CPGCANONOUTDATEDDECLARATION)
 
     # variable declarations
-    CPGVARIABLEDECLARATIONS = '// User-defined variables\n'
+    CPGVARIABLEDECLARATIONS = '\n// User-defined variables\n'
     for name, size in var_name_to_size.items():
         if size == 1:
-            CPGVARIABLEDECLARATIONS += 'c_float %s;\n' % name
+            CPGVARIABLEDECLARATIONS += 'c_float %s;\n' % (prob_name+name)
         else:
-            CPGVARIABLEDECLARATIONS += 'c_float %s[%d];\n' % (name, size)
-
+            CPGVARIABLEDECLARATIONS += 'c_float %s[%d];\n' % (prob_name+name, size)
     text = text.replace('$CPGVARIABLEDECLARATIONS', CPGVARIABLEDECLARATIONS)
 
-    # canonicalize declarations
-    CPGCANONICALIZEDECLARATIONS = '// Map user-defined to canonical parameters\n'
-    for p_id in canon_p_ids:
-        CPGCANONICALIZEDECLARATIONS += 'void canonicalize_%s();\n' % p_id
-    text = text.replace('$CPGCANONICALIZEDECLARATIONS', CPGCANONICALIZEDECLARATIONS)
+    # solver info and result declarations
+    CPGINFORESULTDECLARATION = '\n// Struct containing solver info\n'
+    CPGINFORESULTDECLARATION += 'CPG_Info_t %sCPG_Info;\n\n' % prob_name
+    CPGINFORESULTDECLARATION += '\n// Struct containing user-defined objective value and solution\n'
+    CPGINFORESULTDECLARATION += 'CPG_Result_t %sCPG_Result;\n' % prob_name
+    text = text.replace('$CPGINFORESULTDECLARATION', CPGINFORESULTDECLARATION)
+
+    # extra declarations
+    if solver_name == 'ECOS':
+        CPGEXTRADECLARATIONS = '\n// Struct containing solver settings\n'
+        CPGEXTRADECLARATIONS += '%sCanon_Settings_t Canon_Settings;\n\n' % prob_name
+        CPGEXTRADECLARATIONS += '\n// ECOS array of SOC dimensions\n'
+        if canon_constants['n_cones'] > 0:
+            CPGEXTRADECLARATIONS += 'c_int %secos_q[%d];\n\n' % (prob_name, canon_constants['n_cones'])
+        CPGEXTRADECLARATIONS += '\n// ECOS workspace\n'
+        CPGEXTRADECLARATIONS += 'pwork* %secos_workspace;\n\n' % prob_name
+        CPGEXTRADECLARATIONS += '\n// ECOS exit flag\n'
+        CPGEXTRADECLARATIONS += 'c_int %secos_flag;\n' % prob_name
+        text = text.replace('$CPGEXTRADECLARATIONS', CPGEXTRADECLARATIONS)
+    else:
+        text = text.replace('$CPGEXTRADECLARATIONS\n', '')
 
     # update declarations
-    CPGUPDATEDECLARATIONS = '// Update user-defined parameter values\n'
+    CPGUPDATEDECLARATIONS = '\n// Update user-defined parameter values\n'
     for name, size in user_p_name_to_size_usp.items():
         if size == 1:
-            CPGUPDATEDECLARATIONS += 'void update_%s(c_float value);\n' % name
+            CPGUPDATEDECLARATIONS += 'void %supdate_%s(c_float value);\n' % (prob_name, name)
         else:
-            CPGUPDATEDECLARATIONS += 'void update_%s(c_int idx, c_float value);\n' % name
+            CPGUPDATEDECLARATIONS += 'void %supdate_%s(c_int idx, c_float value);\n' % (prob_name, name)
+    text = text.replace('$CPGUPDATEDECLARATIONS', CPGUPDATEDECLARATIONS)
 
-    return text.replace('$CPGUPDATEDECLARATIONS', CPGUPDATEDECLARATIONS)
+    # canonicalize declarations
+    CPGCANONICALIZEDECLARATIONS = '\n// Map user-defined to canonical parameters\n'
+    for p_id in canon_p_ids:
+        CPGCANONICALIZEDECLARATIONS += 'void %scanonicalize_%s();\n' % (prob_name, p_id)
+    text = text.replace('$CPGCANONICALIZEDECLARATIONS', CPGCANONICALIZEDECLARATIONS)
+
+    # retrieve and solve declarations
+    CPGRETRIEVESOLVEDECLARATIONS = '\n// Retrieve solution in terms of user-defined variables\n'
+    CPGRETRIEVESOLVEDECLARATIONS += 'void %sretrieve_solution();\n\n' % prob_name
+    CPGRETRIEVESOLVEDECLARATIONS += '\n// Retrieve solver information\n'
+    CPGRETRIEVESOLVEDECLARATIONS += 'void %sretrieve_info();\n\n' % prob_name
+    CPGRETRIEVESOLVEDECLARATIONS += '\n// Solve via canonicalization, canonical solve, retrieval\n'
+    CPGRETRIEVESOLVEDECLARATIONS += 'void %ssolve();\n' % prob_name
+    text = text.replace('$CPGRETRIEVESOLVEDECLARATIONS', CPGRETRIEVESOLVEDECLARATIONS)
+
+    # settings declarations
+    CPGSETTINGSDECLARATIONS = '\n// Update solver settings\n'
+    CPGSETTINGSDECLARATIONS += 'void %sset_solver_default_settings();\n' % prob_name
+    CPGSETTINGSDECLARATIONS += 'void %sset_solver_&lt;setting_name&gt;(&lt;setting_type&gt;, &lt;setting_name&gt;_new);\n' % prob_name
+    CPGSETTINGSDECLARATIONS += '...\n'
+
+    return text.replace('$CPGSETTINGSDECLARATIONS', CPGSETTINGSDECLARATIONS)

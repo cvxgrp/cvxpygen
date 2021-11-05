@@ -27,8 +27,10 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
     solver_code_dir = os.path.join(code_dir, 'c', 'solver_code')
 
     # adjust problem_name
-    if problem_name != '':
-        problem_name = '_' + problem_name
+    if problem_name is not '':
+        if not problem_name[0].isalpha():
+            problem_name = '_' + problem_name
+        problem_name = problem_name + '_'
 
     # copy TEMPLATE
     if os.path.isdir(code_dir):
@@ -424,18 +426,18 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
     with open(os.path.join(code_dir, 'c', 'include', 'cpg_workspace.h'), 'a') as f:
         utils.write_workspace_prot(f, solver_name, explicit, user_p_names, user_p_writable, user_p_flat_usp, var_init,
                                    canon_p_ids, canon_p, canon_mappings, var_symmetric, canon_constants,
-                                   canon_settings_names_to_types)
+                                   canon_settings_names_to_types, problem_name)
 
     # 'workspace' definitions
     with open(os.path.join(code_dir, 'c', 'src', 'cpg_workspace.c'), 'a') as f:
         utils.write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable, user_p_flat_usp, var_init,
                                   canon_p_ids, canon_p, canon_mappings, var_symmetric, var_offsets, canon_constants,
-                                  canon_settings_names_to_default)
+                                  canon_settings_names_to_default, problem_name)
 
     # 'solve' prototypes
     with open(os.path.join(code_dir, 'c', 'include', 'cpg_solve.h'), 'a') as f:
         utils.write_solve_prot(f, solver_name, canon_p_ids, user_p_name_to_size_usp, canon_settings_names_to_types,
-                               var_symmetric)
+                               var_symmetric, problem_name)
 
     # 'solve' definitions
     with open(os.path.join(code_dir, 'c', 'src', 'cpg_solve.c'), 'a') as f:
@@ -443,11 +445,18 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
                               user_p_sizes_usp, var_name_to_indices, canon_p_id_to_size,
                               type(problem.objective) == Maximize, user_p_to_canon_outdated,
                               canon_settings_names_to_types, canon_settings_names_to_default, var_symmetric,
-                              canon_p_to_changes, canon_constants, nonzero_d)
+                              canon_p_to_changes, canon_constants, nonzero_d, problem_name)
 
     # 'example' definitions
     with open(os.path.join(code_dir, 'c', 'src', 'cpg_example.c'), 'a') as f:
-        utils.write_example_def(f, solver_name, user_p_writable, var_name_to_size)
+        utils.write_example_def(f, solver_name, user_p_writable, var_name_to_size, problem_name)
+
+    # adapt top-level CMakeLists.txt
+    with open(os.path.join(code_dir, 'c', 'CMakeLists.txt'), 'r') as f:
+        CMakeLists_data = f.read()
+    CMakeLists_data = utils.replace_CMakeLists_data(CMakeLists_data, problem_name)
+    with open(os.path.join(code_dir, 'c', 'CMakeLists.txt'), 'w') as f:
+        f.write(CMakeLists_data)
 
     # adapt solver CMakeLists.txt
     with open(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'), 'a') as f:
@@ -484,7 +493,8 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
         html_data = f.read()
     html_data = utils.replace_html_data(code_dir, solver_name, explicit, html_data, user_p_name_to_size_usp,
                                         user_p_writable, var_name_to_size, user_p_total_size, canon_p_ids,
-                                        canon_p_id_to_size, canon_settings_names_to_types, canon_constants)
+                                        canon_p_id_to_size, canon_settings_names_to_types, canon_constants,
+                                        canon_mappings, problem_name)
     with open(os.path.join(code_dir, 'README.html'), 'w') as f:
         f.write(html_data)
 
