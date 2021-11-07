@@ -786,13 +786,13 @@ def write_example_def(f, solver_name, user_p_writable, var_name_to_size, prob_na
     f.write('  // Initialize user-defined parameter values\n')
     for name, value in user_p_writable.items():
         if np.isscalar(value):
-            f.write('  %supdate_%s(%.20f);\n' % (prob_name, name, value))
+            f.write('  %scpg_update_%s(%.20f);\n' % (prob_name, name, value))
         else:
             for i in range(len(value)):
-                f.write('  %supdate_%s(%d, %.20f);\n' % (prob_name, name, i, value[i]))
+                f.write('  %scpg_update_%s(%d, %.20f);\n' % (prob_name, name, i, value[i]))
 
     f.write('\n  // Solve the problem instance\n')
-    f.write('  %ssolve();\n\n' % prob_name)
+    f.write('  %scpg_solve();\n\n' % prob_name)
 
     f.write('  // Print objective function value\n')
     f.write('  printf("obj = %%f\\n", %sCPG_Result.info->obj_val);\n\n' % prob_name)
@@ -806,7 +806,7 @@ def write_example_def(f, solver_name, user_p_writable, var_name_to_size, prob_na
 
     for name, size in var_name_to_size.items():
         if size == 1:
-            f.write('  printf("%s = %%f\\n", *%sCPG_Result.%s);\n\n' % (name, prob_name, name))
+            f.write('  printf("%s = %%f\\n", %sCPG_Result.%s);\n\n' % (name, prob_name, name))
         else:
             f.write('  for(i=0; i<%d; i++) {\n' % size)
             f.write('    printf("%s[%%%s] = %%f\\n", i, %sCPG_Result.%s[i]);\n'
