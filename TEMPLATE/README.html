@@ -177,8 +177,7 @@ include_directories(&lt;existing_dirs&gt; ${$CPGCMAKELISTS_include})
       where <code>&lt;existing_dirs&gt;</code> is your existing include directories and <code>${$CPGCMAKELISTS_include}</code> lists
       the include directories used by the generated code. Add <code>${$CPGCMAKELISTS_head}</code> and
       <code>${$CPGCMAKELISTS_src}</code> to all targets that use the generated code.
-
-
+      If not needed, remove the <code>cpg_example</code> and <code>cpg</code> targets from <code>$CODEDIR/c/CMakeLists.txt</code>.
   </p>
 
 </body>
