@@ -27,7 +27,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
     solver_code_dir = os.path.join(code_dir, 'c', 'solver_code')
 
     # adjust problem_name
-    if problem_name is not '':
+    if problem_name != '':
         if not problem_name[0].isalpha():
             problem_name = '_' + problem_name
         problem_name = problem_name + '_'
@@ -381,16 +381,16 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
 
         # adjust top-level CMakeLists.txt
         with open(os.path.join(code_dir, 'c', 'CMakeLists.txt'), 'r') as f:
-            CMakeLists_data = f.read()
+            cmake_data = f.read()
         indent = ' ' * 6
         sdir = '${CMAKE_CURRENT_SOURCE_DIR}/solver_code/'
-        CMakeLists_data = CMakeLists_data.replace(sdir + 'include',
-                                                  sdir + 'include\n' +
-                                                  indent + sdir + 'external/SuiteSparse_config\n' +
-                                                  indent + sdir + 'external/amd/include\n' +
-                                                  indent + sdir + 'external/ldl/include')
+        cmake_data = cmake_data.replace(sdir + 'include',
+                                        sdir + 'include\n' +
+                                        indent + sdir + 'external/SuiteSparse_config\n' +
+                                        indent + sdir + 'external/amd/include\n' +
+                                        indent + sdir + 'external/ldl/include')
         with open(os.path.join(code_dir, 'c', 'CMakeLists.txt'), 'w') as f:
-            f.write(CMakeLists_data)
+            f.write(cmake_data)
 
         # remove library target from ECOS CMakeLists.txt
         with open(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'), 'r') as f:
@@ -422,10 +422,12 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
     canon_settings_names_to_types = {name: typ for name, typ in zip(canon_settings_names, canon_settings_types)}
     canon_settings_names_to_default = {name: typ for name, typ in zip(canon_settings_names, canon_settins_defaults)}
 
+    ret_sol_func_exists = any(var_symmetric) or any([s == 1 for s in var_sizes]) or solver_name == 'ECOS'
+
     # 'workspace' prototypes
     with open(os.path.join(code_dir, 'c', 'include', 'cpg_workspace.h'), 'a') as f:
-        utils.write_workspace_prot(f, solver_name, explicit, user_p_names, user_p_writable, user_p_flat_usp, var_init,
-                                   canon_p_ids, canon_p, canon_mappings, var_symmetric, canon_constants,
+        utils.write_workspace_prot(f, solver_name, explicit, user_p_name_to_size_usp, user_p_writable, user_p_flat_usp,
+                                   var_init, canon_p_ids, canon_p, canon_mappings, var_symmetric, canon_constants,
                                    canon_settings_names_to_types, problem_name)
 
     # 'workspace' definitions
@@ -437,15 +439,15 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
     # 'solve' prototypes
     with open(os.path.join(code_dir, 'c', 'include', 'cpg_solve.h'), 'a') as f:
         utils.write_solve_prot(f, solver_name, canon_p_ids, user_p_name_to_size_usp, canon_settings_names_to_types,
-                               var_symmetric, problem_name)
+                               ret_sol_func_exists, problem_name)
 
     # 'solve' definitions
     with open(os.path.join(code_dir, 'c', 'src', 'cpg_solve.c'), 'a') as f:
         utils.write_solve_def(f, solver_name, explicit, canon_p_ids, canon_mappings, user_p_col_to_name_usp,
-                              user_p_sizes_usp, var_name_to_indices, canon_p_id_to_size,
+                              user_p_sizes_usp, user_p_name_to_size_usp, var_name_to_indices, canon_p_id_to_size,
                               type(problem.objective) == Maximize, user_p_to_canon_outdated,
                               canon_settings_names_to_types, canon_settings_names_to_default, var_symmetric,
-                              canon_p_to_changes, canon_constants, nonzero_d, problem_name)
+                              canon_p_to_changes, canon_constants, nonzero_d, ret_sol_func_exists, problem_name)
 
     # 'example' definitions
     with open(os.path.join(code_dir, 'c', 'src', 'cpg_example.c'), 'a') as f:
@@ -453,14 +455,14 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
 
     # adapt top-level CMakeLists.txt
     with open(os.path.join(code_dir, 'c', 'CMakeLists.txt'), 'r') as f:
-        CMakeLists_data = f.read()
-    CMakeLists_data = utils.replace_CMakeLists_data(CMakeLists_data, problem_name)
+        cmake_data = f.read()
+    cmake_data = utils.replace_cmake_data(cmake_data, problem_name)
     with open(os.path.join(code_dir, 'c', 'CMakeLists.txt'), 'w') as f:
-        f.write(CMakeLists_data)
+        f.write(cmake_data)
 
     # adapt solver CMakeLists.txt
     with open(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'), 'a') as f:
-        utils.write_canon_CMakeLists(f, solver_name)
+        utils.write_canon_cmake(f, solver_name)
 
     # binding module prototypes
     with open(os.path.join(code_dir, 'cpp', 'include', 'cpg_module.hpp'), 'a') as f:
@@ -494,7 +496,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
     html_data = utils.replace_html_data(code_dir, solver_name, explicit, html_data, user_p_name_to_size_usp,
                                         user_p_writable, var_name_to_size, user_p_total_size, canon_p_ids,
                                         canon_p_id_to_size, canon_settings_names_to_types, canon_constants,
-                                        canon_mappings, problem_name)
+                                        canon_mappings, ret_sol_func_exists, problem_name)
     with open(os.path.join(code_dir, 'README.html'), 'w') as f:
         f.write(html_data)
 
