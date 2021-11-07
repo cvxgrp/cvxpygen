@@ -109,12 +109,17 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
     user_p_total_size = p_prob.total_param_size
     user_p_name_to_size_usp = {name: size for name, size in zip(user_p_names, user_p_id_to_size.values())}
     user_p_name_to_sparsity = {}
+    user_p_name_to_sparsity_type = {}
     user_p_sparsity_mask = np.ones(user_p_total_size + 1, dtype=bool)
     for p in p_prob.parameters:
         if p.attributes['sparsity'] is not None:
             user_p_name_to_size_usp[p.name()] = len(p.attributes['sparsity'])
             user_p_name_to_sparsity[p.name()] = np.sort([coord[0]+p.shape[0]*coord[1]
                                                          for coord in p.attributes['sparsity']])
+            if p.attributes['diag']:
+                user_p_name_to_sparsity_type[p.name()] = 'diag'
+            else:
+                user_p_name_to_sparsity_type[p.name()] = 'general'
             user_p_sparsity_mask[user_p_id_to_col[p.id]:user_p_id_to_col[p.id]+user_p_id_to_size[p.id]] = False
             user_p_sparsity_mask[user_p_id_to_col[p.id] + user_p_name_to_sparsity[p.name()]] = True
     user_p_sizes_usp = list(user_p_name_to_size_usp.values())
@@ -475,7 +480,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
     # custom CVXPY solve method
     with open(os.path.join(code_dir, 'cpg_solver.py'), 'a') as f:
         utils.write_method(f, solver_name, code_dir, user_p_name_to_size_usp, user_p_name_to_sparsity,
-                           var_name_to_shape)
+                           user_p_name_to_sparsity_type, var_name_to_shape)
 
     # serialize problem formulation
     with open(os.path.join(code_dir, 'problem.pickle'), 'wb') as f:

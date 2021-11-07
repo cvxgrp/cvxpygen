@@ -983,7 +983,8 @@ def write_module_prot(f, solver_name, user_p_name_to_size_usp, var_name_to_size,
             % (prob_name, prob_name, prob_name, prob_name))
 
 
-def write_method(f, solver_name, code_dir, user_p_name_to_size_usp, user_p_name_to_sparsity, var_name_to_shape):
+def write_method(f, solver_name, code_dir, user_p_name_to_size_usp, user_p_name_to_sparsity, user_p_name_to_sparsity_type,
+                 var_name_to_shape):
     """
     Write function to be registered as custom CVXPY solve method
     """
@@ -1034,11 +1035,14 @@ def write_method(f, solver_name, code_dir, user_p_name_to_size_usp, user_p_name_
     f.write('    par = cpg_module.cpg_params()\n')
     for name, size in user_p_name_to_size_usp.items():
         if name in user_p_name_to_sparsity.keys():
-            if size == 1:
-                f.write('    coordinate = prob.param_dict[%s].attributes[\'sparsity\']\n' % name)
-                f.write('    par.%s = prob.param_dict[\'%s\'].value[coordinate]\n' % (name, name))
+            if user_p_name_to_sparsity_type[name] == 'diag':
+                f.write('    %s_coordinates = [(i, i) for i in range(prob.param_dict[\'%s\'].shape[0])]\n'
+                        % (name, name))
             else:
                 f.write('    %s_coordinates = prob.param_dict[\'%s\'].attributes[\'sparsity\']\n' % (name, name))
+            if size == 1:
+                f.write('    par.%s = prob.param_dict[\'%s\'].value[coordinates]\n' % (name, name))
+            else:
                 f.write('    %s_value = []\n' % name)
                 f.write('    for j in range(prob.param_dict[\'%s\'].shape[1]):\n' % name)
                 f.write('        for i in range(prob.param_dict[\'%s\'].shape[0]):\n' % name)
