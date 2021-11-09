@@ -159,7 +159,7 @@ def write_struct_def(f, fields, casts, values, name, typ):
 
     # write structure fields
     for field, cast, value in zip(fields, casts, values):
-        if value == '0':
+        if value in ['0', 'SCS_NULL']:
             cast = ''
         f.write('.%s = %s%s,\n' % (field, cast, value))
 
@@ -305,7 +305,7 @@ def write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable,
 
     f.write('// Struct containing solver info\n')
     CPG_Info_fields = ['obj_val', 'iter', 'status', 'pri_res', 'dua_res']
-    if solver_name == 'OSQP':
+    if solver_name in ['OSQP', 'SCS']:
         CPG_Info_values = ['0', '0', '"unknown"', '0', '0']
     elif solver_name == 'ECOS':
         CPG_Info_values = ['0', '0', '0', '0', '0']
@@ -327,11 +327,73 @@ def write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable,
             if np.isscalar(var):
                 CPG_Result_values.append('0')
             else:
-                CPG_Result_values.append('&xsolution + %d' % offset)
+                if solver_name == 'OSQP':
+                    CPG_Result_values.append('&xsolution + %d' % offset)
+                elif solver_name == 'SCS':
+                    CPG_Result_values.append('&%sscs_x + %d' % (prob_name, offset))
     CPG_Result_values.append('&%sCPG_Info' % prob_name)
     write_struct_def(f, CPG_Result_fields, results_cast, CPG_Result_values, '%sCPG_Result' % prob_name, 'CPG_Result_t')
 
+    if solver_name == 'SCS':
+
+        f.write('\n// SCS matrix A\n')
+        scs_A_fiels = ['x', 'i', 'p', 'm', 'n']
+        scs_A_casts = ['(c_float *) ', '(c_int *) ', '(c_int *) ', '', '']
+        scs_A_values = ['&%scanon_A_x' % prob_name, '&%scanon_A_i' % prob_name,
+                        '&%scanon_A_p' % prob_name, str(canon_constants['m']), str(canon_constants['n'])]
+        write_struct_def(f, scs_A_fiels, scs_A_casts, scs_A_values, '%sScs_A' % prob_name, 'ScsMatrix')
+
+        f.write('\n// Struct containing SCS data\n')
+        scs_d_fiels = ['m', 'n', 'A', 'P', 'b', 'c']
+        scs_d_casts = ['', '', '', '', '(c_float *) ', '(c_float *) ']
+        scs_d_values = [str(canon_constants['m']), str(canon_constants['n']), '&%sScs_A' % prob_name, 'SCS_NULL',
+                        '&%scanon_b' % prob_name, '&%scanon_c' % prob_name]
+        write_struct_def(f, scs_d_fiels, scs_d_casts, scs_d_values, '%sScs_D' % prob_name, 'ScsData')
+
+        if canon_constants['qsize'] > 0:
+            f.write('\n// SCS array of SOC dimensions\n')
+            osqp_utils.write_vec(f, canon_constants['q'], '%sscs_q' % prob_name, 'c_int')
+            k_field_q_str = '&%sscs_q' % prob_name
+        else:
+            k_field_q_str = 'SCS_NULL'
+
+        f.write('\n// Struct containing SCS cone data\n')
+        scs_k_fields = ['z', 'l', 'bu', 'bl', 'bsize', 'q', 'qsize', 's', 'ssize', 'ep', 'ed', 'p', 'psize']
+        scs_k_casts = ['', '', '(c_float *) ', '(c_float *) ', '', '(c_int *) ', '', '(c_int *) ', '', '', '',
+                       '(c_float *) ', '']
+        scs_k_values = [str(canon_constants['z']), str(canon_constants['l']), 'SCS_NULL', 'SCS_NULL', '0',
+                        k_field_q_str, str(canon_constants['qsize']), 'SCS_NULL', '0', '0', '0', 'SCS_NULL', '0']
+        write_struct_def(f, scs_k_fields, scs_k_casts, scs_k_values, '%sScs_K' % prob_name, 'ScsCone')
+
+        f.write('\n// Struct containing SCS settings\n')
+        scs_stgs_fields = list(canon_settings_names_to_default.keys())
+        scs_stgs_casts = ['']*len(scs_stgs_fields)
+        scs_stgs_values = list(canon_settings_names_to_default.values())
+        write_struct_def(f, scs_stgs_fields, scs_stgs_casts, scs_stgs_values, '%sScs_Stgs' % prob_name, 'ScsSettings')
+
+        f.write('\n// SCS solution\n')
+        osqp_utils.write_vec(f, np.zeros(canon_constants['n']), '%sscs_x' % prob_name, 'c_float')
+        osqp_utils.write_vec(f, np.zeros(canon_constants['m']), '%sscs_y' % prob_name, 'c_float')
+        osqp_utils.write_vec(f, np.zeros(canon_constants['m']), '%sscs_s' % prob_name, 'c_float')
+
+        f.write('\n// Struct containing SCS solution\n')
+        scs_sol_fields = ['x', 'y', 's']
+        scs_sol_casts = ['(c_float *) ', '(c_float *) ', '(c_float *) ']
+        scs_sol_values = ['&%sscs_x' % prob_name, '&%sscs_y' % prob_name, '&%sscs_s' % prob_name]
+        write_struct_def(f, scs_sol_fields, scs_sol_casts, scs_sol_values, '%sScs_Sol' % prob_name, 'ScsSolution')
+
+        f.write('\n// Struct containing SCS information\n')
+        scs_info_fields = ['iter', 'status', 'status_val', 'scale_updates', 'pobj', 'dobj', 'res_pri', 'res_dual',
+                           'gap', 'res_infeas', 'res_unbdd_a', 'res_unbdd_p', 'comp_slack', 'setup_time', 'solve_time',
+                           'scale', 'rejected_accel_steps', 'accepted_accel_steps', 'lin_sys_time', 'cone_time',
+                           'accel_time']
+        scs_info_casts = ['']*len(scs_info_fields)
+        scs_info_values = ['0', '"unknown"', '0', '0', '0', '0', '99', '99', '99', '99', '99', '99', '99', '0', '0',
+                           '1', '0', '0', '0', '0', '0']
+        write_struct_def(f, scs_info_fields, scs_info_casts, scs_info_values, '%sScs_Info' % prob_name, 'ScsInfo')
+
     if solver_name == 'ECOS':
+
         f.write('\n// Struct containing solver settings\n')
         f.write('Canon_Settings_t %sCanon_Settings = {\n' % prob_name)
         for name, default in canon_settings_names_to_default.items():
@@ -355,6 +417,8 @@ def write_workspace_prot(f, solver_name, explicit, user_p_name_to_size_usp, user
 
     if solver_name == 'OSQP':
         f.write('\n#include "types.h"\n\n')
+    elif solver_name == 'SCS':
+        f.write('\n#include "scs.h"\n\n')
     elif solver_name == 'ECOS':
         f.write('\n#include "ecos.h"\n\n')
 
@@ -362,12 +426,15 @@ def write_workspace_prot(f, solver_name, explicit, user_p_name_to_size_usp, user
     f.write('#ifndef CPG_TYPES_H\n')
     f.write('# define CPG_TYPES_H\n\n')
 
-    if solver_name == 'ECOS':
+    if solver_name == 'SCS':
+        f.write('typedef scs_float c_float;\n')
+        f.write('typedef scs_int c_int;\n\n')
+    elif solver_name == 'ECOS':
         f.write('typedef double c_float;\n')
         f.write('typedef int c_int;\n\n')
 
     # struct definitions
-    if solver_name == 'ECOS':
+    if solver_name in ['SCS', 'ECOS']:
         f.write('// Compressed sparse column (csc) matrix\n')
         f.write('typedef struct {\n')
         f.write('  c_int      nzmax;\n')
@@ -417,7 +484,7 @@ def write_workspace_prot(f, solver_name, explicit, user_p_name_to_size_usp, user
     f.write('typedef struct {\n')
     f.write('  c_float    obj_val;    // Objective function value\n')
     f.write('  c_int      iter;       // Number of iterations\n')
-    if solver_name == 'OSQP':
+    if solver_name in ['OSQP', 'SCS']:
         f.write('  char       *status;    // Solver status\n')
     elif solver_name == 'ECOS':
         f.write('  c_int      status;     // Solver status\n')
@@ -487,6 +554,27 @@ def write_workspace_prot(f, solver_name, explicit, user_p_name_to_size_usp, user
 
     f.write('\n// Struct containing solution and info\n')
     write_struct_prot(f, '%sCPG_Result' % prob_name, 'CPG_Result_t')
+
+    if solver_name == 'SCS':
+        f.write('\n// SCS matrix A\n')
+        write_struct_prot(f, '%sscs_A' % prob_name, 'ScsMatrix')
+        f.write('\n// Struct containing SCS data\n')
+        write_struct_prot(f, '%sScs_D' % prob_name, 'ScsData')
+        if canon_constants['qsize'] > 0:
+            f.write('\n// SCS array of SOC dimensions\n')
+            osqp_utils.write_vec_extern(f, canon_constants['q'], '%sscs_q' % prob_name, 'c_int')
+        f.write('\n// Struct containing SCS cone data\n')
+        write_struct_prot(f, '%sScs_K' % prob_name, 'ScsCone')
+        f.write('\n// Struct containing SCS settings\n')
+        write_struct_prot(f, '%sScs_Stgs' % prob_name, 'ScsSettings')
+        f.write('\n// SCS solution\n')
+        osqp_utils.write_vec_extern(f, np.zeros(canon_constants['n']), '%sscs_x' % prob_name, 'c_float')
+        osqp_utils.write_vec_extern(f, np.zeros(canon_constants['m']), '%sscs_y' % prob_name, 'c_float')
+        osqp_utils.write_vec_extern(f, np.zeros(canon_constants['m']), '%sscs_s' % prob_name, 'c_float')
+        f.write('\n// Struct containing SCS solution\n')
+        write_struct_prot(f, '%sScs_Sol' % prob_name, 'ScsSolution')
+        f.write('\n// Struct containing SCS information\n')
+        write_struct_prot(f, '%sScs_Info' % prob_name, 'ScsInfo')
 
     if solver_name == 'ECOS':
         f.write('\n// Struct containing solver settings\n')
@@ -568,6 +656,9 @@ def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_
     if solver_name == 'OSQP':
         obj_str = 'workspace.info->obj_val'
         sol_str = 'workspace.solution->x'
+    elif solver_name == 'SCS':
+        obj_str = '%sScs_Info.pobj' % prob_name
+        sol_str = '%sscs_x' % prob_name
     elif solver_name == 'ECOS':
         obj_str = '%secos_workspace->info->pcost' % prob_name
         sol_str = '%secos_workspace->x' % prob_name
@@ -601,6 +692,11 @@ def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_
         f.write('  %sCPG_Info.status = workspace.info->status;\n' % prob_name)
         f.write('  %sCPG_Info.pri_res = workspace.info->pri_res;\n' % prob_name)
         f.write('  %sCPG_Info.dua_res = workspace.info->dua_res;\n' % prob_name)
+    elif solver_name == 'SCS':
+        f.write('  %sCPG_Info.iter = %sScs_Info.iter;\n' % (prob_name, prob_name))
+        f.write('  %sCPG_Info.status = %sScs_Info.status;\n' % (prob_name, prob_name))
+        f.write('  %sCPG_Info.pri_res = %sScs_Info.res_pri;\n' % (prob_name, prob_name))
+        f.write('  %sCPG_Info.dua_res = %sScs_Info.res_dual;\n' % (prob_name, prob_name))
     elif solver_name == 'ECOS':
         f.write('  %sCPG_Info.iter = %secos_workspace->info->iter;\n' % (prob_name, prob_name))
         f.write('  %sCPG_Info.status = %secos_flag;\n' % (prob_name, prob_name))
@@ -674,7 +770,7 @@ def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_
                 f.write('    osqp_update_upper_bound(&workspace, %sCanon_Params.u);\n' % prob_name)
                 f.write('  }\n')
 
-    elif solver_name == 'ECOS':
+    elif solver_name in ['SCS', 'ECOS']:
 
         for canon_p, changes in canon_p_to_changes.items():
             if changes:
@@ -685,6 +781,10 @@ def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_
     if solver_name == 'OSQP':
         f.write('  // Solve with OSQP\n')
         f.write('  osqp_solve(&workspace);\n')
+    elif solver_name == 'SCS':
+        f.write('  // Solve with SCS\n')
+        f.write('  scs(&%sScs_D, &%sScs_K, &%sScs_Stgs, &%sScs_Sol, &%sScs_Info);\n' %
+                (prob_name, prob_name, prob_name, prob_name, prob_name))
     elif solver_name == 'ECOS':
         f.write('  // Copy raw canonical parameters to addresses where they are scaled by ECOS\n')
         for p_pid, size in canon_p_id_to_size.items():
@@ -725,6 +825,8 @@ def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_
     f.write('void %scpg_set_solver_default_settings(){\n' % prob_name)
     if solver_name == 'OSQP':
         f.write('  osqp_set_default_settings(&settings);\n')
+    elif solver_name == 'SCS':
+        f.write('  scs_set_default_settings(&%sScs_Stgs);\n' % prob_name)
     elif solver_name == 'ECOS':
         for name, value in canon_settings_names_to_default.items():
             f.write('  %sCanon_Settings.%s = %s;\n' % (prob_name, name, value))
@@ -733,6 +835,8 @@ def write_solve_def(f, solver_name, explicit, canon_p_ids, mappings, user_p_col_
         f.write('\nvoid %scpg_set_solver_%s(%s %s_new){\n' % (prob_name, name, typ, name))
         if solver_name == 'OSQP':
             f.write('  osqp_update_%s(&workspace, %s_new);\n' % (name, name))
+        elif solver_name == 'SCS':
+            f.write('  %sScs_Stgs.%s = %s_new;\n' % (prob_name, name, name))
         elif solver_name == 'ECOS':
             f.write('  %sCanon_Settings.%s = %s_new;\n' % (prob_name, name, name))
         f.write('}\n')
@@ -746,7 +850,7 @@ def write_solve_prot(f, solver_name, canon_p_ids, user_p_name_to_size_usp, canon
 
     if solver_name == 'OSQP':
         f.write('\n#include "types.h"\n')
-    elif solver_name == 'ECOS':
+    elif solver_name in ['SCS', 'ECOS']:
         f.write('\n#include "cpg_workspace.h"\n')
 
     f.write('\n// Update user-defined parameter values\n')
@@ -835,6 +939,19 @@ def write_canon_cmake(f, solver_name):
     if solver_name == 'OSQP':
         f.write('\nset(solver_head "${osqp_headers}" PARENT_SCOPE)')
         f.write('\nset(solver_src "${osqp_src}" PARENT_SCOPE)')
+    elif solver_name == 'SCS':
+        f.write('\nset(solver_head')
+        f.write('\n  ${${PROJECT_NAME}_HDR}')
+        f.write('\n  ${DIRSRC}/private.h')
+        f.write('\n  ${${PROJECT_NAME}_LDL_EXTERNAL_HDR}')
+        f.write('\n  ${${PROJECT_NAME}_AMD_EXTERNAL_HDR})')
+        f.write('\nset(solver_src')
+        f.write('\n  ${${PROJECT_NAME}_SRC}')
+        f.write('\n  ${DIRSRC}/private.c')
+        f.write('\n  ${EXTERNAL}/qdldl/qdldl.c')
+        f.write('\n  ${${PROJECT_NAME}_AMD_EXTERNAL_SRC})')
+        f.write('\n\nset(solver_head "${solver_head}" PARENT_SCOPE)')
+        f.write('\nset(solver_src "${solver_src}" PARENT_SCOPE)')
     elif solver_name == 'ECOS':
         f.write('\nset(solver_head "${ecos_headers}" PARENT_SCOPE)')
         f.write('\nset(solver_src "${ecos_sources}" PARENT_SCOPE)')
@@ -956,7 +1073,7 @@ def write_module_prot(f, solver_name, user_p_name_to_size_usp, var_name_to_size,
     f.write('struct %sCPG_Info_cpp_t {\n' % prob_name)
     f.write('    double obj_val;\n')
     f.write('    int iter;\n')
-    if solver_name == 'OSQP':
+    if solver_name in ['OSQP', 'SCS']:
         f.write('    char* status;\n')
     elif solver_name == 'ECOS':
         f.write('    int status;\n')
@@ -1073,7 +1190,7 @@ def write_method(f, solver_name, code_dir, user_p_name_to_size_usp, user_p_name_
             f.write('    prob.var_dict[\'%s\'].value = np.array(res.%s)\n' % (name, name))
 
     f.write('\n    # store additional solver information in problem object\n')
-    if solver_name == 'OSQP':
+    if solver_name in ['OSQP', 'SCS']:
         f.write('    prob._status = res.cpg_info.status\n')
     elif solver_name == 'ECOS':
         f.write('    prob._status = status_int_to_string[res.cpg_info.status]\n')
@@ -1115,6 +1232,8 @@ def replace_html_data(code_dir, solver_name, explicit, text, user_p_name_to_size
     text = text.replace('$CPGSOLVERNAME', solver_name)
     if solver_name == 'OSQP':
         text = text.replace('$CPGSOLVERDOCUURL', 'https://osqp.org/docs/codegen/python.html')
+    elif solver_name == 'SCS':
+        text = text.replace('$CPGSOLVERDOCUURL', 'https://www.cvxgrp.org/scs/api/c.html')
     elif solver_name == 'ECOS':
         text = text.replace('$CPGSOLVERDOCUURL', 'https://github.com/embotech/ecos/wiki/Usage-from-C')
 
@@ -1122,9 +1241,13 @@ def replace_html_data(code_dir, solver_name, explicit, text, user_p_name_to_size
     text = text.replace('$CPGCMAKELISTS', prob_name+'cpg')
         
     # basic type definitions
-    if solver_name == 'ECOS':
-        CPGBASICTYPEDEF = '\ntypedef double c_float;\n'
-        CPGBASICTYPEDEF += 'typedef int c_int;\n\n'
+    if solver_name in ['SCS', 'ECOS']:
+        if solver_name == 'SCS':
+            CPGBASICTYPEDEF = '\ntypedef scs_float c_float;\n'
+            CPGBASICTYPEDEF += 'typedef scs_int c_int;\n\n'
+        else:
+            CPGBASICTYPEDEF = '\ntypedef double c_float;\n'
+            CPGBASICTYPEDEF += 'typedef int c_int;\n\n'
         CPGBASICTYPEDEF += '\n// Compressed sparse column (csc) matrix\n'
         CPGBASICTYPEDEF += 'typedef struct {\n'
         CPGBASICTYPEDEF += '  c_int      nzmax;\n'
@@ -1184,7 +1307,7 @@ def replace_html_data(code_dir, solver_name, explicit, text, user_p_name_to_size
     CPGINFOTYPEDEF += 'typedef struct {\n'
     CPGINFOTYPEDEF += '  c_float    obj_val;    // Objective function value\n'
     CPGINFOTYPEDEF += '  c_int      iter;       // Number of iterations\n'
-    if solver_name == 'OSQP':
+    if solver_name in ['OSQP', 'SCS']:
         CPGINFOTYPEDEF += '  char       *status;    // Solver status\n'
     elif solver_name == 'ECOS':
         CPGINFOTYPEDEF += '  c_int      status;     // Solver status\n'
@@ -1271,11 +1394,32 @@ def replace_html_data(code_dir, solver_name, explicit, text, user_p_name_to_size
     text = text.replace('$CPGINFORESULTDECLARATION', CPGINFORESULTDECLARATION)
 
     # extra declarations
-    if solver_name == 'ECOS':
+    if solver_name == 'SCS':
+        CPGEXTRADECLARATIONS = '\n// SCS matrix A\n'
+        CPGEXTRADECLARATIONS += 'ScsMatrix %sscs_A;\n\n' % prob_name
+        CPGEXTRADECLARATIONS += '\n// Struct containing SCS data\n'
+        CPGEXTRADECLARATIONS += 'ScsData %sScs_D;\n\n' % prob_name
+        if canon_constants['qsize'] > 0:
+            CPGEXTRADECLARATIONS += '\n// SCS array of SOC dimensions\n'
+            CPGEXTRADECLARATIONS += 'c_int %sscs_q[%d];\n\n' % (prob_name, canon_constants['qsize'])
+        CPGEXTRADECLARATIONS += '\n// Struct containing SCS cone data\n'
+        CPGEXTRADECLARATIONS += 'ScsCone %sScs_K;\n\n' % prob_name
+        CPGEXTRADECLARATIONS += '\n// Struct containing SCS settings\n'
+        CPGEXTRADECLARATIONS += 'ScsSettings %sScs_Stgs;\n\n' % prob_name
+        CPGEXTRADECLARATIONS += '\n// SCS solution\n'
+        CPGEXTRADECLARATIONS += 'c_float %sscs_x[%d];\n' % (prob_name, canon_constants['n'])
+        CPGEXTRADECLARATIONS += 'c_float %sscs_y[%d];\n' % (prob_name, canon_constants['m'])
+        CPGEXTRADECLARATIONS += 'c_float %sscs_s[%d];\n\n' % (prob_name, canon_constants['m'])
+        CPGEXTRADECLARATIONS += '\n// Struct containing SCS solution\n'
+        CPGEXTRADECLARATIONS += 'ScsSolution %sScs_Sol;\n\n' % prob_name
+        CPGEXTRADECLARATIONS += '\n// Struct containing SCS information\n'
+        CPGEXTRADECLARATIONS += 'ScsInfo %sScs_Info;\n' % prob_name
+        text = text.replace('$CPGEXTRADECLARATIONS', CPGEXTRADECLARATIONS)
+    elif solver_name == 'ECOS':
         CPGEXTRADECLARATIONS = '\n// Struct containing solver settings\n'
-        CPGEXTRADECLARATIONS += '%sCanon_Settings_t Canon_Settings;\n\n' % prob_name
-        CPGEXTRADECLARATIONS += '\n// ECOS array of SOC dimensions\n'
+        CPGEXTRADECLARATIONS += 'Canon_Settings_t %sCanon_Settings;\n\n' % prob_name
         if canon_constants['n_cones'] > 0:
+            CPGEXTRADECLARATIONS += '\n// ECOS array of SOC dimensions\n'
             CPGEXTRADECLARATIONS += 'c_int %secos_q[%d];\n\n' % (prob_name, canon_constants['n_cones'])
         CPGEXTRADECLARATIONS += '\n// ECOS workspace\n'
         CPGEXTRADECLARATIONS += 'pwork* %secos_workspace;\n\n' % prob_name

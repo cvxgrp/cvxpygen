@@ -41,8 +41,16 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
     data, solving_chain, inverse_data = problem.get_problem_data(solver=solver, gp=False, enforce_dpp=True,
                                                                  verbose=False)
 
+    # catch non-supported cone types
     solver_name = solving_chain.solver.name()
     p_prob = data['param_prob']
+    if solver_name == 'ECOS':
+        if p_prob.cone_dims.exp > 0:
+            raise ValueError('Code generation with ECOS and exponential cones is not supported yet.')
+    elif solver_name == 'SCS':
+        if p_prob.cone_dims.exp > 0 or len(p_prob.cone_dims.psd) > 0 or len(p_prob.cone_dims.p3d) > 0:
+            raise ValueError('Code generation with SCS and exponential, positive semidefinite, or power cones '
+                             'is not supported yet.')
 
     # checks in sparsity
     for p in p_prob.parameters:
@@ -175,6 +183,21 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
 
         canon_constants = {}
 
+    elif solver_name == 'SCS':
+
+        canon_p_ids = ['c', 'd', 'A', 'b']
+        canon_p_ids_constr_vec = ['b']
+        sign_constr_vec = 1
+        n_var = p_prob.x.size
+        n_eq = data['A'].shape[0]
+        n_ineq = 0
+
+        indices_obj, indptr_obj, shape_obj = None, None, None
+        indices_constr, indptr_constr, shape_constr = p_prob.problem_data_index
+
+        canon_constants = {'n': n_var, 'm': n_eq, 'z': p_prob.cone_dims.zero, 'l': p_prob.cone_dims.nonneg,
+                           'q': np.array(p_prob.cone_dims.soc), 'qsize': len(p_prob.cone_dims.soc)}
+
     elif solver_name == 'ECOS':
 
         canon_p_ids = ['c', 'd', 'A', 'b', 'G', 'h']
@@ -238,7 +261,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
             else:
                 raise ValueError('Unknown OSQP parameter name: "%s"' % p_id)
 
-        elif solver_name == 'ECOS':
+        elif solver_name in ['SCS', 'ECOS']:
 
             if p_id == 'c':
                 mapping = p_prob.c[:-1]
@@ -257,7 +280,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
                 mapping_rows = mapping_rows_ineq[mapping_rows_ineq >= n_data_constr_mat]
                 shape = (n_ineq, 1)
             else:
-                raise ValueError('Unknown ECOS parameter name: "%s"' % p_id)
+                raise ValueError('Unknown %s parameter name: "%s"' % (solver_name, p_id))
 
             if p_id in ['A', 'b']:
                 indices = indices_constr[mapping_rows]
@@ -293,7 +316,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
             mapping = mapping[canon_p_data_nonzero, :]
             canon_p_data = mapping @ user_p_flat_usp
             # compute 'indptr' to construct sparse matrix from 'canon_p_data' and 'indices'
-            if solver_name == 'OSQP':
+            if solver_name in ['OSQP', 'SCS']:
                 if p_id == 'P':
                     indptr = indptr_obj
                 elif p_id == 'A':
@@ -336,7 +359,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
                                 'alpha', 'scaled_termination', 'check_termination', 'warm_start']
         canon_settings_types = ['c_float', 'c_int', 'c_float', 'c_float', 'c_float', 'c_float', 'c_float',
                                 'c_int', 'c_int', 'c_int']
-        canon_settins_defaults = []
+        canon_settings_defaults = []
 
         # OSQP codegen
         osqp_obj = osqp.OSQP()
@@ -356,12 +379,74 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
         shutil.copyfile(os.path.join(current_directory, 'LICENSE'),
                         os.path.join(code_dir, 'LICENSE'))
 
+    elif solver_name == 'SCS':
+
+        # solver settings
+        canon_settings_names = ['normalize', 'scale', 'adaptive_scale', 'rho_x', 'max_iters', 'eps_abs',
+                                'eps_rel', 'eps_infeas', 'alpha', 'time_limit_secs', 'verbose', 'warm_start',
+                                'acceleration_lookback', 'acceleration_interval', 'write_data_filename',
+                                'log_csv_filename']
+        canon_settings_types = ['c_int', 'c_float', 'c_int', 'c_float', 'c_int', 'c_float', 'c_float',
+                                'c_float', 'c_float', 'c_float', 'c_int', 'c_int', 'c_int', 'c_int', 'const char*',
+                                'const char*']
+        canon_settings_defaults = ['1', '0.1', '1', '1e-6', '1e5', '1e-4', '1e-4', '1e-7', '1.5', '0', '0', '0', '0',
+                                   '1', 'SCS_NULL', 'SCS_NULL']
+
+        # copy sources
+        if os.path.isdir(solver_code_dir):
+            shutil.rmtree(solver_code_dir)
+        os.mkdir(solver_code_dir)
+        dirs_to_copy = ['src', 'include', 'linsys', 'cmake']
+        for dtc in dirs_to_copy:
+            shutil.copytree(os.path.join(current_directory, 'solver', 'scs', dtc), os.path.join(solver_code_dir, dtc))
+        files_to_copy = ['scs.mk', 'CMakeLists.txt', 'LICENSE.txt']
+        for fl in files_to_copy:
+            shutil.copyfile(os.path.join(current_directory, 'solver', 'scs', fl),
+                            os.path.join(solver_code_dir, fl))
+
+        # disable BLAS and LAPACK
+        with open(os.path.join(code_dir, 'c', 'solver_code', 'scs.mk'), 'r') as f:
+            scs_mk_data = f.read()
+        scs_mk_data = scs_mk_data.replace('USE_LAPACK = 1', 'USE_LAPACK = 0')
+        with open(os.path.join(code_dir, 'c', 'solver_code', 'scs.mk'), 'w') as f:
+            f.write(scs_mk_data)
+
+        # modify CMakeLists.txt
+        with open(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'), 'r') as f:
+            cmake_data = f.read()
+        cmake_data = cmake_data.replace('include/', '${CMAKE_CURRENT_SOURCE_DIR}/include/')
+        cmake_data = cmake_data.replace('src/', '${CMAKE_CURRENT_SOURCE_DIR}/src/')
+        cmake_data = cmake_data.replace('${LINSYS}/', '${CMAKE_CURRENT_SOURCE_DIR}/${LINSYS}/')
+        with open(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'), 'w') as f:
+            f.write(cmake_data)
+
+        # adjust top-level CMakeLists.txt
+        with open(os.path.join(code_dir, 'c', 'CMakeLists.txt'), 'r') as f:
+            cmake_data = f.read()
+        indent = ' ' * 6
+        sdir = '${CMAKE_CURRENT_SOURCE_DIR}/solver_code/'
+        cmake_data = cmake_data.replace(sdir + 'include',
+                                        sdir + 'include\n' +
+                                        indent + sdir + 'linsys')
+        with open(os.path.join(code_dir, 'c', 'CMakeLists.txt'), 'w') as f:
+            f.write(cmake_data)
+
+        # adjust setup.py
+        with open(os.path.join(code_dir, 'setup.py'), 'r') as f:
+            setup_text = f.read()
+        indent = ' ' * 30
+        setup_text = setup_text.replace("os.path.join('c', 'solver_code', 'include'),",
+                                        "os.path.join('c', 'solver_code', 'include'),\n" +
+                                        indent + "os.path.join('c', 'solver_code', 'linsys'),")
+        with open(os.path.join(code_dir, 'setup.py'), 'w') as f:
+            f.write(setup_text)
+
     elif solver_name == 'ECOS':
 
         # solver settings
         canon_settings_names = ['feastol', 'abstol', 'reltol', 'feastol_inacc', 'abstol_inacc', 'reltol_inacc', 'maxit']
         canon_settings_types = ['c_float', 'c_float', 'c_float', 'c_float', 'c_float', 'c_float', 'c_int']
-        canon_settins_defaults = ['1e-8', '1e-8', '1e-8', '1e-4', '5e-5', '5e-5', '100']
+        canon_settings_defaults = ['1e-8', '1e-8', '1e-8', '1e-4', '5e-5', '5e-5', '100']
 
         # copy sources
         if os.path.isdir(solver_code_dir):
@@ -420,12 +505,12 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
             f.write(setup_text)
 
     else:
-        raise ValueError("Problem class cannot be addressed by the OSQP or ECOS solver!")
+        raise ValueError("Problem class cannot be addressed by the OSQP, SCS, or ECOS solver!")
 
     user_p_to_canon_outdated = {user_p_name: [canon_p_ids[j] for j in np.nonzero(adjacency[:, i])[0]]
                                 for i, user_p_name in enumerate(user_p_names)}
     canon_settings_names_to_types = {name: typ for name, typ in zip(canon_settings_names, canon_settings_types)}
-    canon_settings_names_to_default = {name: typ for name, typ in zip(canon_settings_names, canon_settins_defaults)}
+    canon_settings_names_to_default = {name: typ for name, typ in zip(canon_settings_names, canon_settings_defaults)}
 
     ret_sol_func_exists = any(var_symmetric) or any([s == 1 for s in var_sizes]) or solver_name == 'ECOS'
 
@@ -486,15 +571,6 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
     with open(os.path.join(code_dir, 'problem.pickle'), 'wb') as f:
         pickle.dump(cp.Problem(problem.objective, problem.constraints), f)
 
-    # compile python module
-    if compile_module:
-        sys.stdout.write('Compiling python wrapper with CVXPYGEN ... \n')
-        p_dir = os.getcwd()
-        os.chdir(code_dir)
-        call([sys.executable, 'setup.py', '--quiet', 'build_ext', '--inplace'])
-        os.chdir(p_dir)
-        sys.stdout.write("CVXPYGEN finished compiling python wrapper.\n")
-
     # html documentation file
     with open(os.path.join(code_dir, 'README.html'), 'r') as f:
         html_data = f.read()
@@ -506,3 +582,12 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
         f.write(html_data)
 
     sys.stdout.write('CVXPYGEN finished generating code.\n')
+
+    # compile python module
+    if compile_module:
+        sys.stdout.write('Compiling python wrapper with CVXPYGEN ... \n')
+        p_dir = os.getcwd()
+        os.chdir(code_dir)
+        call([sys.executable, 'setup.py', '--quiet', 'build_ext', '--inplace'])
+        os.chdir(p_dir)
+        sys.stdout.write("CVXPYGEN finished compiling python wrapper.\n")

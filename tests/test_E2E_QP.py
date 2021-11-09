@@ -166,7 +166,7 @@ def assign_data(prob, name, seed):
 N_RAND = 10
 
 name_solver_style_seed = [['actuator', 'MPC', 'portfolio'],
-                          ['OSQP', 'ECOS'],
+                          ['OSQP', 'SCS', 'ECOS'],
                           ['explicit', 'implicit'],
                           list(np.arange(N_RAND))]
 

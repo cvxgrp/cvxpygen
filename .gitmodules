@@ -4,3 +4,6 @@
 [submodule "osqp-python"]
 	path = solver/osqp-python
 	url = https://github.com/osqp/osqp-python
+[submodule "solver/scs"]
+	path = solver/scs
+	url = https://github.com/cvxgrp/scs
