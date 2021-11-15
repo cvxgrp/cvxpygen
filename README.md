@@ -12,9 +12,9 @@ In addition, problems need to be modeled according to [Disciplined Parametrized 
 Solving a DPP-compliant problem repeatedly for different values of the parameters can be much faster than repeatedly solving a new problem.
 
 For now, CVXPYGEN is a separate module, until it will be integrated into CVXPY.
-As of today, CVXPYGEN works with linear and quadratic programs.
+As of today, CVXPYGEN works with linear, quadratic, and second-order cone programs.
 
-**Important: When generating code with the ECOS solver, the generated code is licenced 
+**Important: When generating code with the ECOS solver, the generated code is licensed 
 under the [GNU General Public License v3.0](https://github.com/embotech/ecos/blob/develop/COPYING).**
 
 ## Installation
