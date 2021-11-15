@@ -565,7 +565,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
     # custom CVXPY solve method
     with open(os.path.join(code_dir, 'cpg_solver.py'), 'a') as f:
         utils.write_method(f, solver_name, code_dir, user_p_name_to_size_usp, user_p_name_to_sparsity,
-                           user_p_name_to_sparsity_type, var_name_to_shape)
+                           user_p_name_to_sparsity_type, var_name_to_shape, problem_name)
 
     # serialize problem formulation
     with open(os.path.join(code_dir, 'problem.pickle'), 'wb') as f:

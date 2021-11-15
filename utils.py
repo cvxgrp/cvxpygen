@@ -1008,19 +1008,19 @@ def write_module_def(f, user_p_name_to_size_usp, var_name_to_size, canon_setting
     # module
     f.write('PYBIND11_MODULE(cpg_module, m) {\n\n')
 
-    f.write('    py::class_<%sCPG_Params_cpp_t>(m, "cpg_params")\n' % prob_name)
+    f.write('    py::class_<%sCPG_Params_cpp_t>(m, "%scpg_params")\n' % (prob_name, prob_name))
     f.write('            .def(py::init<>())\n')
     for name in user_p_name_to_size_usp.keys():
         f.write('            .def_readwrite("%s", &%sCPG_Params_cpp_t::%s)\n' % (name, prob_name, name))
     f.write('            ;\n\n')
 
-    f.write('    py::class_<%sCPG_Updated_cpp_t>(m, "cpg_updated")\n' % prob_name)
+    f.write('    py::class_<%sCPG_Updated_cpp_t>(m, "%scpg_updated")\n' % (prob_name, prob_name))
     f.write('            .def(py::init<>())\n')
     for name in user_p_name_to_size_usp.keys():
         f.write('            .def_readwrite("%s", &%sCPG_Updated_cpp_t::%s)\n' % (name, prob_name, name))
     f.write('            ;\n\n')
 
-    f.write('    py::class_<%sCPG_Info_cpp_t>(m, "cpg_info")\n' % prob_name)
+    f.write('    py::class_<%sCPG_Info_cpp_t>(m, "%scpg_info")\n' % (prob_name, prob_name))
     f.write('            .def(py::init<>())\n')
     f.write('            .def_readwrite("obj_val", &%sCPG_Info_cpp_t::obj_val)\n' % prob_name)
     f.write('            .def_readwrite("iter", &%sCPG_Info_cpp_t::iter)\n' % prob_name)
@@ -1030,7 +1030,7 @@ def write_module_def(f, user_p_name_to_size_usp, var_name_to_size, canon_setting
     f.write('            .def_readwrite("ASA_proc_time", &%sCPG_Info_cpp_t::ASA_proc_time)\n' % prob_name)
     f.write('            ;\n\n')
 
-    f.write('    py::class_<%sCPG_Result_cpp_t>(m, "cpg_result")\n' % prob_name)
+    f.write('    py::class_<%sCPG_Result_cpp_t>(m, "%scpg_result")\n' % (prob_name, prob_name))
     f.write('            .def(py::init<>())\n')
     f.write('            .def_readwrite("cpg_info", &%sCPG_Result_cpp_t::info)\n' % prob_name)
     for name in var_name_to_size.keys():
@@ -1100,8 +1100,8 @@ def write_module_prot(f, solver_name, user_p_name_to_size_usp, var_name_to_size,
             % (prob_name, prob_name, prob_name, prob_name))
 
 
-def write_method(f, solver_name, code_dir, user_p_name_to_size_usp, user_p_name_to_sparsity, user_p_name_to_sparsity_type,
-                 var_name_to_shape):
+def write_method(f, solver_name, code_dir, user_p_name_to_size_usp, user_p_name_to_sparsity,
+                 user_p_name_to_sparsity_type, var_name_to_shape, problem_name):
     """
     Write function to be registered as custom CVXPY solve method
     """
@@ -1125,7 +1125,7 @@ def write_method(f, solver_name, code_dir, user_p_name_to_size_usp, user_p_name_
 
     f.write('def cpg_solve(prob, updated_params=None, **kwargs):\n\n')
     f.write('    # set flags for updated parameters\n')
-    f.write('    upd = cpg_module.cpg_updated()\n')
+    f.write('    upd = cpg_module.%scpg_updated()\n' % problem_name)
     f.write('    if updated_params is None:\n')
     p_list_string = ''
     for name in user_p_name_to_size_usp.keys():
@@ -1149,7 +1149,7 @@ def write_method(f, solver_name, code_dir, user_p_name_to_size_usp, user_p_name_
     f.write('            raise(AttributeError(\'Solver setting "%s" not available.\' % key))\n\n')
 
     f.write('    # set parameter values\n')
-    f.write('    par = cpg_module.cpg_params()\n')
+    f.write('    par = cpg_module.%scpg_params()\n' % problem_name)
     for name, size in user_p_name_to_size_usp.items():
         if name in user_p_name_to_sparsity.keys():
             if user_p_name_to_sparsity_type[name] == 'diag':
