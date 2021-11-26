@@ -1152,23 +1152,24 @@ def write_method(f, solver_name, code_dir, user_p_name_to_size_usp, user_p_name_
     f.write('    par = cpg_module.%scpg_params()\n' % problem_name)
     for name, size in user_p_name_to_size_usp.items():
         if name in user_p_name_to_sparsity.keys():
+            f.write('    n = prob.param_dict[\'%s\'].shape[0]\n' % name)
             if user_p_name_to_sparsity_type[name] == 'diag':
-                f.write('    %s_coordinates = [(i, i) for i in range(prob.param_dict[\'%s\'].shape[0])]\n'
-                        % (name, name))
+                f.write('    %s_coordinates = np.arange(0, n**2, n+1)\n' % name)
             else:
-                f.write('    %s_coordinates = prob.param_dict[\'%s\'].attributes[\'sparsity\']\n' % (name, name))
+                f.write('    %s_coordinates = np.sort([coord[0]+coord[1]*n for coord in '
+                        'prob.param_dict[\'%s\'].attributes[\'sparsity\']])\n' % (name, name))
             if size == 1:
                 f.write('    par.%s = prob.param_dict[\'%s\'].value[coordinates]\n' % (name, name))
             else:
                 f.write('    %s_value = []\n' % name)
-                f.write('    for j in range(prob.param_dict[\'%s\'].shape[1]):\n' % name)
-                f.write('        for i in range(prob.param_dict[\'%s\'].shape[0]):\n' % name)
-                f.write('            if (i, j) in %s_coordinates:\n' % name)
-                f.write('                %s_value.append(prob.param_dict[\'%s\'].value[i, j])\n' % (name, name))
-                f.write('            elif prob.param_dict[\'%s\'].value[i, j] != 0:\n' % name)
-                f.write('                warnings.warn(\'Ignoring nonzero value outside of '
-                        'sparsity pattern for parameter %s!\')\n' % name)
-                f.write('    par.%s = %s_value\n' % (name, name))
+                f.write('    %s_flat = prob.param_dict[\'%s\'].value.flatten(order=\'F\')\n' % (name, name))
+                f.write('    for coord in %s_coordinates:\n' % name)
+                f.write('        %s_value.append(%s_flat[coord])\n' % (name, name))
+                f.write('        %s_flat[coord] = 0\n' % name)
+                f.write('    if np.sum(np.abs(%s_flat)) > 0:\n' % name)
+                f.write('        warnings.warn(\'Ignoring nonzero value outside of sparsity pattern for '
+                        'parameter %s!\')\n' % name)
+                f.write('    par.%s = list(%s_value)\n' % (name, name))
         else:
             if size == 1:
                 f.write('    par.%s = prob.param_dict[\'%s\'].value\n' % (name, name))
