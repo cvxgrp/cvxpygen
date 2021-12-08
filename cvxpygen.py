@@ -6,6 +6,7 @@ import pickle
 import warnings
 import osqp
 import utils
+import docu
 import cvxpy as cp
 import numpy as np
 from scipy import sparse
@@ -130,7 +131,6 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
                 user_p_name_to_sparsity_type[p.name()] = 'general'
             user_p_sparsity_mask[user_p_id_to_col[p.id]:user_p_id_to_col[p.id]+user_p_id_to_size[p.id]] = False
             user_p_sparsity_mask[user_p_id_to_col[p.id] + user_p_name_to_sparsity[p.name()]] = True
-    user_p_sizes_usp = list(user_p_name_to_size_usp.values())
     user_p_col_to_name_usp = {}
     cum_sum = 0
     for name, size in user_p_name_to_size_usp.items():
@@ -163,7 +163,8 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
 
     canon_mappings = []
     canon_p = {}
-    canon_p_to_changes = {}
+    canon_p_csc = {}
+    canon_p_id_to_changes = {}
     canon_p_id_to_size = {}
     nonzero_d = True
 
@@ -215,7 +216,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
                            'e': p_prob.cone_dims.exp}
 
     else:
-        raise ValueError("Problem class cannot be addressed by the OSQP or ECOS solver!")
+        raise ValueError("Problem class cannot be addressed by the OSQP, SCS, or ECOS solver!")
 
     n_data_constr = len(indices_constr)
     n_data_constr_vec = indptr_constr[-1] - indptr_constr[-2]
@@ -339,7 +340,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
                         break
             csc_mat = sparse.csc_matrix((canon_p_data, indices_usp, indptr_usp), shape=shape)
             if solver_name == 'OSQP':
-                canon_p[p_id + '_osqp'] = csc_mat
+                canon_p_csc[p_id] = csc_mat
             canon_p[p_id] = utils.csc_to_dict(csc_mat)
         else:
             canon_p_data = mapping @ user_p_flat_usp
@@ -349,21 +350,21 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
                 canon_p[p_id] = canon_p_data
 
         canon_mappings.append(mapping.tocsr())
-        canon_p_to_changes[p_id] = mapping[:, :-1].nnz > 0
+        canon_p_id_to_changes[p_id] = mapping[:, :-1].nnz > 0
         canon_p_id_to_size[p_id] = mapping.shape[0]
 
     if solver_name == 'OSQP':
 
         # solver settings
-        canon_settings_names = ['rho', 'max_iter', 'eps_abs', 'eps_rel', 'eps_prim_inf', 'eps_dual_inf',
-                                'alpha', 'scaled_termination', 'check_termination', 'warm_start']
-        canon_settings_types = ['c_float', 'c_int', 'c_float', 'c_float', 'c_float', 'c_float', 'c_float',
-                                'c_int', 'c_int', 'c_int']
-        canon_settings_defaults = []
+        settings_names = ['rho', 'max_iter', 'eps_abs', 'eps_rel', 'eps_prim_inf', 'eps_dual_inf', 'alpha',
+                          'scaled_termination', 'check_termination', 'warm_start']
+        settings_types = ['c_float', 'c_int', 'c_float', 'c_float', 'c_float', 'c_float', 'c_float', 'c_int', 'c_int',
+                          'c_int']
+        settings_defaults = []
 
         # OSQP codegen
         osqp_obj = osqp.OSQP()
-        osqp_obj.setup(P=canon_p['P_osqp'], q=canon_p['q'], A=canon_p['A_osqp'], l=canon_p['l'], u=canon_p['u'])
+        osqp_obj.setup(P=canon_p_csc['P'], q=canon_p['q'], A=canon_p_csc['A'], l=canon_p['l'], u=canon_p['u'])
         if system() == 'Windows':
             cmake_generator = 'MinGW Makefiles'
         elif system() == 'Linux' or system() == 'Darwin':
@@ -382,15 +383,13 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
     elif solver_name == 'SCS':
 
         # solver settings
-        canon_settings_names = ['normalize', 'scale', 'adaptive_scale', 'rho_x', 'max_iters', 'eps_abs',
-                                'eps_rel', 'eps_infeas', 'alpha', 'time_limit_secs', 'verbose', 'warm_start',
-                                'acceleration_lookback', 'acceleration_interval', 'write_data_filename',
-                                'log_csv_filename']
-        canon_settings_types = ['c_int', 'c_float', 'c_int', 'c_float', 'c_int', 'c_float', 'c_float',
-                                'c_float', 'c_float', 'c_float', 'c_int', 'c_int', 'c_int', 'c_int', 'const char*',
-                                'const char*']
-        canon_settings_defaults = ['1', '0.1', '1', '1e-6', '1e5', '1e-4', '1e-4', '1e-7', '1.5', '0', '0', '0', '0',
-                                   '1', 'SCS_NULL', 'SCS_NULL']
+        settings_names = ['normalize', 'scale', 'adaptive_scale', 'rho_x', 'max_iters', 'eps_abs',  'eps_rel',
+                          'eps_infeas', 'alpha', 'time_limit_secs', 'verbose', 'warm_start', 'acceleration_lookback',
+                          'acceleration_interval', 'write_data_filename', 'log_csv_filename']
+        settings_types = ['c_int', 'c_float', 'c_int', 'c_float', 'c_int', 'c_float', 'c_float', 'c_float', 'c_float',
+                          'c_float', 'c_int', 'c_int', 'c_int', 'c_int', 'const char*', 'const char*']
+        settings_defaults = ['1', '0.1', '1', '1e-6', '1e5', '1e-4', '1e-4', '1e-7', '1.5', '0', '0', '0', '0', '1',
+                             'SCS_NULL', 'SCS_NULL']
 
         # copy sources
         if os.path.isdir(solver_code_dir):
@@ -444,9 +443,9 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
     elif solver_name == 'ECOS':
 
         # solver settings
-        canon_settings_names = ['feastol', 'abstol', 'reltol', 'feastol_inacc', 'abstol_inacc', 'reltol_inacc', 'maxit']
-        canon_settings_types = ['c_float', 'c_float', 'c_float', 'c_float', 'c_float', 'c_float', 'c_int']
-        canon_settings_defaults = ['1e-8', '1e-8', '1e-8', '1e-4', '5e-5', '5e-5', '100']
+        settings_names = ['feastol', 'abstol', 'reltol', 'feastol_inacc', 'abstol_inacc', 'reltol_inacc', 'maxit']
+        settings_types = ['c_float', 'c_float', 'c_float', 'c_float', 'c_float', 'c_float', 'c_int']
+        settings_defaults = ['1e-8', '1e-8', '1e-8', '1e-4', '5e-5', '5e-5', '100']
 
         # copy sources
         if os.path.isdir(solver_code_dir):
@@ -507,65 +506,88 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
     else:
         raise ValueError("Problem class cannot be addressed by the OSQP, SCS, or ECOS solver!")
 
-    user_p_to_canon_outdated = {user_p_name: [canon_p_ids[j] for j in np.nonzero(adjacency[:, i])[0]]
-                                for i, user_p_name in enumerate(user_p_names)}
-    canon_settings_names_to_types = {name: typ for name, typ in zip(canon_settings_names, canon_settings_types)}
-    canon_settings_names_to_default = {name: typ for name, typ in zip(canon_settings_names, canon_settings_defaults)}
+    user_p_name_to_canon_outdated = {user_p_name: [canon_p_ids[j] for j in np.nonzero(adjacency[:, i])[0]]
+                                     for i, user_p_name in enumerate(user_p_names)}
+    settings_names_to_type = {name: typ for name, typ in zip(settings_names, settings_types)}
+    settings_names_to_default = {name: typ for name, typ in zip(settings_names, settings_defaults)}
 
     ret_sol_func_exists = any(var_symmetric) or any([s == 1 for s in var_sizes]) or solver_name == 'ECOS'
 
+    # summarize information on options, codegen, user parameters / variables, canonicalization in dictionaries
+
+    info_opt = {'code_dir': code_dir,
+                'solver_name': solver_name,
+                'explicit': explicit,
+                'prob_name': problem_name}
+
+    info_cg = {'ret_sol_func_exists': ret_sol_func_exists,
+               'nonzero_d': nonzero_d,
+               'is_maximization': type(problem.objective) == Maximize}
+
+    info_usr = {'p_writable': user_p_writable,
+                'p_flat_usp': user_p_flat_usp,
+                'p_col_to_name_usp': user_p_col_to_name_usp,
+                'p_name_to_size_usp': user_p_name_to_size_usp,
+                'p_name_to_canon_outdated': user_p_name_to_canon_outdated,
+                'p_name_to_sparsity': user_p_name_to_sparsity,
+                'p_name_to_sparsity_type': user_p_name_to_sparsity_type,
+                'v_name_to_indices': var_name_to_indices,
+                'v_name_to_shape': var_name_to_shape,
+                'v_name_to_size': var_name_to_size,
+                'v_init': var_init,
+                'v_symmetric': var_symmetric,
+                'v_offsets': var_offsets}
+
+    info_can = {'p': canon_p,
+                'p_id_to_size': canon_p_id_to_size,
+                'p_id_to_changes': canon_p_id_to_changes,
+                'mappings': canon_mappings,
+                'constants': canon_constants,
+                'settings_names_to_type': settings_names_to_type,
+                'settings_names_to_default': settings_names_to_default}
+
     # 'workspace' prototypes
     with open(os.path.join(code_dir, 'c', 'include', 'cpg_workspace.h'), 'a') as f:
-        utils.write_workspace_prot(f, solver_name, explicit, user_p_name_to_size_usp, user_p_writable, user_p_flat_usp,
-                                   var_init, canon_p_ids, canon_p, canon_mappings, var_symmetric, canon_constants,
-                                   canon_settings_names_to_types, problem_name)
+        utils.write_workspace_prot(f, info_opt, info_usr, info_can)
 
     # 'workspace' definitions
     with open(os.path.join(code_dir, 'c', 'src', 'cpg_workspace.c'), 'a') as f:
-        utils.write_workspace_def(f, solver_name, explicit, user_p_names, user_p_writable, user_p_flat_usp, var_init,
-                                  canon_p_ids, canon_p, canon_mappings, var_symmetric, var_offsets, canon_constants,
-                                  canon_settings_names_to_default, problem_name)
+        utils.write_workspace_def(f, info_opt, info_usr, info_can)
 
     # 'solve' prototypes
     with open(os.path.join(code_dir, 'c', 'include', 'cpg_solve.h'), 'a') as f:
-        utils.write_solve_prot(f, solver_name, canon_p_ids, user_p_name_to_size_usp, canon_settings_names_to_types,
-                               ret_sol_func_exists, problem_name)
+        utils.write_solve_prot(f, info_opt, info_cg, info_usr, info_can)
 
     # 'solve' definitions
     with open(os.path.join(code_dir, 'c', 'src', 'cpg_solve.c'), 'a') as f:
-        utils.write_solve_def(f, solver_name, explicit, canon_p_ids, canon_mappings, user_p_col_to_name_usp,
-                              user_p_sizes_usp, user_p_name_to_size_usp, var_name_to_indices, canon_p_id_to_size,
-                              type(problem.objective) == Maximize, user_p_to_canon_outdated,
-                              canon_settings_names_to_types, canon_settings_names_to_default, var_symmetric,
-                              canon_p_to_changes, canon_constants, nonzero_d, ret_sol_func_exists, problem_name)
+        utils.write_solve_def(f, info_opt, info_cg, info_usr, info_can)
 
     # 'example' definitions
     with open(os.path.join(code_dir, 'c', 'src', 'cpg_example.c'), 'a') as f:
-        utils.write_example_def(f, solver_name, user_p_writable, var_name_to_size, problem_name)
+        utils.write_example_def(f, info_opt, info_usr)
 
     # adapt top-level CMakeLists.txt
     with open(os.path.join(code_dir, 'c', 'CMakeLists.txt'), 'r') as f:
         cmake_data = f.read()
-    cmake_data = utils.replace_cmake_data(cmake_data, problem_name)
+    cmake_data = utils.replace_cmake_data(cmake_data, info_opt)
     with open(os.path.join(code_dir, 'c', 'CMakeLists.txt'), 'w') as f:
         f.write(cmake_data)
 
     # adapt solver CMakeLists.txt
     with open(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'), 'a') as f:
-        utils.write_canon_cmake(f, solver_name)
+        utils.write_canon_cmake(f, info_opt)
 
     # binding module prototypes
     with open(os.path.join(code_dir, 'cpp', 'include', 'cpg_module.hpp'), 'a') as f:
-        utils.write_module_prot(f, solver_name, user_p_name_to_size_usp, var_name_to_size, problem_name)
+        utils.write_module_prot(f, info_opt, info_usr)
 
     # binding module definition
     with open(os.path.join(code_dir, 'cpp', 'src', 'cpg_module.cpp'), 'a') as f:
-        utils.write_module_def(f, user_p_name_to_size_usp, var_name_to_size, canon_settings_names, problem_name)
+        utils.write_module_def(f, info_opt, info_usr, info_can)
 
     # custom CVXPY solve method
     with open(os.path.join(code_dir, 'cpg_solver.py'), 'a') as f:
-        utils.write_method(f, solver_name, code_dir, user_p_name_to_size_usp, user_p_name_to_sparsity,
-                           user_p_name_to_sparsity_type, var_name_to_shape, problem_name)
+        utils.write_method(f, info_opt, info_usr)
 
     # serialize problem formulation
     with open(os.path.join(code_dir, 'problem.pickle'), 'wb') as f:
@@ -574,10 +596,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True
     # html documentation file
     with open(os.path.join(code_dir, 'README.html'), 'r') as f:
         html_data = f.read()
-    html_data = utils.replace_html_data(code_dir, solver_name, explicit, html_data, user_p_name_to_size_usp,
-                                        user_p_writable, var_name_to_size, user_p_total_size, canon_p_ids,
-                                        canon_p_id_to_size, canon_settings_names_to_types, canon_constants,
-                                        canon_mappings, ret_sol_func_exists, problem_name)
+    html_data = docu.replace_html_data(html_data, info_opt, info_cg, info_usr, info_can)
     with open(os.path.join(code_dir, 'README.html'), 'w') as f:
         f.write(html_data)
 
