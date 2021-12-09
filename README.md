@@ -54,118 +54,100 @@ On Windows, you need to install also [Visual Studio 2017 Build Tools](https://do
     
 ## Example
 
-Let's define a CVXPY problem, generate code for it, and solve the problem with example parameter values.
+We define a simple 'nonnegative least squares' problem, generate code for it, and solve the problem with example parameter values.
 
 ### 1. Generate Code
 
+Let's step through first part of ``example.py``.
 Define a convex optimization problem the way you are used to with CVXPY.
-Everything that is defined as ``cp.Parameter()`` is assumed to be changing between multiple solves.
+Everything that is described as ``cp.Parameter()`` is assumed to be changing between multiple solves.
 For constant properties, use ``cp.Constant()``.
 
 ```python
 import cvxpy as cp
 
-# define dimensions, variables, parameters
-# IMPORTANT: uniquely specify variable and parameter names for them to be recognized in the generated C code
 m, n = 3, 2
-W = cp.Variable((n, n), name='W')
 x = cp.Variable(n, name='x')
-y = cp.Variable(name='y')
 A = cp.Parameter((m, n), name='A', sparsity=[(0, 0), (0, 1), (1, 1)])
 b = cp.Parameter(m, name='b')
-c = cp.Parameter(nonneg=True, name='c')
-
-# define objective & constraints
-objective = cp.Minimize(cp.sum_squares(A @ x - b) + c * cp.sum_squares(x) + cp.sum_squares(y) + cp.sum_squares(W))
-constraints = [0 <= x, x <= 1]
-
-# define problem
-prob = cp.Problem(objective, constraints)
+problem = cp.Problem(cp.Minimize(cp.sum_squares(A @ x - b)), [x >= 0])
 ```
 
-The attribute `sparsity` is a list of 2-tuples that indicate the coordinates 
-of nonzero entries of matrix `A`.
+Specify the 'name' attribute for variables and parameters to recognize them after generating code.
+The attribute `sparsity` is a list of 2-tuples that indicate the coordinates of nonzero entries of matrix `A`.
+Parameter sparsity is only taken into account for matrices.
 
-Assign parameter values and solve the problem.
+Assign parameter values and test-solve.
 
 ```python
 import numpy as np
 
-# assign parameter values and solve
 np.random.seed(0)
 A.value = np.zeros((m, n))
 A.value[0, 0] = np.random.randn()
 A.value[0, 1] = np.random.randn()
 A.value[1, 1] = np.random.randn()
 b.value = np.random.randn(m)
-c.value = np.random.rand()
-val = prob.solve()
-print('Solution: x = ', x.value)
-print('Objective function value:', val)
+problem.solve()
 ```
 
 Generating C code for this problem is as simple as,
 
 ```python
 import cvxpygen as cpg
-cpg.generate_code(prob, code_dir='CPG_code', explicit=True)
+
+cpg.generate_code(problem, code_dir='nonneg_LS', solver='SCS')
 ```
 
-where ``code_dir`` specifies the directory that the generated code is stored in.
-When ``explicit=True``, for-loops are unrolled in the canonicalization code.
-The above steps are summarized in the first part of ``example.py``.
+where the generated code is stored inside `nonneg_LS` and the `SCS` solver is used. 
+Next to the positional argument `problem`, all keyword arguments for the `generate_code()` method are summarized below.
 
-To get an overview of the code generation result, have a look at `CPG_code/README.html`.
+| Argument         | Meaning       | Default       |
+| -------------    | ------------- | ------------- |
+| `code_dir`       | directory for code to be stored in                                 | `'CPG_code'` |
+| `solver`         | canonical solver to generate code with                             | CVXPY default |
+| `compile_module` | if to compile python module                                        | `True` |
+| `explicit`       | if to unroll loops in canonicalization code                        | `False` |
+| `problem_name`   | prefix for unique code symbols when dealing with multiple problems | `''`
+
+You can find an overview of the code generation result in `nonneg_LS/README.html`.
 
 ### 2. Solve & Compare
 
-As summarized in the second part ``example.py``, after assigning parameter values, you can solve the problem both by conventional CVXPY and via the generated code, which is wrapped inside the custom CVXPY solve method ``cpg_solve``.
+As summarized in the second part ``example.py``, after assigning parameter values, you can solve the problem both conventionally and via the generated code, which is wrapped inside the custom CVXPY solve method ``cpg_solve``.
 
 ```python
-from CPG_code.cpg_solver import cpg_solve
-import numpy as np
-import pickle
 import time
-import os
 
-# load the serialized problem formulation
-with open('CPG_code/problem.pickle', 'rb') as f:
-    prob = pickle.load(f)
-
-# assign parameter values
-np.random.seed(0)
-prob.param_dict['A'].value = np.zeros((m, n))
-prob.param_dict['A'].value[0, 0] = np.random.randn()
-prob.param_dict['A'].value[0, 1] = np.random.randn()
-prob.param_dict['A'].value[1, 1] = np.random.randn()
-prob.param_dict['b'].value = np.random.randn(m,)
-prob.param_dict['c'].value = np.random.rand()
+# import extension module and register custom CVXPY solve method
+from nonneg_LS.cpg_solver import cpg_solve
+problem.register_solve('cpg', cpg_solve)
 
 # solve problem conventionally
 t0 = time.time()
-# CVXPY chooses eps_abs=eps_rel=1e-5, max_iter=10000, polish=True by default,
-# however, we choose the OSQP default values here, as they are used for code generation as well
-val = prob.solve(eps_abs=1e-3, eps_rel=1e-3, max_iter=4000, polish=False)
+val = problem.solve(solver='SCS')
 t1 = time.time()
-print('\nPython solve time:', 1000*(t1-t0), 'ms')
-print('Python solution: x = ', prob.var_dict['x'].value)
-print('Python objective function value:', val)
+print('\nStandard method\nSolve time:', np.round(1000*(t1-t0), 3), 'ms')
+print('Solution: x = ', x.value)
+print('Objective function value:', val)
 
 # solve problem with C code via python wrapper
-prob.register_solve('CPG', cpg_solve)
 t0 = time.time()
-# the argument 'updated_params' specifies which user-defined parameter values are new
-# if the argument is omitted, all values are assumed to be new
-# if only a subset of the user-defined parameters have new values, use this argument to speed up the solver
-val = prob.solve(method='CPG', updated_params=['A', 'b', 'c'])
+val = problem.solve(method='cpg', updated_params=['A', 'b'], verbose=False)
 t1 = time.time()
-print('\nC solve time:', 1000*(t1-t0), 'ms')
-print('C solution: x = ', prob.var_dict['x'].value)
-print('C objective function value:', val)
+print('\nCodegen method\nSolve time:', np.round(1000*(t1-t0), 3), 'ms')
+print('Solution: x = ', x.value)
+print('Objective function value:', val)
 ```
 
-Comparing python and C results for this example, both the solutions and objective values are close.
-Especially for smaller problems like this, the new solve method ``'CPG'`` is significantly faster than solving without CVXPYGEN.
+The argument 'updated_params' specifies which user-defined parameter values are new.
+If the argument is omitted, all parameter values are assumed to be new.
+If only a subset of the user-defined parameters have new values, use this argument to speed up the solver.
+Most solver settings can be specified as keyword arguments like without code generation. 
+Here, we use `verbose=False` to suppress printing.
+
+Comparing the standard and codegen methods for this example, both the solutions and objective values are close.
+Especially for smaller problems like this, the new solve method ``'cpg'`` is significantly faster than solving without code generation.
 
 ### 3. Executable
 
@@ -177,7 +159,7 @@ through the parameter column by column.
 If you wish to compile the example executable on a Unix platform, please run the following commands in your terminal.
 
 ```bash
-cd CPG_code/c/build
+cd nonneg_LS/c/build
 cmake ..
 cmake --build . --target cpg_example
 ```
@@ -185,7 +167,7 @@ cmake --build . --target cpg_example
 To run the compiled program, type
 
 ```bash
-cd CPG_code/c/build
+cd nonneg_LS/c/build
 ./cpg_example
 ```
 
