@@ -73,7 +73,7 @@ b = cp.Parameter(m, name='b')
 problem = cp.Problem(cp.Minimize(cp.sum_squares(A @ x - b)), [x >= 0])
 ```
 
-Specify the 'name' attribute for variables and parameters to recognize them after generating code.
+Specify the `name` attribute for variables and parameters to recognize them after generating code.
 The attribute `sparsity` is a list of 2-tuples that indicate the coordinates of nonzero entries of matrix `A`.
 Parameter sparsity is only taken into account for matrices.
 
@@ -140,7 +140,7 @@ print('Solution: x = ', x.value)
 print('Objective function value:', val)
 ```
 
-The argument 'updated_params' specifies which user-defined parameter values are new.
+The argument `updated_params` specifies which user-defined parameter values are new.
 If the argument is omitted, all parameter values are assumed to be new.
 If only a subset of the user-defined parameters have new values, use this argument to speed up the solver.
 Most solver settings can be specified as keyword arguments like without code generation. 
