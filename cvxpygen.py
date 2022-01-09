@@ -17,7 +17,7 @@ from cvxpy.cvxcore.python import canonInterface as cI
 from cvxpy.expressions.variable import upper_tri_to_full
 
 
-def generate_code(problem, code_dir='CPG_code', solver=None, compile_module=True, explicit=False, problem_name=''):
+def generate_code(problem, code_dir='CPG_code', solver=None, explicit=False, problem_name='', compile_module=True):
     """
     Generate C code for CVXPY problem and (optionally) python wrapper
     """

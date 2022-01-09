@@ -106,9 +106,9 @@ Next to the positional argument `problem`, all keyword arguments for the `genera
 | -------------    | ------------- | ------------- |
 | `code_dir`       | directory for code to be stored in                                 | `'CPG_code'` |
 | `solver`         | canonical solver to generate code with                             | CVXPY default |
-| `compile_module` | if to compile python module                                        | `True` |
 | `explicit`       | if to unroll loops in canonicalization code                        | `False` |
 | `problem_name`   | prefix for unique code symbols when dealing with multiple problems | `''`
+| `compile_module` | if to compile python module                                        | `True` |
 
 You can find an overview of the code generation result in `nonneg_LS/README.html`.
 
