@@ -69,7 +69,8 @@ def generate_code(problem, code_dir='CPG_code', solver=None, explicit=False, pro
                                       'Ignoring sparsity pattern.' % p.name())
                         p.attributes['sparsity'] = None
                         break
-        if p.attributes['diag']:
+                p.attributes['sparsity'] = list(set(p.attributes['sparsity']))
+        elif p.attributes['diag']:
             p.attributes['sparsity'] = [(i, i) for i in range(p.shape[0])]
         if p.attributes['sparsity'] is not None and p.value is not None:
             for i in range(p.shape[0]):
