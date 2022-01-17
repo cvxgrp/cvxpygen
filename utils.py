@@ -1168,7 +1168,7 @@ def write_method(f, info_opt, info_usr):
             if info_usr['p_name_to_sparsity_type'][name] == 'diag':
                 f.write('    %s_coordinates = np.arange(0, n**2, n+1)\n' % name)
             else:
-                f.write('    %s_coordinates = np.sort([coord[0]+coord[1]*n for coord in '
+                f.write('    %s_coordinates = np.unique([coord[0]+coord[1]*n for coord in '
                         'prob.param_dict[\'%s\'].attributes[\'sparsity\']])\n' % (name, name))
             if size == 1:
                 f.write('    par.%s = prob.param_dict[\'%s\'].value[coordinates]\n' % (name, name))
