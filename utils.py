@@ -1001,7 +1001,7 @@ def write_module_def(f, info_opt, info_usr, info_can):
     f.write('    %sCPG_Info_cpp_t CPG_Info_cpp {};\n' % info_opt['prob_name'])
     for field in ['obj_val', 'iter', 'status', 'pri_res', 'dua_res']:
         f.write('    CPG_Info_cpp.%s = %sCPG_Info.%s;\n' % (field, info_opt['prob_name'], field))
-    f.write('    CPG_Info_cpp.time = (ASA_end-ASA_start) / CLOCKS_PER_SEC;\n')
+    f.write('    CPG_Info_cpp.time = 1.0*(ASA_end-ASA_start) / CLOCKS_PER_SEC;\n')
 
     f.write('    %sCPG_Result_cpp_t CPG_Result_cpp {};\n' % info_opt['prob_name'])
     f.write('    CPG_Result_cpp.info = CPG_Info_cpp;\n')
