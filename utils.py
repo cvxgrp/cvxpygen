@@ -1001,7 +1001,7 @@ def write_module_def(f, info_opt, info_usr, info_can):
     f.write('    %sCPG_Info_cpp_t CPG_Info_cpp {};\n' % info_opt['prob_name'])
     for field in ['obj_val', 'iter', 'status', 'pri_res', 'dua_res']:
         f.write('    CPG_Info_cpp.%s = %sCPG_Info.%s;\n' % (field, info_opt['prob_name'], field))
-    f.write('    CPG_Info_cpp.ASA_proc_time = 1000.0 * (ASA_end-ASA_start) / CLOCKS_PER_SEC;\n')
+    f.write('    CPG_Info_cpp.time = (ASA_end-ASA_start) / CLOCKS_PER_SEC;\n')
 
     f.write('    %sCPG_Result_cpp_t CPG_Result_cpp {};\n' % info_opt['prob_name'])
     f.write('    CPG_Result_cpp.info = CPG_Info_cpp;\n')
@@ -1040,7 +1040,7 @@ def write_module_def(f, info_opt, info_usr, info_can):
     f.write('            .def_readwrite("status", &%sCPG_Info_cpp_t::status)\n' % info_opt['prob_name'])
     f.write('            .def_readwrite("pri_res", &%sCPG_Info_cpp_t::pri_res)\n' % info_opt['prob_name'])
     f.write('            .def_readwrite("dua_res", &%sCPG_Info_cpp_t::dua_res)\n' % info_opt['prob_name'])
-    f.write('            .def_readwrite("ASA_proc_time", &%sCPG_Info_cpp_t::ASA_proc_time)\n' % info_opt['prob_name'])
+    f.write('            .def_readwrite("time", &%sCPG_Info_cpp_t::time)\n' % info_opt['prob_name'])
     f.write('            ;\n\n')
 
     f.write('    py::class_<%sCPG_Result_cpp_t>(m, "%scpg_result")\n' % (info_opt['prob_name'], info_opt['prob_name']))
@@ -1092,7 +1092,7 @@ def write_module_prot(f, info_opt, info_usr):
         f.write('    int status;\n')
     f.write('    double pri_res;\n')
     f.write('    double dua_res;\n')
-    f.write('    double ASA_proc_time;\n')
+    f.write('    double time;\n')
     f.write('};\n\n')
 
     # cpp struct containing objective value and user-defined variables
@@ -1218,7 +1218,7 @@ def write_method(f, info_opt, info_usr):
     f.write('                             \'iter\': res.cpg_info.iter,\n')
     f.write('                             \'pri_res\': res.cpg_info.pri_res,\n')
     f.write('                             \'dua_res\': res.cpg_info.dua_res,\n')
-    f.write('                             \'ASA_proc_time\': res.cpg_info.ASA_proc_time}\n')
+    f.write('                             \'time\': res.cpg_info.time}\n')
     f.write('    attr = {\'solve_time\': t1-t0, \'solver_specific_stats\': solver_specific_stats, '
             '\'num_iters\': res.cpg_info.iter}\n')
     f.write('    prob._solution = Solution(prob.status, prob.value, primal_vars, dual_vars, attr)\n')
