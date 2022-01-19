@@ -899,13 +899,12 @@ def write_example_def(f, info_opt, info_usr):
 
     f.write('int main(int argc, char *argv[]){\n\n')
 
-    f.write('  // Initialize user-defined parameter values\n')
+    f.write('  // Update first entry of every user-defined parameter\n')
     for name, value in info_usr['p_writable'].items():
         if np.isscalar(value):
             f.write('  %scpg_update_%s(%.20f);\n' % (info_opt['prob_name'], name, value))
         else:
-            for i in range(len(value)):
-                f.write('  %scpg_update_%s(%d, %.20f);\n' % (info_opt['prob_name'], name, i, value[i]))
+            f.write('  %scpg_update_%s(0, %.20f);\n' % (info_opt['prob_name'], name, value[0]))
 
     f.write('\n  // Solve the problem instance\n')
     f.write('  %scpg_solve();\n\n' % info_opt['prob_name'])
