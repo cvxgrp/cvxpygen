@@ -6,7 +6,6 @@ import pickle
 import warnings
 import osqp
 import utils
-import docu
 import cvxpy as cp
 import numpy as np
 from scipy import sparse
@@ -597,7 +596,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, explicit=False, pro
     # html documentation file
     with open(os.path.join(code_dir, 'README.html'), 'r') as f:
         html_data = f.read()
-    html_data = docu.replace_html_data(html_data, info_opt, info_cg, info_usr, info_can)
+    html_data = utils.replace_html_data(html_data, info_opt, info_usr)
     with open(os.path.join(code_dir, 'README.html'), 'w') as f:
         f.write(html_data)
 

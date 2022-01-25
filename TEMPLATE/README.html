@@ -19,8 +19,8 @@
 </head>
 
 <body>
-  <h1>C code to solve your CVXPY problem</h1>
-  <h3>File tree</h3>
+  <h1>Generated Code for Solving Your CVXPY Problem</h1>
+  <h3>File Tree</h3>
   <p>
     Your generated code is structured as follows inside your chosen <code>$CODEDIR</code> directory:
   </p>
@@ -50,48 +50,30 @@ $CODEDIR
     README.html
   </code></pre>
   <p>
-      The <code>c/solver_code</code> subdirectory contains all code produced by the code generation feature of the chosen
+      The <code>c/solver_code</code> subdirectory contains all code from the chosen
       numerical solver ($CPGSOLVERNAME). For documentation on this part, please have a look <a href="$CPGSOLVERDOCUURL" target="_blank">here</a>.
   </p>
   <p>
     To make this solver usable, your problem needs to be converted to the standard form accepted by $CPGSOLVERNAME.
       This is done by all the other source files inside the <code>$CODEDIR</code> directory.
   </p>
-  <h3>Types, declarations & definitions</h3>
+  <h3>File Contents</h3>
 
   <p>
     <dl>
-      <dt><code>c/include/cpg_workspace.h</code> contains type definitions,</dt>
+      <dt><code>c/include/cpg_workspace.h</code> contains type definitions and variable declarations.
+      The following types are part of the C interface:</dt>
         <dd>
           <pre><code><!-- language: lang-c -->
-$CPGBASICTYPEDEF
-$CPGUSERPARAMSTYPEDEF
-$CPGCANONPARAMSTYPEDEF
-$CPGOUTDATEDTYPEDEF
 $CPGINFOTYPEDEF
 $CPGRESULTTYPEDEF
-$CPGSETTINGSTYPEDEF
           </code></pre>
         </dd>
-        <dd>
-             and C variable declarations, where matrix parameters and variables are stored in vectorized form:
-        </dd>
-        <dd>
-          <pre><code><!-- language: lang-c -->
-$CPGPARAMDECLARATIONS
-$CPGCANONPARAMDECLARATIONS
-$CPGCANONOUTDATEDDECLARATION
-$CPGVARIABLEDECLARATIONS
-$CPGINFORESULTDECLARATION
-$CPGEXTRADECLARATIONS
-          </code></pre>
-        </dd>
-      <dt><code>c/include/cpg_solve.h</code> contains function prototypes:</dt>
+      <dt><code>c/include/cpg_solve.h</code> contains function prototypes. Relevant for the C interface are:</dt>
         <dd>
           <pre><code><!-- language: lang-c -->
 $CPGUPDATEDECLARATIONS
-$CPGCANONICALIZEDECLARATIONS
-$CPGRETRIEVESOLVEDECLARATIONS
+$CPGSOLVEDECLARATIONS
 $CPGSETTINGSDECLARATIONS
           </code></pre>
         </dd>
@@ -114,7 +96,7 @@ $CPGSETTINGSDECLARATIONS
   <h4>Python</h4>
 
   <p>
-      To use the python module, run exemplarily,
+      To use the CVXPY interface, run exemplarily,
   </p>
     <pre><code>
 import pickle
@@ -149,11 +131,10 @@ cmake --build . --target cpg_example
     To run the example executable, type:
   </p>
     <pre><code>
-cd $CODEDIR/c/build
 ./cpg_example
     </code></pre>
 
-  <h4>Existing Project</h4>
+  <h4>Existing C/C++ Project</h4>
 
   <p>
     To use the generated code in an existing <code>CMake</code> project, copy the following to a subdirectory <code>&lt;subdir&gt;</code>
@@ -177,7 +158,7 @@ include_directories(&lt;existing_dirs&gt; ${$CPGCMAKELISTS_include})
       where <code>&lt;existing_dirs&gt;</code> is your existing include directories and <code>${$CPGCMAKELISTS_include}</code> lists
       the include directories used by the generated code. Add <code>${$CPGCMAKELISTS_head}</code> and
       <code>${$CPGCMAKELISTS_src}</code> to all targets that use the generated code.
-      If not needed, remove the <code>cpg_example</code> and <code>cpg</code> targets from <code>$CODEDIR/c/CMakeLists.txt</code>.
+      If not needed, you can remove the <code>cpg_example</code> and <code>cpg</code> targets from <code>$CODEDIR/c/CMakeLists.txt</code>.
   </p>
 
 </body>

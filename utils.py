@@ -1227,3 +1227,75 @@ def write_method(f, info_opt, info_usr):
     f.write('    prob._solver_stats = SolverStats(results_dict, \'%s\')\n\n' % info_opt['solver_name'])
 
     f.write('    return prob.value\n')
+
+
+def replace_html_data(text, info_opt, info_usr):
+    """
+    Replace placeholder strings in html documentation file
+    """
+
+    # code_dir
+    text = text.replace('$CODEDIR', info_opt['code_dir'])
+    text = text.replace('$CDPYTHON', info_opt['code_dir'].replace('/', '.').replace('\\', '.'))
+
+    # solver name and docu
+    text = text.replace('$CPGSOLVERNAME', info_opt['solver_name'])
+    if info_opt['solver_name'] == 'OSQP':
+        text = text.replace('$CPGSOLVERDOCUURL', 'https://osqp.org/docs/codegen/python.html')
+    elif info_opt['solver_name'] == 'SCS':
+        text = text.replace('$CPGSOLVERDOCUURL', 'https://www.cvxgrp.org/scs/api/c.html')
+    elif info_opt['solver_name'] == 'ECOS':
+        text = text.replace('$CPGSOLVERDOCUURL', 'https://github.com/embotech/ecos/wiki/Usage-from-C')
+
+    # CMake prefix
+    text = text.replace('$CPGCMAKELISTS', info_opt['prob_name']+'cpg')
+
+    # type definition of CPG_Info_t
+    CPGINFOTYPEDEF = '\n// Solver information\n'
+    CPGINFOTYPEDEF += 'typedef struct {\n'
+    CPGINFOTYPEDEF += '  c_float    obj_val;    // Objective function value\n'
+    CPGINFOTYPEDEF += '  c_int      iter;       // Number of iterations\n'
+    if info_opt['solver_name'] in ['OSQP', 'SCS']:
+        CPGINFOTYPEDEF += '  char       *status;    // Solver status\n'
+    elif info_opt['solver_name'] == 'ECOS':
+        CPGINFOTYPEDEF += '  c_int      status;     // Solver status\n'
+    CPGINFOTYPEDEF += '  c_float    pri_res;    // Primal residual\n'
+    CPGINFOTYPEDEF += '  c_float    dua_res;    // Dual residual\n'
+    CPGINFOTYPEDEF += '} CPG_Info_t;\n'
+    text = text.replace('$CPGINFOTYPEDEF', CPGINFOTYPEDEF)
+
+    # type definition of CPG_Result_t
+    CPGRESULTTYPEDEF = '\n// Struct type with user-defined objective value and solution as fields\n'
+    CPGRESULTTYPEDEF += 'typedef struct {\n'
+    for name, size in info_usr['v_name_to_size'].items():
+        if size == 1:
+            s = ''
+        else:
+            s = '*'
+        CPGRESULTTYPEDEF += ('  c_float    %s   // Your variable %s\n' % ((s + name + ';').ljust(9), name))
+    CPGRESULTTYPEDEF += '  CPG_Info_t *info;      // Solver information\n'
+    CPGRESULTTYPEDEF += '} CPG_Result_t;\n'
+    text = text.replace('$CPGRESULTTYPEDEF', CPGRESULTTYPEDEF)
+
+    # update declarations
+    CPGUPDATEDECLARATIONS = '\n// Update user-defined parameter values\n'
+    for name, size in info_usr['p_name_to_size_usp'].items():
+        if size == 1:
+            CPGUPDATEDECLARATIONS += 'void %scpg_update_%s(c_float value);\n' % (info_opt['prob_name'], name)
+        else:
+            CPGUPDATEDECLARATIONS += 'void %scpg_update_%s(c_int idx, c_float value);\n' % (info_opt['prob_name'], name)
+    text = text.replace('$CPGUPDATEDECLARATIONS', CPGUPDATEDECLARATIONS)
+
+    # solve declarations
+    CPGSOLVEDECLARATIONS = '\n// Solve via canonicalization, canonical solve, retrieval\n'
+    CPGSOLVEDECLARATIONS += 'void %scpg_solve();\n' % info_opt['prob_name']
+    text = text.replace('$CPGSOLVEDECLARATIONS', CPGSOLVEDECLARATIONS)
+
+    # settings declarations
+    CPGSETTINGSDECLARATIONS = '\n// Update solver settings\n'
+    CPGSETTINGSDECLARATIONS += 'void %scpg_set_solver_default_settings();\n' % info_opt['prob_name']
+    CPGSETTINGSDECLARATIONS += 'void %scpg_set_solver_&lt;setting_name&gt;' \
+                               '(&lt;setting_type&gt; &lt;setting_name&gt;_new);\n' % info_opt['prob_name']
+    CPGSETTINGSDECLARATIONS += '...\n'
+
+    return text.replace('$CPGSETTINGSDECLARATIONS', CPGSETTINGSDECLARATIONS)
