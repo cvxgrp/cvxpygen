@@ -14,6 +14,8 @@ from platform import system
 from cvxpy.problems.objective import Maximize
 from cvxpy.cvxcore.python import canonInterface as cI
 from cvxpy.expressions.variable import upper_tri_to_full
+from cvxpy.reductions.solvers.conic_solvers.scs_conif import SCS
+from cvxpy.reductions.solvers.conic_solvers.ecos_conif import ECOS
 
 
 def generate_code(problem, code_dir='CPG_code', solver=None, explicit=False, problem_name='', compile_module=True):
@@ -82,24 +84,18 @@ def generate_code(problem, code_dir='CPG_code', solver=None, explicit=False, pro
     variables = problem.variables()
     var_names = [var.name() for var in variables]
     var_ids = [var.id for var in variables]
-    inverse_data_idx = 0
-    for inverse_data_idx in range(len(inverse_data)-1, -1, -1):
-        if type(inverse_data[inverse_data_idx]) == cp.reductions.inverse_data.InverseData:
-            break
-    var_offsets = [inverse_data[inverse_data_idx].var_offsets[var_id] for var_id in var_ids]
+    var_offsets = [inverse_data[-2].var_offsets[var_id] for var_id in var_ids]
     var_shapes = [var.shape for var in variables]
     var_sizes = [var.size for var in variables]
-    var_symmetric = [var.attributes['symmetric'] or var.attributes['PSD'] or var.attributes['NSD'] for var in variables]
+    var_sym = [var.attributes['symmetric'] or var.attributes['PSD'] or var.attributes['NSD'] for var in variables]
     var_name_to_indices = {}
-    for var_name, offset, shape, symm in zip(var_names, var_offsets, var_shapes, var_symmetric):
-        if symm:
+    for var_name, offset, shape, sym in zip(var_names, var_offsets, var_shapes, var_sym):
+        if sym:
             fill_coefficient = upper_tri_to_full(shape[0])
             (_, col) = fill_coefficient.nonzero()
             var_name_to_indices[var_name] = offset + col
         else:
             var_name_to_indices[var_name] = np.arange(offset, offset+np.prod(shape))
-
-    var_name_to_size = {name: size for name, size in zip(var_names, var_sizes)}
     var_name_to_shape = {var.name(): var.shape for var in variables}
     var_init = dict()
     for var in variables:
@@ -107,6 +103,57 @@ def generate_code(problem, code_dir='CPG_code', solver=None, explicit=False, pro
             var_init[var.name()] = 0
         else:
             var_init[var.name()] = np.zeros(shape=var.shape)
+
+    # dual variable information
+    # get chain of constraint id maps for 'CvxAttr2Constr' and 'Canonicalization' objects
+    dual_id_maps = []
+    if solver_name == 'OSQP':
+        if inverse_data[-4]:
+            dual_id_maps.append(inverse_data[-4][2])
+        dual_id_maps.append(inverse_data[-3].cons_id_map)
+    elif solver_name in ['SCS', 'ECOS']:
+        dual_id_maps.append(inverse_data[-4].cons_id_map)
+        if inverse_data[-3]:
+            dual_id_maps.append(inverse_data[-3][2])
+        dual_id_maps.append(inverse_data[-2].cons_id_map)
+    # recurse chain of constraint ids to get ordered list of constraint ids
+    dual_ids = []
+    for dual_id in dual_id_maps[0].keys():
+        for dual_id_map in dual_id_maps[1:]:
+            dual_id = dual_id_map[dual_id]
+        dual_ids.append(dual_id)
+    # get canonical constraint information
+    if solver_name == 'OSQP':
+        con_canon = inverse_data[-2].constraints  # same order as in canonical dual vector
+    elif solver_name == 'SCS':
+        con_canon = inverse_data[-1][SCS.EQ_CONSTR] + inverse_data[-1][SCS.NEQ_CONSTR]
+    else:
+        con_canon = inverse_data[-1][ECOS.EQ_CONSTR] + inverse_data[-1][ECOS.NEQ_CONSTR]
+    con_canon_dict = {c.id: c for c in con_canon}
+    d_canon_offsets = np.cumsum([0] + [c.args[0].size for c in con_canon[:-1]])
+    if solver_name in ['OSQP', 'SCS']:
+        d_vectors = ['y']*len(d_canon_offsets)
+    else:
+        n_split_yz = len(inverse_data[-1][ECOS.EQ_CONSTR])
+        d_vectors = ['y']*n_split_yz + ['z']*(len(d_canon_offsets)-n_split_yz)
+        d_canon_offsets[n_split_yz:] -= d_canon_offsets[n_split_yz]
+    d_canon_offsets_dict = {c.id: off for c, off in zip(con_canon, d_canon_offsets)}
+    # select for user-defined constraints
+    d_offsets = [d_canon_offsets_dict[i] for i in dual_ids]
+    d_sizes = [con_canon_dict[i].size for i in dual_ids]
+    d_shapes = [con_canon_dict[i].shape for i in dual_ids]
+    d_names = ['d%d' % i for i in range(len(dual_ids))]
+    d_i_to_name = {i: 'd%d' % i for i in range(len(dual_ids))}
+    d_name_to_shape = {n: d_shapes[i] for i, n in d_i_to_name.items()}
+    d_name_to_indices = {n: (v, o + np.arange(np.prod(d_name_to_shape[n])))
+                         for n, v, o in zip(d_names, d_vectors, d_offsets)}
+    # initialize values to zero
+    d_init = dict()
+    for name, shape in d_name_to_shape.items():
+        if len(shape) == 0:
+            d_init[name] = 0
+        else:
+            d_init[name] = np.zeros(shape=shape)
 
     # user parameters
     user_p_num = len(p_prob.parameters)
@@ -511,7 +558,8 @@ def generate_code(problem, code_dir='CPG_code', solver=None, explicit=False, pro
     settings_names_to_type = {name: typ for name, typ in zip(settings_names, settings_types)}
     settings_names_to_default = {name: typ for name, typ in zip(settings_names, settings_defaults)}
 
-    ret_sol_func_exists = any(var_symmetric) or any([s == 1 for s in var_sizes]) or solver_name == 'ECOS'
+    ret_prim_func_exists = any(var_sym) or any([s == 1 for s in var_sizes]) or solver_name == 'ECOS'
+    ret_dual_func_exists = any([s == 1 for s in d_sizes]) or solver_name == 'ECOS'
 
     # summarize information on options, codegen, user parameters / variables, canonicalization in dictionaries
 
@@ -520,7 +568,8 @@ def generate_code(problem, code_dir='CPG_code', solver=None, explicit=False, pro
                 'explicit': explicit,
                 'prob_name': problem_name}
 
-    info_cg = {'ret_sol_func_exists': ret_sol_func_exists,
+    info_cg = {'ret_prim_func_exists': ret_prim_func_exists,
+               'ret_dual_func_exists': ret_dual_func_exists,
                'nonzero_d': nonzero_d,
                'is_maximization': type(problem.objective) == Maximize}
 
@@ -533,10 +582,15 @@ def generate_code(problem, code_dir='CPG_code', solver=None, explicit=False, pro
                 'p_name_to_sparsity_type': user_p_name_to_sparsity_type,
                 'v_name_to_indices': var_name_to_indices,
                 'v_name_to_shape': var_name_to_shape,
-                'v_name_to_size': var_name_to_size,
                 'v_init': var_init,
-                'v_symmetric': var_symmetric,
-                'v_offsets': var_offsets}
+                'v_sym': var_sym,
+                'v_offsets': var_offsets,
+                'd_init': d_init,
+                'd_vectors': d_vectors,
+                'd_offsets': d_offsets,
+                'd_sizes': d_sizes,
+                'd_name_to_shape': d_name_to_shape,
+                'd_name_to_indices': d_name_to_indices}
 
     info_can = {'p': canon_p,
                 'p_id_to_size': canon_p_id_to_size,

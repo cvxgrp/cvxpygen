@@ -128,7 +128,8 @@ t0 = time.time()
 val = problem.solve(solver='SCS')
 t1 = time.time()
 print('\nStandard method\nSolve time:', np.round(1000*(t1-t0), 3), 'ms')
-print('Solution: x = ', x.value)
+print('Primal solution: x = ', x.value)
+print('Dual solution: d0 = ', problem.constraints[0].dual_value)
 print('Objective function value:', val)
 
 # solve problem with C code via python wrapper
@@ -136,7 +137,8 @@ t0 = time.time()
 val = problem.solve(method='cpg', updated_params=['A', 'b'], verbose=False)
 t1 = time.time()
 print('\nCodegen method\nSolve time:', np.round(1000*(t1-t0), 3), 'ms')
-print('Solution: x = ', x.value)
+print('Primal solution: x = ', x.value)
+print('Dual solution: d0 = ', problem.constraints[0].dual_value)
 print('Objective function value:', val)
 ```
 

@@ -7,6 +7,7 @@ import os
 import importlib
 import itertools
 import pickle
+import utils_test
 import sys
 sys.path.append('../')
 import cvxpygen as cpg
@@ -88,10 +89,17 @@ def assign_data(prob, name, seed):
     return prob
 
 
-N_RAND = 10
+def get_primal_vec(prob, name):
+    if name == 'network':
+        return prob.var_dict['f'].value
+    elif name == 'resource':
+        return prob.var_dict['X'].value.flatten()
+
+
+N_RAND = 3
 
 name_solver_style_seed = [['network', 'resource'],
-                          ['SCS', 'ECOS'],
+                          ['ECOS'],
                           ['explicit', 'implicit'],
                           list(np.arange(N_RAND))]
 
@@ -122,13 +130,18 @@ def test(name, solver, style, seed):
 
     prob = assign_data(prob, name, seed)
 
-    if solver == 'OSQP':
-        val_py = prob.solve(eps_abs=1e-3, eps_rel=1e-3, max_iter=4000, polish=False, adaptive_rho_interval=int(1e6),
-                            warm_start=False)
-        val_ex = prob.solve(method='CPG', warm_start=False)
-    else:
-        val_py = prob.solve()
-        val_ex = prob.solve(method='CPG')
+    val_py, prim_py, dual_py, val_cg, prim_cg, dual_cg, prim_py_norm, dual_py_norm = \
+        utils_test.check(prob, solver, name, get_primal_vec)
 
     if not np.isinf(val_py):
-        assert abs((val_ex - val_py) / val_py) < 0.1
+        assert abs((val_cg - val_py) / val_py) < 0.1
+
+    if prim_py_norm > 1e-6:
+        assert np.linalg.norm(prim_cg - prim_py, 2) / prim_py_norm < 0.1
+    else:
+        assert np.linalg.norm(prim_cg, 2) < 1e-3
+
+    if dual_py_norm > 1e-6:
+        assert np.linalg.norm(dual_cg - dual_py, 2) / dual_py_norm < 0.1
+    else:
+        assert np.linalg.norm(dual_cg, 2) < 1e-3

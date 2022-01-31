@@ -288,22 +288,64 @@ def write_workspace_def(f, info_opt, info_usr, info_can):
         f.write('.%s = 0,\n' % p_id)
     f.write('};\n\n')
 
-    results_cast = []
-    if any(info_usr['v_symmetric']) or info_opt['solver_name'] == 'ECOS':
+    prim_cast = []
+    if any(info_usr['v_sym']) or info_opt['solver_name'] == 'ECOS':
         f.write('// User-defined variables\n')
-    for (name, value), symm in zip(info_usr['v_init'].items(), info_usr['v_symmetric']):
-        if symm or info_opt['solver_name'] == 'ECOS':
-            if np.isscalar(value):
-                results_cast.append('')
-            else:
+    for (name, value), sym in zip(info_usr['v_init'].items(), info_usr['v_sym']):
+        if np.isscalar(value):
+            prim_cast.append('')
+        else:
+            prim_cast.append('(c_float *) ')
+            if sym or info_opt['solver_name'] == 'ECOS':
                 osqp_utils.write_vec(f, value.flatten(order='F'), info_opt['prob_name'] + name, 'c_float')
                 f.write('\n')
-                results_cast.append('(c_float *) ')
-        else:
-            results_cast.append('(c_float *) ')
-    results_cast.append('')
 
-    f.write('// Struct containing solver info\n')
+    f.write('// Struct containing primal solution\n')
+    CPG_Prim_fields = list(info_usr['v_init'].keys())
+    CPG_Prim_values = []
+    for ((name, var), sym, offset) in zip(info_usr['v_init'].items(), info_usr['v_sym'], info_usr['v_offsets']):
+        if np.isscalar(var):
+            CPG_Prim_values.append('0')
+        else:
+            if sym or info_opt['solver_name'] == 'ECOS':
+                CPG_Prim_values.append('&' + info_opt['prob_name'] + name)
+            else:
+                if info_opt['solver_name'] == 'OSQP':
+                    CPG_Prim_values.append('&xsolution + %d' % offset)
+                elif info_opt['solver_name'] == 'SCS':
+                    CPG_Prim_values.append('&%sscs_x + %d' % (info_opt['prob_name'], offset))
+    write_struct_def(f, CPG_Prim_fields, prim_cast, CPG_Prim_values, '%sCPG_Prim' % info_opt['prob_name'], 'CPG_Prim_t')
+
+    if len(info_usr['d_init']) > 0:
+        dual_cast = []
+        if info_opt['solver_name'] == 'ECOS':
+            f.write('\n// Dual variables associated with user-defined constraints\n')
+        for name, value in info_usr['d_init'].items():
+            if np.isscalar(value):
+                dual_cast.append('')
+            else:
+                dual_cast.append('(c_float *) ')
+                if info_opt['solver_name'] == 'ECOS':
+                    osqp_utils.write_vec(f, value.flatten(order='F'), info_opt['prob_name'] + name, 'c_float')
+                    f.write('\n')
+
+        f.write('// Struct containing dual solution\n')
+        CPG_Dual_fields = info_usr['d_init'].keys()
+        CPG_Dual_values = []
+        for vec, (name, var), offset in zip(info_usr['d_vectors'], info_usr['d_init'].items(), info_usr['d_offsets']):
+            if np.isscalar(var):
+                CPG_Dual_values.append('0')
+            else:
+                if info_opt['solver_name'] == 'OSQP':
+                    CPG_Dual_values.append('&%ssolution + %d' % (vec, offset))
+                elif info_opt['solver_name'] == 'SCS':
+                    CPG_Dual_values.append('&%sscs_%s + %d' % (info_opt['prob_name'], vec, offset))
+                else:
+                    CPG_Dual_values.append('&' + info_opt['prob_name'] + name)
+        write_struct_def(f, CPG_Dual_fields, dual_cast, CPG_Dual_values, '%sCPG_Dual' % info_opt['prob_name'],
+                         'CPG_Dual_t')
+
+    f.write('\n// Struct containing solver info\n')
     CPG_Info_fields = ['obj_val', 'iter', 'status', 'pri_res', 'dua_res']
     if info_opt['solver_name'] in ['OSQP', 'SCS']:
         CPG_Info_values = ['0', '0', '"unknown"', '0', '0']
@@ -312,30 +354,20 @@ def write_workspace_def(f, info_opt, info_usr, info_can):
     else:
         raise ValueError("Problem class cannot be addressed by the OSQP or ECOS solver!")
     info_cast = ['', '', '', '', '']
-    write_struct_def(f, CPG_Info_fields, info_cast, CPG_Info_values, '%sCPG_Info'
-                     % info_opt['prob_name'], 'CPG_Info_t')
+    write_struct_def(f, CPG_Info_fields, info_cast, CPG_Info_values, '%sCPG_Info' % info_opt['prob_name'], 'CPG_Info_t')
 
     f.write('\n// Struct containing solution and info\n')
-    CPG_Result_fields = list(info_usr['v_init'].keys()) + ['info']
-    CPG_Result_values = []
-    for ((name, var), symm, offset) in zip(info_usr['v_init'].items(), info_usr['v_symmetric'],
-                                           info_usr['v_offsets']):
-        if symm or info_opt['solver_name'] == 'ECOS':
-            if np.isscalar(var):
-                CPG_Result_values.append('0')
-            else:
-                CPG_Result_values.append('&' + info_opt['prob_name'] + name)
-        else:
-            if np.isscalar(var):
-                CPG_Result_values.append('0')
-            else:
-                if info_opt['solver_name'] == 'OSQP':
-                    CPG_Result_values.append('&xsolution + %d' % offset)
-                elif info_opt['solver_name'] == 'SCS':
-                    CPG_Result_values.append('&%sscs_x + %d' % (info_opt['prob_name'], offset))
-    CPG_Result_values.append('&%sCPG_Info' % info_opt['prob_name'])
-    write_struct_def(f, CPG_Result_fields, results_cast, CPG_Result_values, '%sCPG_Result'
-                     % info_opt['prob_name'], 'CPG_Result_t')
+    if len(info_usr['d_init']) > 0:
+        CPG_Result_fields = ['prim', 'dual', 'info']
+        result_cast = ['', '', '']
+        CPG_Result_values = ['&%sCPG_Prim' % info_opt['prob_name'], '&%sCPG_Dual' % info_opt['prob_name'],
+                             '&%sCPG_Info' % info_opt['prob_name']]
+    else:
+        CPG_Result_fields = ['prim', 'info']
+        result_cast = ['', '']
+        CPG_Result_values = ['&%sCPG_Prim' % info_opt['prob_name'], '&%sCPG_Info' % info_opt['prob_name']]
+    write_struct_def(f, CPG_Result_fields, result_cast, CPG_Result_values, '%sCPG_Result' % info_opt['prob_name'],
+                     'CPG_Result_t')
 
     if info_opt['solver_name'] == 'SCS':
 
@@ -484,6 +516,27 @@ def write_workspace_prot(f, info_opt, info_usr, info_can):
         f.write('  int        %s    // Bool, if canonical parameter %s outdated\n' % ((p_id + ';').ljust(8), p_id))
     f.write('} Canon_Outdated_t;\n\n')
 
+    f.write('// Primal solution\n')
+    f.write('typedef struct {\n')
+    for name, var in info_usr['v_init'].items():
+        if np.isscalar(var):
+            s = ''
+        else:
+            s = '*'
+        f.write('  c_float    %s   // Your variable %s\n' % ((s + name + ';').ljust(9), name))
+    f.write('} CPG_Prim_t;\n\n')
+
+    if len(info_usr['d_init']) > 0:
+        f.write('// Dual solution\n')
+        f.write('typedef struct {\n')
+        for name, var in info_usr['d_init'].items():
+            if np.isscalar(var):
+                s = ''
+            else:
+                s = '*'
+            f.write('  c_float    %s   // Your dual variable for constraint %s\n' % ((s + name + ';').ljust(9), name))
+        f.write('} CPG_Dual_t;\n\n')
+
     f.write('// Solver information\n')
     f.write('typedef struct {\n')
     f.write('  c_float    obj_val;    // Objective function value\n')
@@ -498,12 +551,9 @@ def write_workspace_prot(f, info_opt, info_usr, info_can):
 
     f.write('// Solution and solver information\n')
     f.write('typedef struct {\n')
-    for name, var in info_usr['v_init'].items():
-        if np.isscalar(var):
-            s = ''
-        else:
-            s = '*'
-        f.write('  c_float    %s   // Your variable %s\n' % ((s+name+';').ljust(9), name))
+    f.write('  CPG_Prim_t *prim;      // Primal solution\n')
+    if len(info_usr['d_init']) > 0:
+        f.write('  CPG_Dual_t *dual;      // Dual solution\n')
     f.write('  CPG_Info_t *info;      // Solver info\n')
     f.write('} CPG_Result_t;\n\n')
 
@@ -547,13 +597,26 @@ def write_workspace_prot(f, info_opt, info_usr, info_can):
     f.write('\n// Struct containing flags for outdated canonical parameters\n')
     f.write('extern Canon_Outdated_t %sCanon_Outdated;\n' % info_opt['prob_name'])
 
-    if any(info_usr['v_symmetric']) or info_opt['solver_name'] == 'ECOS':
+    if any(info_usr['v_sym']) or info_opt['solver_name'] == 'ECOS':
         f.write('\n// User-defined variables\n')
-        for (name, value), symm in zip(info_usr['v_init'].items(), info_usr['v_symmetric']):
-            if symm or info_opt['solver_name'] == 'ECOS':
+        for (name, value), sym in zip(info_usr['v_init'].items(), info_usr['v_sym']):
+            if sym or info_opt['solver_name'] == 'ECOS':
                 if not np.isscalar(value):
                     osqp_utils.write_vec_extern(f, value.flatten(order='F'), info_opt['prob_name']+'cpg_'+name,
                                                 'c_float')
+
+    if info_opt['solver_name'] == 'ECOS':
+        f.write('\n// Dual variables associated with user-defined constraints\n')
+        for name, value in info_usr['d_init'].items():
+            if not np.isscalar(value):
+                osqp_utils.write_vec_extern(f, value.flatten(order='F'), info_opt['prob_name']+'cpg_'+name, 'c_float')
+
+    f.write('\n// Struct containing primal solution\n')
+    write_struct_prot(f, '%sCPG_Prim' % info_opt['prob_name'], 'CPG_Prim_t')
+
+    if len(info_usr['d_init']) > 0:
+        f.write('\n// Struct containing dual solution\n')
+        write_struct_prot(f, '%sCPG_Dual' % info_opt['prob_name'], 'CPG_Dual_t')
 
     f.write('\n// Struct containing solver info\n')
     write_struct_prot(f, '%sCPG_Info' % info_opt['prob_name'], 'CPG_Info_t')
@@ -660,27 +723,40 @@ def write_solve_def(f, info_opt, info_cg, info_usr, info_can):
 
     if info_opt['solver_name'] == 'OSQP':
         obj_str = 'workspace.info->obj_val'
-        sol_str = 'workspace.solution->x'
+        prim_str = 'workspace.solution->x'
+        dual_str = 'workspace.solution->'
     elif info_opt['solver_name'] == 'SCS':
         obj_str = '%sScs_Info.pobj' % info_opt['prob_name']
-        sol_str = '%sscs_x' % info_opt['prob_name']
+        prim_str = '%sscs_x' % info_opt['prob_name']
+        dual_str = '%sscs_' % info_opt['prob_name']
     elif info_opt['solver_name'] == 'ECOS':
         obj_str = '%secos_workspace->info->pcost' % info_opt['prob_name']
-        sol_str = '%secos_workspace->x' % info_opt['prob_name']
+        prim_str = '%secos_workspace->x' % info_opt['prob_name']
+        dual_str = '%secos_workspace->' % info_opt['prob_name']
     else:
         raise ValueError("Only OSQP and ECOS are supported!")
 
-    if info_cg['ret_sol_func_exists']:
-        f.write('// Retrieve solution in terms of user-defined variables\n')
-        f.write('void %scpg_retrieve_solution(){\n' % info_opt['prob_name'])
-        for symm, (var_name, indices) in zip(info_usr['v_symmetric'], info_usr['v_name_to_indices'].items()):
-            if symm or len(indices) == 1 or info_opt['prob_name'] == 'ECOS':
-                if len(indices) == 1:
-                    f.write('  %sCPG_Result.%s = %s[%d];\n' % (info_opt['prob_name'], var_name, sol_str, indices[0]))
-                else:
-                    for i, idx in enumerate(indices):
-                        f.write('  %sCPG_Result.%s[%d] = %s[%d];\n'
-                                % (info_opt['prob_name'], var_name, i, sol_str, idx))
+    if info_cg['ret_prim_func_exists']:
+        f.write('// Retrieve primal solution in terms of user-defined variables\n')
+        f.write('void %scpg_retrieve_prim(){\n' % info_opt['prob_name'])
+        for sym, (var_name, indices) in zip(info_usr['v_sym'], info_usr['v_name_to_indices'].items()):
+            if len(indices) == 1:
+                f.write('  %sCPG_Prim.%s = %s[%d];\n' % (info_opt['prob_name'], var_name, prim_str, indices))
+            elif sym or info_opt['solver_name'] == 'ECOS':
+                for i, idx in enumerate(indices):
+                    f.write('  %sCPG_Prim.%s[%d] = %s[%d];\n' % (info_opt['prob_name'], var_name, i, prim_str, idx))
+        f.write('}\n\n')
+
+    if info_cg['ret_dual_func_exists']:
+        f.write('// Retrieve dual solution in terms of user-defined constraints\n')
+        f.write('void %scpg_retrieve_dual(){\n' % info_opt['prob_name'])
+        for var_name, (vector, indices) in info_usr['d_name_to_indices'].items():
+            if len(indices) == 1:
+                f.write('  %sCPG_Dual.%s = %s%s[%d];\n' % (info_opt['prob_name'], var_name, dual_str, vector, indices))
+            elif info_opt['solver_name'] == 'ECOS':
+                for i, idx in enumerate(indices):
+                    f.write('  %sCPG_Dual.%s[%d] = %s%s[%d];\n'
+                            % (info_opt['prob_name'], var_name, i, dual_str, vector, idx))
         f.write('}\n\n')
 
     f.write('// Retrieve solver info\n')
@@ -820,8 +896,10 @@ def write_solve_def(f, info_opt, info_cg, info_usr, info_can):
         f.write('  %secos_flag = ECOS_solve(%secos_workspace);\n' % (info_opt['prob_name'], info_opt['prob_name']))
 
     f.write('  // Retrieve results\n')
-    if info_cg['ret_sol_func_exists']:
-        f.write('  %scpg_retrieve_solution();\n' % info_opt['prob_name'])
+    if info_cg['ret_prim_func_exists']:
+        f.write('  %scpg_retrieve_prim();\n' % info_opt['prob_name'])
+    if info_cg['ret_dual_func_exists']:
+        f.write('  %scpg_retrieve_dual();\n' % info_opt['prob_name'])
     f.write('  %scpg_retrieve_info();\n' % info_opt['prob_name'])
 
     if info_opt['solver_name'] == 'ECOS':
@@ -876,9 +954,13 @@ def write_solve_prot(f, info_opt, info_cg, info_usr, info_can):
     for p_id in info_can['p'].keys():
         f.write('extern void %scpg_canonicalize_%s();\n' % (info_opt['prob_name'], p_id))
 
-    if info_cg['ret_sol_func_exists']:
-        f.write('\n// Retrieve solution in terms of user-defined variables\n')
-        f.write('extern void %scpg_retrieve_solution();\n' % info_opt['prob_name'])
+    if info_cg['ret_prim_func_exists']:
+        f.write('\n// Retrieve primal solution in terms of user-defined variables\n')
+        f.write('extern void %scpg_retrieve_prim();\n' % info_opt['prob_name'])
+
+    if info_cg['ret_dual_func_exists']:
+        f.write('\n// Retrieve dual solution in terms of user-defined constraints\n')
+        f.write('extern void %scpg_retrieve_dual();\n' % info_opt['prob_name'])
 
     f.write('\n// Retrieve solver information\n')
     f.write('extern void %scpg_retrieve_info();\n' % info_opt['prob_name'])
@@ -912,23 +994,34 @@ def write_example_def(f, info_opt, info_usr):
     f.write('  // Print objective function value\n')
     f.write('  printf("obj = %%f\\n", %sCPG_Result.info->obj_val);\n\n' % info_opt['prob_name'])
 
-    f.write('  // Print solution\n')
+    f.write('  // Print primal solution\n')
 
     if info_opt['solver_name'] == 'OSQP':
         int_format_str = 'lld'
     else:
         int_format_str = 'd'
 
-    for name, size in info_usr['v_name_to_size'].items():
-        if size == 1:
-            f.write('  printf("%s = %%f\\n", %sCPG_Result.%s);\n\n' % (name, info_opt['prob_name'], name))
+    for name, var in info_usr['v_init'].items():
+        if np.isscalar(var):
+            f.write('  printf("%s = %%f\\n", %sCPG_Result.prim->%s);\n' % (name, info_opt['prob_name'], name))
         else:
-            f.write('  for(i=0; i<%d; i++) {\n' % size)
-            f.write('    printf("%s[%%%s] = %%f\\n", i, %sCPG_Result.%s[i]);\n'
+            f.write('  for(i=0; i<%d; i++) {\n' % var.size)
+            f.write('    printf("%s[%%%s] = %%f\\n", i, %sCPG_Result.prim->%s[i]);\n'
                     % (name, int_format_str, info_opt['prob_name'], name))
-            f.write('  }\n\n')
+            f.write('  }\n')
 
-    f.write('  return 0;\n\n')
+    if len(info_usr['d_init']) > 0:
+        f.write('\n  // Print dual solution\n')
+    for name, var in info_usr['d_init'].items():
+        if np.isscalar(var):
+            f.write('  printf("%s = %%f\\n", %sCPG_Result.dual->%s);\n' % (name, info_opt['prob_name'], name))
+        else:
+            f.write('  for(i=0; i<%d; i++) {\n' % var.size)
+            f.write('    printf("%s[%%%s] = %%f\\n", i, %sCPG_Result.dual->%s[i]);\n'
+                    % (name, int_format_str, info_opt['prob_name'], name))
+            f.write('  }\n')
+
+    f.write('\n  return 0;\n\n')
     f.write('}\n')
 
 
@@ -997,20 +1090,37 @@ def write_module_def(f, info_opt, info_usr, info_can):
 
     # arrange and return results
     f.write('    // Arrange and return results\n')
+
+    f.write('    %sCPG_Prim_cpp_t CPG_Prim_cpp {};\n' % info_opt['prob_name'])
+    for name, var in info_usr['v_init'].items():
+        if np.isscalar(var):
+            f.write('    CPG_Prim_cpp.%s = %sCPG_Prim.%s;\n' % (name, info_opt['prob_name'], name))
+        else:
+            f.write('    for(i=0; i<%d; i++) {\n' % var.size)
+            f.write('        CPG_Prim_cpp.%s[i] = %sCPG_Prim.%s[i];\n'
+                    % (name, info_opt['prob_name'], name))
+            f.write('    }\n')
+
+    if len(info_usr['d_init']) > 0:
+        f.write('    %sCPG_Dual_cpp_t CPG_Dual_cpp {};\n' % info_opt['prob_name'])
+        for name, var in info_usr['d_init'].items():
+            if np.isscalar(var):
+                f.write('    CPG_Dual_cpp.%s = %sCPG_Dual.%s;\n' % (name, info_opt['prob_name'], name))
+            else:
+                f.write('    for(i=0; i<%d; i++) {\n' % var.size)
+                f.write('        CPG_Dual_cpp.%s[i] = %sCPG_Dual.%s[i];\n' % (name, info_opt['prob_name'], name))
+                f.write('    }\n')
+
     f.write('    %sCPG_Info_cpp_t CPG_Info_cpp {};\n' % info_opt['prob_name'])
     for field in ['obj_val', 'iter', 'status', 'pri_res', 'dua_res']:
         f.write('    CPG_Info_cpp.%s = %sCPG_Info.%s;\n' % (field, info_opt['prob_name'], field))
     f.write('    CPG_Info_cpp.time = 1.0*(ASA_end-ASA_start) / CLOCKS_PER_SEC;\n')
 
     f.write('    %sCPG_Result_cpp_t CPG_Result_cpp {};\n' % info_opt['prob_name'])
+    f.write('    CPG_Result_cpp.prim = CPG_Prim_cpp;\n')
+    if len(info_usr['d_init']) > 0:
+        f.write('    CPG_Result_cpp.dual = CPG_Dual_cpp;\n')
     f.write('    CPG_Result_cpp.info = CPG_Info_cpp;\n')
-    for name, size in info_usr['v_name_to_size'].items():
-        if size == 1:
-            f.write('    CPG_Result_cpp.%s = %sCPG_Result.%s;\n' % (name, info_opt['prob_name'], name))
-        else:
-            f.write('    for(i=0; i<%d; i++) {\n' % size)
-            f.write('        CPG_Result_cpp.%s[i] = %sCPG_Result.%s[i];\n' % (name, info_opt['prob_name'], name))
-            f.write('    }\n')
 
     # return
     f.write('    return CPG_Result_cpp;\n\n')
@@ -1032,6 +1142,19 @@ def write_module_def(f, info_opt, info_usr, info_can):
         f.write('            .def_readwrite("%s", &%sCPG_Updated_cpp_t::%s)\n' % (name, info_opt['prob_name'], name))
     f.write('            ;\n\n')
 
+    f.write('    py::class_<%sCPG_Prim_cpp_t>(m, "%scpg_prim")\n' % (info_opt['prob_name'], info_opt['prob_name']))
+    f.write('            .def(py::init<>())\n')
+    for name in info_usr['v_init'].keys():
+        f.write('            .def_readwrite("%s", &%sCPG_Prim_cpp_t::%s)\n' % (name, info_opt['prob_name'], name))
+    f.write('            ;\n\n')
+
+    if len(info_usr['d_init']) > 0:
+        f.write('    py::class_<%sCPG_Dual_cpp_t>(m, "%scpg_dual")\n' % (info_opt['prob_name'], info_opt['prob_name']))
+        f.write('            .def(py::init<>())\n')
+        for name in info_usr['d_init'].keys():
+            f.write('            .def_readwrite("%s", &%sCPG_Dual_cpp_t::%s)\n' % (name, info_opt['prob_name'], name))
+        f.write('            ;\n\n')
+
     f.write('    py::class_<%sCPG_Info_cpp_t>(m, "%scpg_info")\n' % (info_opt['prob_name'], info_opt['prob_name']))
     f.write('            .def(py::init<>())\n')
     f.write('            .def_readwrite("obj_val", &%sCPG_Info_cpp_t::obj_val)\n' % info_opt['prob_name'])
@@ -1044,9 +1167,10 @@ def write_module_def(f, info_opt, info_usr, info_can):
 
     f.write('    py::class_<%sCPG_Result_cpp_t>(m, "%scpg_result")\n' % (info_opt['prob_name'], info_opt['prob_name']))
     f.write('            .def(py::init<>())\n')
+    f.write('            .def_readwrite("cpg_prim", &%sCPG_Result_cpp_t::prim)\n' % info_opt['prob_name'])
+    if len(info_usr['d_init']) > 0:
+        f.write('            .def_readwrite("cpg_dual", &%sCPG_Result_cpp_t::dual)\n' % info_opt['prob_name'])
     f.write('            .def_readwrite("cpg_info", &%sCPG_Result_cpp_t::info)\n' % info_opt['prob_name'])
-    for name in info_usr['v_name_to_size'].keys():
-        f.write('            .def_readwrite("%s", &%sCPG_Result_cpp_t::%s)\n' % (name, info_opt['prob_name'], name))
     f.write('            ;\n\n')
 
     f.write('    m.def("solve", &%ssolve_cpp);\n\n' % info_opt['prob_name'])
@@ -1080,6 +1204,27 @@ def write_module_prot(f, info_opt, info_usr):
         f.write('    bool %s;\n' % name)
     f.write('};\n\n')
 
+    # cpp struct containing primal variables
+    f.write('// Primal solution\n')
+    f.write('struct %sCPG_Prim_cpp_t {\n' % info_opt['prob_name'])
+    for name, var in info_usr['v_init'].items():
+        if np.isscalar(var):
+            f.write('    double %s;\n' % name)
+        else:
+            f.write('    std::array<double, %d> %s;\n' % (var.size, name))
+    f.write('};\n\n')
+
+    # cpp struct containing dual variables
+    if len(info_usr['d_init']) > 0:
+        f.write('// Dual solution\n')
+        f.write('struct %sCPG_Dual_cpp_t {\n' % info_opt['prob_name'])
+        for name, var in info_usr['d_init'].items():
+            if np.isscalar(var):
+                f.write('    double %s;\n' % name)
+            else:
+                f.write('    std::array<double, %d> %s;\n' % (var.size, name))
+        f.write('};\n\n')
+
     # cpp struct containing info on results
     f.write('// Solver information\n')
     f.write('struct %sCPG_Info_cpp_t {\n' % info_opt['prob_name'])
@@ -1097,12 +1242,10 @@ def write_module_prot(f, info_opt, info_usr):
     # cpp struct containing objective value and user-defined variables
     f.write('// Solution and solver information\n')
     f.write('struct %sCPG_Result_cpp_t {\n' % info_opt['prob_name'])
+    f.write('    %sCPG_Prim_cpp_t prim;\n' % info_opt['prob_name'])
+    if len(info_usr['d_init']) > 0:
+        f.write('    %sCPG_Dual_cpp_t dual;\n' % info_opt['prob_name'])
     f.write('    %sCPG_Info_cpp_t info;\n' % info_opt['prob_name'])
-    for name, size in info_usr['v_name_to_size'].items():
-        if size == 1:
-            f.write('    double %s;\n' % name)
-        else:
-            f.write('    std::array<double, %d> %s;\n' % (size, name))
     f.write('};\n\n')
 
     # cpp function that maps parameters to results
@@ -1196,10 +1339,16 @@ def write_method(f, info_opt, info_usr):
     f.write('    prob._clear_solution()\n')
     for name, shape in info_usr['v_name_to_shape'].items():
         if len(shape) == 2:
-            f.write('    prob.var_dict[\'%s\'].value = np.array(res.%s).reshape((%d, %d), order=\'F\')\n' %
+            f.write('    prob.var_dict[\'%s\'].value = np.array(res.cpg_prim.%s).reshape((%d, %d), order=\'F\')\n' %
                     (name, name, shape[0], shape[1]))
         else:
-            f.write('    prob.var_dict[\'%s\'].value = np.array(res.%s)\n' % (name, name))
+            f.write('    prob.var_dict[\'%s\'].value = np.array(res.cpg_prim.%s)\n' % (name, name))
+    for i, (name, shape) in enumerate(info_usr['d_name_to_shape'].items()):
+        if len(shape) == 2:
+            f.write('    prob.constraints[%d].save_dual_value('
+                    'np.array(res.cpg_dual.%s).reshape((%d, %d), order=\'F\'))\n' % (i, name, shape[0], shape[1]))
+        else:
+            f.write('    prob.constraints[%d].save_dual_value(np.array(res.cpg_dual.%s))\n' % (i, name))
 
     f.write('\n    # store additional solver information in problem object\n')
     if info_opt['solver_name'] in ['OSQP', 'SCS']:
@@ -1211,7 +1360,7 @@ def write_method(f, info_opt, info_usr):
     f.write('    else:\n')
     f.write('        prob._value = res.cpg_info.obj_val\n')
     f.write('    primal_vars = {var.id: var.value for var in prob.variables()}\n')
-    f.write('    dual_vars = {}\n')
+    f.write('    dual_vars = {c.id: c.dual_value for c in prob.constraints}\n')
     f.write('    solver_specific_stats = {\'obj_val\': res.cpg_info.obj_val,\n')
     f.write('                             \'status\': prob._status,\n')
     f.write('                             \'iter\': res.cpg_info.iter,\n')
@@ -1250,8 +1399,36 @@ def replace_html_data(text, info_opt, info_usr):
     # CMake prefix
     text = text.replace('$CPGCMAKELISTS', info_opt['prob_name']+'cpg')
 
+    # type definition of CPG_Prim_t
+    CPGPRIMTYPEDEF = '\n// Struct type with primal solution\n'
+    CPGPRIMTYPEDEF += 'typedef struct {\n'
+    for name, var in info_usr['v_init'].items():
+        if np.isscalar(var):
+            s = ''
+        else:
+            s = '*'
+        CPGPRIMTYPEDEF += ('  c_float    %s   // Your variable %s\n' % ((s + name + ';').ljust(9), name))
+    CPGPRIMTYPEDEF += '} CPG_Prim_t;\n'
+    text = text.replace('$CPGPRIMTYPEDEF', CPGPRIMTYPEDEF)
+
+    # type definition of CPG_Dual_t
+    if len(info_usr['d_init']) > 0:
+        CPGDUALTYPEDEF = '\n// Struct type with dual solution\n'
+        CPGDUALTYPEDEF += 'typedef struct {\n'
+        for name, var in info_usr['d_init'].items():
+            if np.isscalar(var):
+                s = ''
+            else:
+                s = '*'
+            CPGDUALTYPEDEF += ('  c_float    %s   // Your dual variable for constraint %s\n'
+                               % ((s + name + ';').ljust(9), name))
+        CPGDUALTYPEDEF += '} CPG_Dual_t;\n\n'
+    else:
+        CPGDUALTYPEDEF = ''
+    text = text.replace('$CPGDUALTYPEDEF', CPGDUALTYPEDEF)
+
     # type definition of CPG_Info_t
-    CPGINFOTYPEDEF = '\n// Solver information\n'
+    CPGINFOTYPEDEF = '// Struct type with canonical solver information\n'
     CPGINFOTYPEDEF += 'typedef struct {\n'
     CPGINFOTYPEDEF += '  c_float    obj_val;    // Objective function value\n'
     CPGINFOTYPEDEF += '  c_int      iter;       // Number of iterations\n'
@@ -1267,12 +1444,9 @@ def replace_html_data(text, info_opt, info_usr):
     # type definition of CPG_Result_t
     CPGRESULTTYPEDEF = '\n// Struct type with user-defined objective value and solution as fields\n'
     CPGRESULTTYPEDEF += 'typedef struct {\n'
-    for name, size in info_usr['v_name_to_size'].items():
-        if size == 1:
-            s = ''
-        else:
-            s = '*'
-        CPGRESULTTYPEDEF += ('  c_float    %s   // Your variable %s\n' % ((s + name + ';').ljust(9), name))
+    CPGRESULTTYPEDEF += '  CPG_Prim_t *prim;      // Primal solution\n'
+    if len(info_usr['d_init']) > 0:
+        CPGRESULTTYPEDEF += '  CPG_Dual_t *dual;      // Dual solution\n'
     CPGRESULTTYPEDEF += '  CPG_Info_t *info;      // Solver information\n'
     CPGRESULTTYPEDEF += '} CPG_Result_t;\n'
     text = text.replace('$CPGRESULTTYPEDEF', CPGRESULTTYPEDEF)
