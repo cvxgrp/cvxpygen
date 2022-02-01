@@ -85,9 +85,11 @@ def generate_code(problem, code_dir='CPG_code', solver=None, explicit=False, pro
     var_names = [var.name() for var in variables]
     var_ids = [var.id for var in variables]
     var_offsets = [inverse_data[-2].var_offsets[var_id] for var_id in var_ids]
+    var_name_to_offset = {n: o for n, o in zip(var_names, var_offsets)}
     var_shapes = [var.shape for var in variables]
     var_sizes = [var.size for var in variables]
     var_sym = [var.attributes['symmetric'] or var.attributes['PSD'] or var.attributes['NSD'] for var in variables]
+    var_name_to_sym = {n: s for n, s in zip(var_names, var_sym)}
     var_name_to_indices = {}
     for var_name, offset, shape, sym in zip(var_names, var_offsets, var_shapes, var_sym):
         if sym:
@@ -97,12 +99,12 @@ def generate_code(problem, code_dir='CPG_code', solver=None, explicit=False, pro
         else:
             var_name_to_indices[var_name] = np.arange(offset, offset+np.prod(shape))
     var_name_to_shape = {var.name(): var.shape for var in variables}
-    var_init = dict()
+    var_name_to_init = dict()
     for var in variables:
         if len(var.shape) == 0:
-            var_init[var.name()] = 0
+            var_name_to_init[var.name()] = 0
         else:
-            var_init[var.name()] = np.zeros(shape=var.shape)
+            var_name_to_init[var.name()] = np.zeros(shape=var.shape)
 
     # dual variable information
     # get chain of constraint id maps for 'CvxAttr2Constr' and 'Canonicalization' objects
@@ -147,13 +149,16 @@ def generate_code(problem, code_dir='CPG_code', solver=None, explicit=False, pro
     d_name_to_shape = {n: d_shapes[i] for i, n in d_i_to_name.items()}
     d_name_to_indices = {n: (v, o + np.arange(np.prod(d_name_to_shape[n])))
                          for n, v, o in zip(d_names, d_vectors, d_offsets)}
+    d_name_to_vec = {n: v for n, v in zip(d_names, d_vectors)}
+    d_name_to_offset = {n: o for n, o in zip(d_names, d_offsets)}
+    d_name_to_size = {n: s for n, s in zip(d_names, d_sizes)}
     # initialize values to zero
-    d_init = dict()
+    d_name_to_init = dict()
     for name, shape in d_name_to_shape.items():
         if len(shape) == 0:
-            d_init[name] = 0
+            d_name_to_init[name] = 0
         else:
-            d_init[name] = np.zeros(shape=shape)
+            d_name_to_init[name] = np.zeros(shape=shape)
 
     # user parameters
     user_p_num = len(p_prob.parameters)
@@ -163,7 +168,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, explicit=False, pro
     user_p_id_to_size = p_prob.param_id_to_size
     user_p_id_to_param = p_prob.id_to_param
     user_p_total_size = p_prob.total_param_size
-    user_p_name_to_size_usp = {name: size for name, size in zip(user_p_names, user_p_id_to_size.values())}
+    user_p_name_to_size_usp = {user_p_id_to_param[p_id].name(): size for p_id, size in user_p_id_to_size.items()}
     user_p_name_to_sparsity = {}
     user_p_name_to_sparsity_type = {}
     user_p_sparsity_mask = np.ones(user_p_total_size + 1, dtype=bool)
@@ -208,9 +213,9 @@ def generate_code(problem, code_dir='CPG_code', solver=None, explicit=False, pro
     user_p_flat = cI.get_parameter_vector(user_p_total_size, user_p_id_to_col, user_p_id_to_size, user_p_value)
     user_p_flat_usp = user_p_flat[user_p_sparsity_mask]
 
-    canon_mappings = []
     canon_p = {}
     canon_p_csc = {}
+    canon_p_id_to_mapping = {}
     canon_p_id_to_changes = {}
     canon_p_id_to_size = {}
     nonzero_d = True
@@ -396,7 +401,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, explicit=False, pro
             else:
                 canon_p[p_id] = canon_p_data
 
-        canon_mappings.append(mapping.tocsr())
+        canon_p_id_to_mapping[p_id] = mapping.tocsr()
         canon_p_id_to_changes[p_id] = mapping[:, :-1].nnz > 0
         canon_p_id_to_size[p_id] = mapping.shape[0]
 
@@ -582,20 +587,20 @@ def generate_code(problem, code_dir='CPG_code', solver=None, explicit=False, pro
                 'p_name_to_sparsity_type': user_p_name_to_sparsity_type,
                 'v_name_to_indices': var_name_to_indices,
                 'v_name_to_shape': var_name_to_shape,
-                'v_init': var_init,
-                'v_sym': var_sym,
-                'v_offsets': var_offsets,
-                'd_init': d_init,
-                'd_vectors': d_vectors,
-                'd_offsets': d_offsets,
-                'd_sizes': d_sizes,
+                'v_name_to_init': var_name_to_init,
+                'v_name_to_sym': var_name_to_sym,
+                'v_name_to_offset': var_name_to_offset,
+                'd_name_to_init': d_name_to_init,
+                'd_name_to_vec': d_name_to_vec,
+                'd_name_to_offset': d_name_to_offset,
+                'd_name_to_size': d_name_to_size,
                 'd_name_to_shape': d_name_to_shape,
                 'd_name_to_indices': d_name_to_indices}
 
     info_can = {'p': canon_p,
                 'p_id_to_size': canon_p_id_to_size,
                 'p_id_to_changes': canon_p_id_to_changes,
-                'mappings': canon_mappings,
+                'p_id_to_mapping': canon_p_id_to_mapping,
                 'constants': canon_constants,
                 'settings_names_to_type': settings_names_to_type,
                 'settings_names_to_default': settings_names_to_default}
