@@ -76,7 +76,7 @@ N_RAND = 3
 
 name_solver_style_seed = [['ADP'],
                           ['SCS', 'ECOS'],
-                          ['explicit', 'implicit'],
+                          ['unroll', 'loops'],
                           list(np.arange(N_RAND))]
 
 name_to_prob = {'ADP': ADP_problem()}
@@ -88,14 +88,14 @@ def test(name, solver, style, seed):
     prob = name_to_prob[name]
 
     if seed == 0:
-        if style == 'explicit':
-            cpg.generate_code(prob, code_dir='test_%s_%s_explicit' % (name, solver), solver=solver, explicit=True,
-                              problem_name='%s_%s_ex' % (name, solver))
-            assert len(glob.glob(os.path.join('test_%s_%s_explicit' % (name, solver), 'cpg_module.*'))) > 0
-        if style == 'implicit':
-            cpg.generate_code(prob, code_dir='test_%s_%s_implicit' % (name, solver), solver=solver, explicit=False,
-                              problem_name='%s_%s_im' % (name, solver))
-            assert len(glob.glob(os.path.join('test_%s_%s_implicit' % (name, solver), 'cpg_module.*'))) > 0
+        if style == 'unroll':
+            cpg.generate_code(prob, code_dir='test_%s_%s_unroll' % (name, solver), solver=solver, unroll=True,
+                              prefix='%s_%s_ex' % (name, solver))
+            assert len(glob.glob(os.path.join('test_%s_%s_unroll' % (name, solver), 'cpg_module.*'))) > 0
+        if style == 'loops':
+            cpg.generate_code(prob, code_dir='test_%s_%s_loops' % (name, solver), solver=solver, unroll=False,
+                              prefix='%s_%s_im' % (name, solver))
+            assert len(glob.glob(os.path.join('test_%s_%s_loops' % (name, solver), 'cpg_module.*'))) > 0
 
     with open('test_%s_%s_%s/problem.pickle' % (name, solver, style), 'rb') as f:
         prob = pickle.load(f)

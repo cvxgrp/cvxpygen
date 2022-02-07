@@ -18,7 +18,7 @@ from cvxpy.reductions.solvers.conic_solvers.scs_conif import SCS
 from cvxpy.reductions.solvers.conic_solvers.ecos_conif import ECOS
 
 
-def generate_code(problem, code_dir='CPG_code', solver=None, explicit=False, problem_name='', compile_module=True):
+def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefix='', wrapper=True):
     """
     Generate C code for CVXPY problem and (optionally) python wrapper
     """
@@ -29,10 +29,10 @@ def generate_code(problem, code_dir='CPG_code', solver=None, explicit=False, pro
     solver_code_dir = os.path.join(code_dir, 'c', 'solver_code')
 
     # adjust problem_name
-    if problem_name != '':
-        if not problem_name[0].isalpha():
-            problem_name = '_' + problem_name
-        problem_name = problem_name + '_'
+    if prefix != '':
+        if not prefix[0].isalpha():
+            prefix = '_' + prefix
+        prefix = prefix + '_'
 
     # copy TEMPLATE
     if os.path.isdir(code_dir):
@@ -570,8 +570,8 @@ def generate_code(problem, code_dir='CPG_code', solver=None, explicit=False, pro
 
     info_opt = {'code_dir': code_dir,
                 'solver_name': solver_name,
-                'explicit': explicit,
-                'prob_name': problem_name}
+                'unroll': unroll,
+                'prefix': prefix}
 
     info_cg = {'ret_prim_func_exists': ret_prim_func_exists,
                'ret_dual_func_exists': ret_dual_func_exists,
@@ -662,7 +662,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, explicit=False, pro
     sys.stdout.write('CVXPYGEN finished generating code.\n')
 
     # compile python module
-    if compile_module:
+    if wrapper:
         sys.stdout.write('Compiling python wrapper with CVXPYGEN ... \n')
         p_dir = os.getcwd()
         os.chdir(code_dir)
