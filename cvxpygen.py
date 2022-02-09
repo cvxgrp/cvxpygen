@@ -34,10 +34,19 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
             prefix = '_' + prefix
         prefix = prefix + '_'
 
-    # copy TEMPLATE
+    # create code directory and copy template files
     if os.path.isdir(code_dir):
         shutil.rmtree(code_dir)
-    shutil.copytree(os.path.join(current_directory, 'TEMPLATE'), code_dir)
+    os.mkdir(code_dir)
+    os.mkdir(os.path.join(code_dir, 'c'))
+    for d in ['src', 'include', 'build']:
+        os.mkdir(os.path.join(code_dir, 'c', d))
+    os.mkdir(os.path.join(code_dir, 'cpp'))
+    for d in ['src', 'include']:
+        os.mkdir(os.path.join(code_dir, 'cpp', d))
+    shutil.copy(os.path.join(current_directory, 'template', 'CMakeLists.txt'), os.path.join(code_dir, 'c'))
+    shutil.copy(os.path.join(current_directory, 'template', 'setup.py'), code_dir)
+    shutil.copy(os.path.join(current_directory, 'template', 'README.html'), code_dir)
 
     # problem data
     data, solving_chain, inverse_data = problem.get_problem_data(solver=solver, gp=False, enforce_dpp=True,
@@ -606,23 +615,23 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
                 'settings_names_to_default': settings_names_to_default}
 
     # 'workspace' prototypes
-    with open(os.path.join(code_dir, 'c', 'include', 'cpg_workspace.h'), 'a') as f:
+    with open(os.path.join(code_dir, 'c', 'include', 'cpg_workspace.h'), 'w') as f:
         utils.write_workspace_prot(f, info_opt, info_usr, info_can)
 
     # 'workspace' definitions
-    with open(os.path.join(code_dir, 'c', 'src', 'cpg_workspace.c'), 'a') as f:
+    with open(os.path.join(code_dir, 'c', 'src', 'cpg_workspace.c'), 'w') as f:
         utils.write_workspace_def(f, info_opt, info_usr, info_can)
 
     # 'solve' prototypes
-    with open(os.path.join(code_dir, 'c', 'include', 'cpg_solve.h'), 'a') as f:
+    with open(os.path.join(code_dir, 'c', 'include', 'cpg_solve.h'), 'w') as f:
         utils.write_solve_prot(f, info_opt, info_cg, info_usr, info_can)
 
     # 'solve' definitions
-    with open(os.path.join(code_dir, 'c', 'src', 'cpg_solve.c'), 'a') as f:
+    with open(os.path.join(code_dir, 'c', 'src', 'cpg_solve.c'), 'w') as f:
         utils.write_solve_def(f, info_opt, info_cg, info_usr, info_can)
 
     # 'example' definitions
-    with open(os.path.join(code_dir, 'c', 'src', 'cpg_example.c'), 'a') as f:
+    with open(os.path.join(code_dir, 'c', 'src', 'cpg_example.c'), 'w') as f:
         utils.write_example_def(f, info_opt, info_usr)
 
     # adapt top-level CMakeLists.txt
@@ -637,15 +646,22 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
         utils.write_canon_cmake(f, info_opt)
 
     # binding module prototypes
-    with open(os.path.join(code_dir, 'cpp', 'include', 'cpg_module.hpp'), 'a') as f:
+    with open(os.path.join(code_dir, 'cpp', 'include', 'cpg_module.hpp'), 'w') as f:
         utils.write_module_prot(f, info_opt, info_usr)
 
     # binding module definition
-    with open(os.path.join(code_dir, 'cpp', 'src', 'cpg_module.cpp'), 'a') as f:
+    with open(os.path.join(code_dir, 'cpp', 'src', 'cpg_module.cpp'), 'w') as f:
         utils.write_module_def(f, info_opt, info_usr, info_can)
 
+    # adapt setup.py
+    with open(os.path.join(code_dir, 'setup.py'), 'r') as f:
+        setup_data = f.read()
+    setup_data = utils.replace_setup_data(setup_data)
+    with open(os.path.join(code_dir, 'setup.py'), 'w') as f:
+        f.write(setup_data)
+
     # custom CVXPY solve method
-    with open(os.path.join(code_dir, 'cpg_solver.py'), 'a') as f:
+    with open(os.path.join(code_dir, 'cpg_solver.py'), 'w') as f:
         utils.write_method(f, info_opt, info_usr)
 
     # serialize problem formulation
