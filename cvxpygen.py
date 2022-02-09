@@ -107,6 +107,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
             var_name_to_indices[var_name] = offset + col
         else:
             var_name_to_indices[var_name] = np.arange(offset, offset+np.prod(shape))
+    var_name_to_size = {var.name(): var.size for var in variables}
     var_name_to_shape = {var.name(): var.shape for var in variables}
     var_name_to_init = dict()
     for var in variables:
@@ -177,6 +178,8 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
     user_p_id_to_size = p_prob.param_id_to_size
     user_p_id_to_param = p_prob.id_to_param
     user_p_total_size = p_prob.total_param_size
+    user_p_name_to_shape = {user_p_id_to_param[p_id].name(): user_p_id_to_param[p_id].shape
+                            for p_id in user_p_id_to_size.keys()}
     user_p_name_to_size_usp = {user_p_id_to_param[p_id].name(): size for p_id, size in user_p_id_to_size.items()}
     user_p_name_to_sparsity = {}
     user_p_name_to_sparsity_type = {}
@@ -590,11 +593,13 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
     info_usr = {'p_writable': user_p_writable,
                 'p_flat_usp': user_p_flat_usp,
                 'p_col_to_name_usp': user_p_col_to_name_usp,
+                'p_name_to_shape': user_p_name_to_shape,
                 'p_name_to_size_usp': user_p_name_to_size_usp,
                 'p_name_to_canon_outdated': user_p_name_to_canon_outdated,
                 'p_name_to_sparsity': user_p_name_to_sparsity,
                 'p_name_to_sparsity_type': user_p_name_to_sparsity_type,
                 'v_name_to_indices': var_name_to_indices,
+                'v_name_to_size': var_name_to_size,
                 'v_name_to_shape': var_name_to_shape,
                 'v_name_to_init': var_name_to_init,
                 'v_name_to_sym': var_name_to_sym,

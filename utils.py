@@ -58,11 +58,31 @@ def csc_to_dict(m):
 
 
 def param_is_empty(param):
+    """
+    Check if parameter is empty
+    """
 
     if type(param) == dict:
         return param['x'].size == 0
     else:
         return param.size == 0
+
+
+def write_problem_summary(name_to_shape, name_to_size):
+    """
+    Create html code for param / variables table entries
+    """
+
+    string = ''
+    for n, sh in name_to_shape.items():
+        if sh == ():
+            shape_str = '1'
+        elif len(sh) == 1:
+            shape_str = str(sh[0])
+        else:
+            shape_str = '%d by %d (%d)' % (sh[0], sh[1], name_to_size[n])
+        string += '      <tr>\n        <td><code>%s</code></td>\n        <td>%s</td>\n      </tr>\n' % (n, shape_str)
+    return string
 
 
 def write_canonicalize_explicit(f, p_id, s, mapping, user_p_col_to_name_usp, user_p_name_to_size_usp, prob_name):
@@ -1452,7 +1472,16 @@ def replace_html_data(text, info_opt, info_usr):
 
     # description
     now = datetime.now()
-    text = text.replace('%DATE', now.strftime("on %B %d, %Y at %H:%M:%S"))
+    text = text.replace('$DATE', now.strftime("on %B %d, %Y at %H:%M:%S"))
+
+    # param summary
+    text = text.replace('$PARAMS', write_problem_summary(info_usr['p_name_to_shape'], info_usr['p_name_to_size_usp']))
+
+    # primal variable summary
+    text = text.replace('$PRIMALS', write_problem_summary(info_usr['v_name_to_shape'], info_usr['v_name_to_size']))
+
+    # dual variable summary
+    text = text.replace('$DUALS', write_problem_summary(info_usr['d_name_to_shape'], info_usr['d_name_to_size']))
 
     # code_dir
     text = text.replace('$CODEDIR', info_opt['code_dir'])
