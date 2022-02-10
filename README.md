@@ -157,19 +157,28 @@ For example, the `(i, j)`-th entry of the original matrix with height `h` will b
 For sparse *parameters*, i.e. matrices, the `k`-th entry of the C array is the `k`-th nonzero entry encountered when proceeding
 through the parameter column by column.
 
-If you wish to compile the example executable on a Unix platform, please run the following commands in your terminal.
+Before compiling the example executable, remember to activate the `cpg_env` environment.
+
+```
+conda activate cpg_env
+```
+
+On Unix platforms, run the following commands in your terminal to compile and run the program:
 
 ```bash
 cd nonneg_LS/c/build
 cmake ..
 cmake --build . --target cpg_example
+./cpg_example
 ```
 
-To run the compiled program, type
+On Windows, type:
 
 ```bash
-cd nonneg_LS/c/build
-./cpg_example
+cd nonneg_LS\c\build
+cmake ..
+cmake --build . --target cpg_example --config release
+Release\cpg_example
 ```
 
 
