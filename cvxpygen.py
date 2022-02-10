@@ -23,7 +23,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
     Generate C code for CVXPY problem and (optionally) python wrapper
     """
 
-    sys.stdout.write('Generating code with CVXPYGEN ...\n')
+    sys.stdout.write('Generating code with CVXPYgen ...\n')
 
     current_directory = os.path.dirname(os.path.realpath(__file__))
     solver_code_dir = os.path.join(code_dir, 'c', 'solver_code')
@@ -680,13 +680,13 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
     with open(os.path.join(code_dir, 'README.html'), 'w') as f:
         f.write(html_data)
 
-    sys.stdout.write('CVXPYGEN finished generating code.\n')
+    sys.stdout.write('CVXPYgen finished generating code.\n')
 
     # compile python module
     if wrapper:
-        sys.stdout.write('Compiling python wrapper with CVXPYGEN ... \n')
+        sys.stdout.write('Compiling python wrapper with CVXPYgen ... \n')
         p_dir = os.getcwd()
         os.chdir(code_dir)
         call([sys.executable, 'setup.py', '--quiet', 'build_ext', '--inplace'])
         os.chdir(p_dir)
-        sys.stdout.write("CVXPYGEN finished compiling python wrapper.\n")
+        sys.stdout.write("CVXPYgen finished compiling python wrapper.\n")

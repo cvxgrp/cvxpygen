@@ -1,18 +1,18 @@
 
-# CVXPYGEN - Code Generation with CVXPY!
+# CVXPYgen- Code Generation with CVXPY!
 
-CVXPYGEN takes a convex optimization problem family modeled with CVXPY and generates a corresponding solver in C.
+CVXPYgen takes a convex optimization problem family modeled with CVXPY and generates a corresponding solver in C.
 This custom solver is specific to the problem family and accepts different parameter values.
 In particular, this solver is suitable for deployment on embedded systems.
 
-CVXPYGEN accepts CVXPY problems that are compliant with [Disciplined Convex Programming (DCP)](https://www.cvxpy.org/tutorial/dcp/index.html).
+CVXPYgen accepts CVXPY problems that are compliant with [Disciplined Convex Programming (DCP)](https://www.cvxpy.org/tutorial/dcp/index.html).
 DCP is a system for constructing mathematical expressions with known curvature from a given library of base functions. 
 CVXPY uses DCP to ensure that the specified optimization problems are convex.
 In addition, problems need to be modeled according to [Disciplined Parametrized Programming (DPP)](https://www.cvxpy.org/tutorial/advanced/index.html#disciplined-parametrized-programming).
 Solving a DPP-compliant problem repeatedly for different values of the parameters can be much faster than repeatedly solving a new problem.
 
-For now, CVXPYGEN is a separate module, until it will be integrated into CVXPY.
-As of today, CVXPYGEN works with linear, quadratic, and second-order cone programs.
+For now, CVXPYgen is a separate module, until it will be integrated into CVXPY.
+As of today, CVXPYgen works with linear, quadratic, and second-order cone programs.
 
 **Important: When generating code with the ECOS solver, the generated code is licensed 
 under the [GNU General Public License v3.0](https://github.com/embotech/ecos/blob/develop/COPYING).**
@@ -23,7 +23,7 @@ under the [GNU General Public License v3.0](https://github.com/embotech/ecos/blo
     ```
     git clone git@github.com:cvxgrp/codegen.git
     ```
-   or via HTTPS.
+   or via HTTPS,
     ```
     git clone https://github.com/cvxgrp/codegen.git
     ```
@@ -34,12 +34,11 @@ under the [GNU General Public License v3.0](https://github.com/embotech/ecos/blo
     ```
 
 
-2. Install [conda](https://docs.conda.io/en/latest/) and create the ``cpg_env`` environment via,
+2. Install [conda](https://docs.conda.io/en/latest/), create and activate the ``cpg_env`` environment.
     ```
     conda env create -f environment.yml
     conda activate cpg_env
     ```
-    and make sure to use the python interpreter of this environment.
    
 3. Install the [GCC compiler](https://gcc.gnu.org) (on Windows, install
 ``mingw32-gcc-g++`` and ``mingw32-make`` via the [MinGW](https://sourceforge.net/projects/mingw/) Installation Manager).
