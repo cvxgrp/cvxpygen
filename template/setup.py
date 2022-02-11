@@ -30,9 +30,23 @@ class get_pybind_include(object):
 # Add parameters to cmake_args and define_macros
 cmake_args = ['-DCMAKE_POSITION_INDEPENDENT_CODE=ON', '-Wno-dev']
 if system() == 'Windows':
-    cmake_args += ['-G', 'Visual Studio 15 2017']
+    # try to find installation of Visual Studio and set as CMake generator, otherwise let CMake choose default generator
+    vs_versions = []
+    vswhere_exe = 'C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe'
+    if os.path.isfile(vswhere_exe):
+        out = check_output(vswhere_exe)
+        out = out.decode('utf-8')
+        out = out.splitlines()
+        for line in out:
+            if 'installationName: VisualStudio' in line:
+                line_split = line.split('/')
+                vs_versions.append(int(line_split[1][:2]))
+    if len(vs_versions) > 0:
+        cmake_args += ['-G', 'Visual Studio %d' % max(vs_versions)]
     if sys.maxsize // 2 ** 32 > 0:
-        cmake_args[-1] += ' Win64'
+        cmake_args += ['-A', 'x64']
+    else:
+        cmake_args += ['-A', 'x86']
     cmake_build_flags = ['--config', 'Release']
     extra_compile_args = []
     lib_subdir = ['Release']

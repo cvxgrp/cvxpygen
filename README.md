@@ -40,10 +40,12 @@ under the [GNU General Public License v3.0](https://github.com/embotech/ecos/blo
     conda activate cpg_env
     ```
    
-3. Install the [GCC compiler](https://gcc.gnu.org) (on Windows, install
-``mingw32-gcc-g++`` and ``mingw32-make`` via the [MinGW](https://sourceforge.net/projects/mingw/) Installation Manager).
-On Windows, you need to install also [Visual Studio 2017 Build Tools](https://download.visualstudio.microsoft.com/download/pr/3e542575-929e-4297-b6c6-bef34d0ee648/639c868e1219c651793aff537a1d3b77/vs_buildtools.exe).
+
+3. On Unix, install the [GCC compiler](https://gcc.gnu.org).
+   On Windows, install [Microsoft Visual Studio](https://visualstudio.microsoft.com/downloads/) with the 'Desktop development with C++' workload.
+   CVXPYgen is tested with Visual Studio 2019 and 2022, older versions might work as well.
    
+
 4. *Optional:* If you wish to use the example notebooks located in ``examples/``, register a new kernel spec with Jupyter.
     ```
    conda activate cpg_env
@@ -180,7 +182,6 @@ cmake ..
 cmake --build . --target cpg_example --config release
 Release\cpg_example
 ```
-
 
 ## Tests
 
