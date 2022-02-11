@@ -1,5 +1,5 @@
 
-# CVXPYgen - Code generation with CVXPY!
+# CVXPYgen - Code generation with CVXPY
 
 CVXPYgen takes a convex optimization problem family modeled with CVXPY and generates a corresponding solver in C.
 This custom solver is specific to the problem family and accepts different parameter values.
