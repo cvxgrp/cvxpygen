@@ -241,8 +241,21 @@ def write_ecos_setup_update(f, canon_constants, prefix):
              prefix, prefix, b_str))
     f.write('    initialized = 1;\n')
     f.write('  } else {\n')
-    f.write('    ECOS_updateData(%secos_workspace, %sCanon_Params_ECOS.G->x, %s, %sCanon_Params_ECOS.c, '
-            '%sCanon_Params_ECOS.h, %s);\n' % (prob_name, prob_name, Ax_str, prob_name, prob_name, b_str))
+    f.write('    if (%sCanon_Outdated.G || %sCanon_Outdated.A || %sCanon_Outdated.b) {\n' % (prefix, prefix, prefix))
+    f.write('      ECOS_updateData(%secos_workspace, %sCanon_Params_ECOS.G->x, %s, %sCanon_Params_ECOS.c, '
+            '%sCanon_Params_ECOS.h, %s);\n' % (prefix, prefix, Ax_str, prefix, prefix, b_str))
+    f.write('    } else {\n')
+    f.write('      if (%sCanon_Outdated.h) {\n' % prefix)
+    f.write('        for (i=0; i<%d; i++){\n' % m)
+    f.write('          ecos_updateDataEntry_h(%secos_workspace, i, %sCanon_Params_ECOS.h[i]);\n' % (prefix, prefix))
+    f.write('        }\n')
+    f.write('      }\n')
+    f.write('      if (%sCanon_Outdated.c) {\n' % prefix)
+    f.write('        for (i=0; i<%d; i++){\n' % n)
+    f.write('          ecos_updateDataEntry_c(%secos_workspace, i, %sCanon_Params_ECOS.c[i]);\n' % (prefix, prefix))
+    f.write('        }\n')
+    f.write('      }\n')
+    f.write('    }\n')
     f.write('  }\n')
 
 
