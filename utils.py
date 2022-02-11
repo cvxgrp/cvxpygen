@@ -85,7 +85,7 @@ def write_problem_summary(name_to_shape, name_to_size):
     return string
 
 
-def write_canonicalize_explicit(f, p_id, s, mapping, user_p_col_to_name_usp, user_p_name_to_size_usp, prob_name):
+def write_canonicalize_explicit(f, p_id, s, mapping, user_p_col_to_name_usp, user_p_name_to_size_usp, prefix):
     """
     Write function to compute canonical parameter value
     """
@@ -102,64 +102,64 @@ def write_canonicalize_explicit(f, p_id, s, mapping, user_p_col_to_name_usp, use
                     expr_is_const = False
                     if user_p_name_to_size_usp[user_name] == 1:
                         if abs(datum) == 1:
-                            ex = '(%s%sCPG_Params.%s)+' % (sign_to_str[datum], prob_name, user_name)
+                            ex = '(%s%sCPG_Params.%s)+' % (sign_to_str[datum], prefix, user_name)
                         else:
-                            ex = '(%.20f*%sCPG_Params.%s)+' % (datum, prob_name, user_name)
+                            ex = '(%.20f*%sCPG_Params.%s)+' % (datum, prefix, user_name)
                     else:
                         if abs(datum) == 1:
-                            ex = '(%s%sCPG_Params.%s[%d])+' % (sign_to_str[datum], prob_name, user_name, col-user_p_col)
+                            ex = '(%s%sCPG_Params.%s[%d])+' % (sign_to_str[datum], prefix, user_name, col - user_p_col)
                         else:
-                            ex = '(%.20f*%sCPG_Params.%s[%d])+' % (datum, prob_name, user_name, col-user_p_col)
+                            ex = '(%.20f*%sCPG_Params.%s[%d])+' % (datum, prefix, user_name, col - user_p_col)
                     break
             expr += ex
         expr = expr[:-1]
         if data.size > 0 and expr_is_const is False:
             if p_id == 'd':
-                f.write('  %sCanon_Params.d = %s;\n' % (prob_name, expr))
+                f.write('  %sCanon_Params.d = %s;\n' % (prefix, expr))
             else:
-                f.write('  %sCanon_Params.%s%s[%d] = %s;\n' % (prob_name, p_id, s, row, expr))
+                f.write('  %sCanon_Params.%s%s[%d] = %s;\n' % (prefix, p_id, s, row, expr))
 
 
-def write_canonicalize(f, canon_name, s, mapping, prob_name):
+def write_canonicalize(f, canon_name, s, mapping, prefix):
     """
     Write function to compute canonical parameter value
     """
 
     f.write('  for(i=0; i<%d; i++){\n' % mapping.shape[0])
-    f.write('    %sCanon_Params.%s%s[i] = 0;\n' % (prob_name, canon_name, s))
+    f.write('    %sCanon_Params.%s%s[i] = 0;\n' % (prefix, canon_name, s))
     f.write('    for(j=%scanon_%s_map.p[i]; j<%scanon_%s_map.p[i+1]; j++){\n' %
-            (prob_name, canon_name, prob_name, canon_name))
+            (prefix, canon_name, prefix, canon_name))
     f.write('      %sCanon_Params.%s%s[i] += %scanon_%s_map.x[j]*%scpg_params_vec[%scanon_%s_map.i[j]];\n' %
-            (prob_name, canon_name, s, prob_name, canon_name, prob_name, prob_name, canon_name))
+            (prefix, canon_name, s, prefix, canon_name, prefix, prefix, canon_name))
     f.write('    }\n')
     f.write('  }\n')
 
 
-def write_param_def(f, param, name, suffix, prob_name):
+def write_param_def(f, param, name, prefix, suffix):
     """
     Use osqp.codegen.utils for writing vectors and matrices
     """
     if not param_is_empty(param):
         if name.isupper():
-            osqp_utils.write_mat(f, param, '%scanon_%s%s' % (prob_name, name, suffix))
+            osqp_utils.write_mat(f, param, '%scanon_%s%s' % (prefix, name, suffix))
         elif name == 'd':
-            f.write('c_float %scanon_d%s = %.20f;\n' % (prob_name, suffix, param[0]))
+            f.write('c_float %scanon_d%s = %.20f;\n' % (prefix, suffix, param[0]))
         else:
-            osqp_utils.write_vec(f, param, '%scanon_%s%s' % (prob_name, name, suffix), 'c_float')
+            osqp_utils.write_vec(f, param, '%scanon_%s%s' % (prefix, name, suffix), 'c_float')
         f.write('\n')
 
 
-def write_param_prot(f, param, name, suffix, prob_name):
+def write_param_prot(f, param, name, prefix, suffix):
     """
     Use osqp.codegen.utils for writing vectors and matrices
     """
     if not param_is_empty(param):
         if name.isupper():
-            osqp_utils.write_mat_extern(f, param, '%scanon_%s%s' % (prob_name, name, suffix))
+            osqp_utils.write_mat_extern(f, param, '%scanon_%s%s' % (prefix, name, suffix))
         elif name == 'd':
-            f.write('extern c_float %scanon_d%s;\n' % (prob_name, suffix))
+            f.write('extern c_float %scanon_d%s;\n' % (prefix, suffix))
         else:
-            osqp_utils.write_vec_extern(f, param, '%scanon_%s%s' % (prob_name, name, suffix), 'c_float')
+            osqp_utils.write_vec_extern(f, param, '%scanon_%s%s' % (prefix, name, suffix), 'c_float')
 
 
 def write_dense_mat_def(f, mat, name):
@@ -209,7 +209,7 @@ def write_struct_prot(f, name, typ):
     f.write("extern %s %s;\n" % (typ, name))
 
 
-def write_ecos_setup_update(f, canon_constants, prob_name):
+def write_ecos_setup_update(f, canon_constants, prefix):
     """
     Write ECOS setup function to file
     """
@@ -223,22 +223,22 @@ def write_ecos_setup_update(f, canon_constants, prob_name):
     if p == 0:
         Ax_str = Ap_str = Ai_str = b_str = '0'
     else:
-        Ax_str = '%sCanon_Params_ECOS.A->x' % prob_name
-        Ap_str = '%sCanon_Params_ECOS.A->p' % prob_name
-        Ai_str = '%sCanon_Params_ECOS.A->i' % prob_name
-        b_str = '%sCanon_Params_ECOS.b' % prob_name
+        Ax_str = '%sCanon_Params_ECOS.A->x' % prefix
+        Ap_str = '%sCanon_Params_ECOS.A->p' % prefix
+        Ai_str = '%sCanon_Params_ECOS.A->i' % prefix
+        b_str = '%sCanon_Params_ECOS.b' % prefix
 
     if n_cones == 0:
         ecos_q_str = '0'
     else:
-        ecos_q_str = '(int *) &%secos_q' % prob_name
+        ecos_q_str = '(int *) &%secos_q' % prefix
 
     f.write('  if (!initialized) {\n')
     f.write('    %secos_workspace = ECOS_setup(%d, %d, %d, %d, %d, %s, %d, '
             '%sCanon_Params_ECOS.G->x, %sCanon_Params_ECOS.G->p, %sCanon_Params_ECOS.G->i, '
             '%s, %s, %s, %sCanon_Params_ECOS.c, %sCanon_Params_ECOS.h, %s);\n' %
-            (prob_name, n, m, p, ell, n_cones, ecos_q_str, e, prob_name, prob_name, prob_name, Ax_str, Ap_str, Ai_str,
-             prob_name, prob_name, b_str))
+            (prefix, n, m, p, ell, n_cones, ecos_q_str, e, prefix, prefix, prefix, Ax_str, Ap_str, Ai_str,
+             prefix, prefix, b_str))
     f.write('    initialized = 1;\n')
     f.write('  } else {\n')
     f.write('    ECOS_updateData(%secos_workspace, %sCanon_Params_ECOS.G->x, %s, %sCanon_Params_ECOS.c, '
@@ -288,9 +288,9 @@ def write_workspace_def(f, info_opt, info_usr, info_can):
         if p_id == 'd':
             canon_casts.append('')
         else:
-            write_param_def(f, replace_inf(p), p_id, '', info_opt['prefix'])
+            write_param_def(f, replace_inf(p), p_id, info_opt['prefix'], '')
             if info_opt['solver_name'] == 'ECOS':
-                write_param_def(f, replace_inf(p), p_id, '_ECOS', info_opt['prefix'])
+                write_param_def(f, replace_inf(p), p_id, info_opt['prefix'], '_ECOS')
             if p_id.isupper():
                 canon_casts.append('')
             else:
@@ -633,9 +633,9 @@ def write_workspace_prot(f, info_opt, info_usr, info_can):
     f.write('\n// Canonical parameters\n')
     for p_id, p in info_can['p'].items():
         if p_id != 'd':
-            write_param_prot(f, p, p_id, '', info_opt['prefix'])
+            write_param_prot(f, p, p_id, info_opt['prefix'], '')
             if info_opt['solver_name'] == 'ECOS':
-                write_param_prot(f, p, p_id, '_ECOS', info_opt['prefix'])
+                write_param_prot(f, p, p_id, info_opt['prefix'], '_ECOS')
 
     f.write('\n// Struct containing canonical parameters\n')
     write_struct_prot(f, '%sCanon_Params' % info_opt['prefix'], 'Canon_Params_t')
