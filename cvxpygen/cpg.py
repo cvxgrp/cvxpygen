@@ -25,7 +25,8 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
 
     sys.stdout.write('Generating code with CVXPYgen ...\n')
 
-    main_directory = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+    cvxpygen_directory = os.path.dirname(os.path.realpath(__file__))
+    main_directory = os.path.dirname(cvxpygen_directory)
     solver_code_dir = os.path.join(code_dir, 'c', 'solver_code')
 
     # adjust problem_name
@@ -44,9 +45,9 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
     os.mkdir(os.path.join(code_dir, 'cpp'))
     for d in ['src', 'include']:
         os.mkdir(os.path.join(code_dir, 'cpp', d))
-    shutil.copy(os.path.join(main_directory, 'template', 'CMakeLists.txt'), os.path.join(code_dir, 'c'))
-    shutil.copy(os.path.join(main_directory, 'template', 'setup.py'), code_dir)
-    shutil.copy(os.path.join(main_directory, 'template', 'README.html'), code_dir)
+    shutil.copy(os.path.join(cvxpygen_directory, 'template', 'CMakeLists.txt'), os.path.join(code_dir, 'c'))
+    shutil.copy(os.path.join(cvxpygen_directory, 'template', 'setup.py'), code_dir)
+    shutil.copy(os.path.join(cvxpygen_directory, 'template', 'README.html'), code_dir)
 
     # problem data
     data, solving_chain, inverse_data = problem.get_problem_data(solver=solver, gp=False, enforce_dpp=True,
@@ -439,7 +440,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
                          parameters='matrices', force_rewrite=True)
 
         # copy license files
-        shutil.copyfile(os.path.join(main_directory, 'solvers', 'osqp-python', 'LICENSE'),
+        shutil.copyfile(os.path.join(cvxpygen_directory, 'solvers', 'osqp-python', 'LICENSE'),
                         os.path.join(solver_code_dir, 'LICENSE'))
         shutil.copyfile(os.path.join(main_directory, 'LICENSE'),
                         os.path.join(code_dir, 'LICENSE'))
@@ -461,10 +462,10 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
         os.mkdir(solver_code_dir)
         dirs_to_copy = ['src', 'include', 'linsys', 'cmake']
         for dtc in dirs_to_copy:
-            shutil.copytree(os.path.join(main_directory, 'solvers', 'scs', dtc), os.path.join(solver_code_dir, dtc))
+            shutil.copytree(os.path.join(cvxpygen_directory, 'solvers', 'scs', dtc), os.path.join(solver_code_dir, dtc))
         files_to_copy = ['scs.mk', 'CMakeLists.txt', 'LICENSE.txt']
         for fl in files_to_copy:
-            shutil.copyfile(os.path.join(main_directory, 'solvers', 'scs', fl),
+            shutil.copyfile(os.path.join(cvxpygen_directory, 'solvers', 'scs', fl),
                             os.path.join(solver_code_dir, fl))
 
         # disable BLAS and LAPACK
@@ -517,12 +518,12 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
         os.mkdir(solver_code_dir)
         dirs_to_copy = ['src', 'include', 'external', 'ecos_bb']
         for dtc in dirs_to_copy:
-            shutil.copytree(os.path.join(main_directory, 'solvers', 'ecos', dtc), os.path.join(solver_code_dir, dtc))
-        shutil.copyfile(os.path.join(main_directory, 'solvers', 'ecos', 'CMakeLists.txt'),
+            shutil.copytree(os.path.join(cvxpygen_directory, 'solvers', 'ecos', dtc), os.path.join(solver_code_dir, dtc))
+        shutil.copyfile(os.path.join(cvxpygen_directory, 'solvers', 'ecos', 'CMakeLists.txt'),
                         os.path.join(solver_code_dir, 'CMakeLists.txt'))
-        shutil.copyfile(os.path.join(main_directory, 'solvers', 'ecos', 'COPYING'),
+        shutil.copyfile(os.path.join(cvxpygen_directory, 'solvers', 'ecos', 'COPYING'),
                         os.path.join(solver_code_dir, 'COPYING'))
-        shutil.copyfile(os.path.join(main_directory, 'solvers', 'ecos', 'COPYING'),
+        shutil.copyfile(os.path.join(cvxpygen_directory, 'solvers', 'ecos', 'COPYING'),
                         os.path.join(code_dir, 'COPYING'))
 
         # adjust print level
