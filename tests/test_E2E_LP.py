@@ -10,7 +10,7 @@ import pickle
 import utils_test
 import sys
 sys.path.append('../')
-import cvxpygen as cpg
+from cvxpygen import cpg
 
 
 def network_problem():

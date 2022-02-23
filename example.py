@@ -1,6 +1,6 @@
 
 import cvxpy as cp
-import cvxpygen as cpg
+from cvxpygen import cpg
 import numpy as np
 import time
 

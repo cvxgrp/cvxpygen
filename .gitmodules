@@ -1,9 +1,9 @@
-[submodule "solver/ecos"]
-	path = solver/ecos
+[submodule "solvers/ecos"]
+	path = solvers/ecos
 	url = https://github.com/embotech/ecos
-[submodule "osqp-python"]
-	path = solver/osqp-python
+[submodule "solvers/osqp-python"]
+	path = solvers/osqp-python
 	url = https://github.com/osqp/osqp-python
-[submodule "solver/scs"]
-	path = solver/scs
+[submodule "solvers/scs"]
+	path = solvers/scs
 	url = https://github.com/cvxgrp/scs
