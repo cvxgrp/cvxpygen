@@ -1,0 +1,7 @@
+include *.yml
+include LICENSE
+include cvxpygen/template/*
+include examples/*.ipynb
+include examples/*.py
+include examples/visualization/*.py
+include tests/*.py

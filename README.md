@@ -59,7 +59,7 @@ We define a simple 'nonnegative least squares' problem, generate code for it, an
 
 ### 1. Generate Code
 
-Let's step through the first part of ``examples/nLS.py`` and model a nonnegative Least Squares (nLS) problem.
+Let's step through the first part of [``examples/main.py``](https://github.com/cvxgrp/cvxpygen/blob/master/examples/main.py).
 Define a convex optimization problem the way you are used to with CVXPY.
 Everything that is described as ``cp.Parameter()`` is assumed to be changing between multiple solves.
 For constant properties, use ``cp.Constant()``.
@@ -115,7 +115,7 @@ You can find an overview of the code generation result in `nonneg_LS/README.html
 
 ### 2. Solve & Compare
 
-As summarized in the second part ``examples/nLS.py``, after assigning parameter values, you can solve the problem both conventionally and via the generated code, which is wrapped inside the custom CVXPY solve method ``cpg_solve``.
+As summarized in the second part of [``examples/main.py``](https://github.com/cvxgrp/cvxpygen/blob/master/examples/main.py), after assigning parameter values, you can solve the problem both conventionally and via the generated code, which is wrapped inside the custom CVXPY solve method ``cpg_solve``.
 
 ```python
 import time

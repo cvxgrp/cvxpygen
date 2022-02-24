@@ -4,9 +4,6 @@ from datetime import datetime
 from osqp.codegen import utils as osqp_utils
 
 
-sign_to_str = {1: '', -1: '-'}
-
-
 def write_description(f, file_type, content):
     """
     Timestamp and file content to beginning of file
@@ -89,6 +86,8 @@ def write_canonicalize_explicit(f, p_id, s, mapping, user_p_col_to_name_usp, use
     """
     Write function to compute canonical parameter value
     """
+
+    sign_to_str = {1: '', -1: '-'}
 
     for row in range(len(mapping.indptr)-1):
         expr = ''
