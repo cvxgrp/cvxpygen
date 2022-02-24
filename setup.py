@@ -2,16 +2,23 @@
 from setuptools import setup, find_packages
 
 MAJOR = 0
-MINOR = 0
-MICRO = 1
+MINOR = 1
+MICRO = 0
 VERSION = '%d.%d.%d' % (MAJOR, MINOR, MICRO)
+
+
+def readme():
+    with open('README.md') as f:
+        content = f.read()
+    return content[:content.find('## Tests')]
+
 
 setup(
     name='cvxpygen',
     version=VERSION,
     license='Apache License, Version 2.0',
     description='Code generation with CVXPY',
-    long_description=open('README.md').read(),
+    long_description=readme(),
     long_description_content_type='text/markdown',
     author='Maximilian Schaller',
     author_email='mschall@stanford.edu',
@@ -19,13 +26,17 @@ setup(
     packages=find_packages(),
     python_requires='>=3.6',
     py_modules=['cpg', 'utils'],
+    include_package_data=True,
     install_requires=[
         'cmake >= 3.5',
         'cvxpy >= 1.1.18',
         'ipykernel >= 6.0.0',
         'jupyter >= 1.0.0',
         'matplotlib >= 3.1.3',
-        'pybind11 >= 2.8.0'
+        'pybind11 >= 2.8.0',
+        'osqp >= 0.6.2',
+        'scipy >= 1.1.0',
+        'numpy >= 1.15',
     ],
     extras_require={
         'dev': [

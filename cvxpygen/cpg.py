@@ -1,3 +1,15 @@
+"""
+Copyright 2022 Maximilian Schaller
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+"""
 
 import os
 import sys
@@ -26,7 +38,6 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
     sys.stdout.write('Generating code with CVXPYgen ...\n')
 
     cvxpygen_directory = os.path.dirname(os.path.realpath(__file__))
-    main_directory = os.path.dirname(cvxpygen_directory)
     solver_code_dir = os.path.join(code_dir, 'c', 'solver_code')
 
     # adjust problem_name
@@ -46,8 +57,8 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
     for d in ['src', 'include']:
         os.mkdir(os.path.join(code_dir, 'cpp', d))
     shutil.copy(os.path.join(cvxpygen_directory, 'template', 'CMakeLists.txt'), os.path.join(code_dir, 'c'))
-    shutil.copy(os.path.join(cvxpygen_directory, 'template', 'setup.py'), code_dir)
-    shutil.copy(os.path.join(cvxpygen_directory, 'template', 'README.html'), code_dir)
+    for file in ['setup.py', 'README.html']:
+        shutil.copy(os.path.join(cvxpygen_directory, 'template', file), code_dir)
 
     # problem data
     data, solving_chain, inverse_data = problem.get_problem_data(solver=solver, gp=False, enforce_dpp=True,
@@ -442,8 +453,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
         # copy license files
         shutil.copyfile(os.path.join(cvxpygen_directory, 'solvers', 'osqp-python', 'LICENSE'),
                         os.path.join(solver_code_dir, 'LICENSE'))
-        shutil.copyfile(os.path.join(main_directory, 'LICENSE'),
-                        os.path.join(code_dir, 'LICENSE'))
+        shutil.copy(os.path.join(cvxpygen_directory, 'template', 'LICENSE'), code_dir)
 
     elif solver_name == 'SCS':
 
@@ -467,6 +477,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
         for fl in files_to_copy:
             shutil.copyfile(os.path.join(cvxpygen_directory, 'solvers', 'scs', fl),
                             os.path.join(solver_code_dir, fl))
+        shutil.copy(os.path.join(cvxpygen_directory, 'template', 'LICENSE'), code_dir)
 
         # disable BLAS and LAPACK
         with open(os.path.join(code_dir, 'c', 'solver_code', 'scs.mk'), 'r') as f:

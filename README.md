@@ -19,39 +19,23 @@ under the [GNU General Public License v3.0](https://github.com/embotech/ecos/blo
 
 ## Installation
 
-1. Clone this repository via SSH,
+1. Install `cvxpygen`.
     ```
-    git clone git@github.com:cvxgrp/codegen.git
-    ```
-   or via HTTPS,
-    ```
-    git clone https://github.com/cvxgrp/codegen.git
-    ```
-   and initialize its submodules.
-    ```
-    cd codegen
-    git submodule update --init
-    ```
-
-
-2. Install [conda](https://docs.conda.io/en/latest/), create and activate the ``cpg_env`` environment.
-    ```
-    conda env create -f environment.yml
-    conda activate cpg_env
+    pip install cvxpygen
     ```
    
 
-3. On Unix, install the [GCC compiler](https://gcc.gnu.org).
+2. On Unix, install the [GCC compiler](https://gcc.gnu.org).
    On Windows, install [Microsoft Visual Studio](https://visualstudio.microsoft.com/downloads/) with the 'Desktop development with C++' workload.
    CVXPYgen is tested with Visual Studio 2019 and 2022, older versions might work as well.
    
 
-4. *Optional:* If you wish to use the example notebooks located in ``examples/``, register a new kernel spec with Jupyter.
+3. *Optional:* If you wish to use the example notebooks located in [``examples/``](https://github.com/cvxgrp/cvxpygen/blob/master/examples/), register a new kernel spec with Jupyter.
     ```
-   conda activate cpg_env
-   ipython kernel install --user --name=cpg_env
+   ipython kernel install --user --name=<env>
    ```
-   In the Jupyter notebook, click on ``Kernel->Change kernel`` and choose ``cpg_env``.
+   ``<env>`` is the (conda) environment you installed `cvxpygen` in.
+   In the Jupyter notebook, click on ``Kernel->Change kernel`` and choose ``<env>``.
     
 ## Example
 
@@ -119,6 +103,7 @@ As summarized in the second part of [``examples/main.py``](https://github.com/cv
 
 ```python
 import time
+import sys
 
 # import extension module and register custom CVXPY solve method
 from nonneg_LS.cpg_solver import cpg_solve
@@ -128,19 +113,19 @@ problem.register_solve('cpg', cpg_solve)
 t0 = time.time()
 val = problem.solve(solver='SCS')
 t1 = time.time()
-print('\nStandard method\nSolve time:', np.round(1000*(t1-t0), 3), 'ms')
-print('Primal solution: x = ', x.value)
-print('Dual solution: d0 = ', problem.constraints[0].dual_value)
-print('Objective function value:', val)
+sys.stdout.write('\nStandard method\nSolve time: %.3f ms\n' % (1000*(t1-t0)))
+sys.stdout.write('Primal solution: x = [%.6f, %.6f]\n' % tuple(x.value))
+sys.stdout.write('Dual solution: d0 = [%.6f, %.6f]\n' % tuple(problem.constraints[0].dual_value))
+sys.stdout.write('Objective function value: %.6f\n' % val)
 
 # solve problem with C code via python wrapper
 t0 = time.time()
 val = problem.solve(method='cpg', updated_params=['A', 'b'], verbose=False)
 t1 = time.time()
-print('\nCodegen method\nSolve time:', np.round(1000*(t1-t0), 3), 'ms')
-print('Primal solution: x = ', x.value)
-print('Dual solution: d0 = ', problem.constraints[0].dual_value)
-print('Objective function value:', val)
+sys.stdout.write('\nCodegen method\nSolve time: %.3f ms\n' % (1000 * (t1 - t0)))
+sys.stdout.write('Primal solution: x = [%.6f, %.6f]\n' % tuple(x.value))
+sys.stdout.write('Dual solution: d0 = [%.6f, %.6f]\n' % tuple(problem.constraints[0].dual_value))
+sys.stdout.write('Objective function value: %.6f\n' % val)
 ```
 
 The argument `updated_params` specifies which user-defined parameter values are new.
@@ -159,11 +144,7 @@ For example, the `(i, j)`-th entry of the original matrix with height `h` will b
 For sparse *parameters*, i.e. matrices, the `k`-th entry of the C array is the `k`-th nonzero entry encountered when proceeding
 through the parameter column by column.
 
-Before compiling the example executable, remember to activate the `cpg_env` environment.
-
-```
-conda activate cpg_env
-```
+Before compiling the example executable, make sure that ``CMake 3.5`` or newer is installed.
 
 On Unix platforms, run the following commands in your terminal to compile and run the program:
 
