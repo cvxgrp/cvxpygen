@@ -17,6 +17,8 @@ As of today, CVXPYgen works with linear, quadratic, and second-order cone progra
 **Important: When generating code with the ECOS solver, the generated code is licensed 
 under the [GNU General Public License v3.0](https://github.com/embotech/ecos/blob/develop/COPYING).**
 
+This package is not the same as an earlier and similar package, [cvxpy_codegen](https://github.com/moehle/cvxpy_codegen).
+
 ## Installation
 
 1. Install `cvxpygen`.
