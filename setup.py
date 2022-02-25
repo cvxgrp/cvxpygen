@@ -30,9 +30,6 @@ setup(
     install_requires=[
         'cmake >= 3.5',
         'cvxpy >= 1.1.18',
-        'ipykernel >= 6.0.0',
-        'jupyter >= 1.0.0',
-        'matplotlib >= 3.1.3',
         'pybind11 >= 2.8.0',
         'osqp >= 0.6.2',
         'scipy >= 1.1.0',
