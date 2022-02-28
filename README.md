@@ -29,8 +29,7 @@ This package is not the same as an earlier and similar package, [cvxpy_codegen](
 
 2. On Linux or Mac, install the [GCC compiler](https://gcc.gnu.org).
    On Windows, install [Microsoft Visual Studio](https://visualstudio.microsoft.com/downloads/) 
-   with the 'Desktop development with C++' workload
-   and [Build Tools](https://visualstudio.microsoft.com/downloads/?q=build+tools).
+   with the 'Desktop development with C++' workload.
    CVXPYgen is tested with Visual Studio 2019 and 2022, older versions might work as well.
    
 
