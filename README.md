@@ -36,10 +36,8 @@ This package is not the same as an earlier and similar package, [cvxpy_codegen](
    install ``ipykernel``, ``jupyter``, ``matplotlib``, and register a new kernel spec with Jupyter.
     ```
    pip install ipykernel jupyter matplotlib
-   ipython kernel install --user --name=<env>
+   ipython kernel install --user --name=cvxpygen
    ```
-   ``<env>`` is the (conda) environment you installed `cvxpygen` in.
-   In the Jupyter notebook, click on ``Kernel->Change kernel`` and choose ``<env>``.
     
 ## Example
 
@@ -117,7 +115,7 @@ problem.register_solve('cpg', cpg_solve)
 t0 = time.time()
 val = problem.solve(solver='SCS')
 t1 = time.time()
-sys.stdout.write('\nStandard method\nSolve time: %.3f ms\n' % (1000*(t1-t0)))
+sys.stdout.write('\nCVXPY\nSolve time: %.3f ms\n' % (1000*(t1-t0)))
 sys.stdout.write('Primal solution: x = [%.6f, %.6f]\n' % tuple(x.value))
 sys.stdout.write('Dual solution: d0 = [%.6f, %.6f]\n' % tuple(problem.constraints[0].dual_value))
 sys.stdout.write('Objective function value: %.6f\n' % val)
@@ -126,7 +124,7 @@ sys.stdout.write('Objective function value: %.6f\n' % val)
 t0 = time.time()
 val = problem.solve(method='cpg', updated_params=['A', 'b'], verbose=False)
 t1 = time.time()
-sys.stdout.write('\nCodegen method\nSolve time: %.3f ms\n' % (1000 * (t1 - t0)))
+sys.stdout.write('\nCVXPYgen\nSolve time: %.3f ms\n' % (1000 * (t1 - t0)))
 sys.stdout.write('Primal solution: x = [%.6f, %.6f]\n' % tuple(x.value))
 sys.stdout.write('Dual solution: d0 = [%.6f, %.6f]\n' % tuple(problem.constraints[0].dual_value))
 sys.stdout.write('Objective function value: %.6f\n' % val)
