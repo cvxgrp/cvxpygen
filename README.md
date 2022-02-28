@@ -27,13 +27,15 @@ This package is not the same as an earlier and similar package, [cvxpy_codegen](
     ```
    
 
-2. On Unix, install the [GCC compiler](https://gcc.gnu.org).
+2. On Linux or Mac, install the [GCC compiler](https://gcc.gnu.org).
    On Windows, install [Microsoft Visual Studio](https://visualstudio.microsoft.com/downloads/) with the 'Desktop development with C++' workload.
    CVXPYgen is tested with Visual Studio 2019 and 2022, older versions might work as well.
    
 
-3. *Optional:* If you wish to use the example notebooks located in [``examples/``](https://github.com/cvxgrp/cvxpygen/blob/master/examples/), register a new kernel spec with Jupyter.
+3. *Optional:* If you wish to use the example notebooks located in [``examples/``](https://github.com/cvxgrp/cvxpygen/blob/master/examples/), 
+   install ``ipykernel``, ``jupyter``, ``matplotlib``, and register a new kernel spec with Jupyter.
     ```
+   pip install ipykernel jupyter matplotlib
    ipython kernel install --user --name=<env>
    ```
    ``<env>`` is the (conda) environment you installed `cvxpygen` in.
