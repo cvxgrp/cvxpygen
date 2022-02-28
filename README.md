@@ -21,7 +21,7 @@ This package is not the same as an earlier and similar package, [cvxpy_codegen](
 
 ## Installation
 
-1. Install `cvxpygen`.
+1. Install `cvxpygen` (on Windows preferably with **Python 3.9**).
     ```
     pip install cvxpygen
     ```
