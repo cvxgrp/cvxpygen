@@ -505,6 +505,9 @@ def write_workspace_def(f, info_opt, info_usr, info_can):
         write_struct_def(f, scs_info_fields, scs_info_casts, scs_info_values, '%sScs_Info'
                          % info_opt['prefix'], 'ScsInfo')
 
+        f.write('\n// Pointer to struct containing SCS workspace\n')
+        f.write('ScsWork* %sScs_Work = 0;\n' % info_opt['prefix'])
+
     if info_opt['solver_name'] == 'ECOS':
 
         f.write('\n// Struct containing solver settings\n')
@@ -719,6 +722,8 @@ def write_workspace_prot(f, info_opt, info_usr, info_can):
         write_struct_prot(f, '%sScs_Sol' % info_opt['prefix'], 'ScsSolution')
         f.write('\n// Struct containing SCS information\n')
         write_struct_prot(f, '%sScs_Info' % info_opt['prefix'], 'ScsInfo')
+        f.write('\n// Pointer to struct containing SCS workspace\n')
+        write_struct_prot(f, '%sScs_Work' % info_opt['prefix'], 'ScsWork*')
 
     if info_opt['solver_name'] == 'ECOS':
         f.write('\n// Struct containing solver settings\n')
@@ -753,7 +758,7 @@ def write_solve_def(f, info_opt, info_cg, info_usr, info_can):
     if info_opt['unroll'] and info_opt['solver_name'] == 'ECOS':
         f.write('static c_int i;\n')
 
-    if info_opt['solver_name'] == 'ECOS':
+    if info_opt['solver_name'] in ['SCS', 'ECOS']:
         f.write('static c_int initialized = 0;\n')
 
     f.write('\n// Update user-defined parameters\n')
@@ -945,9 +950,22 @@ def write_solve_def(f, info_opt, info_cg, info_usr, info_can):
         f.write('  osqp_solve(&workspace);\n')
     elif info_opt['solver_name'] == 'SCS':
         f.write('  // Solve with SCS\n')
-        f.write('  scs(&%sScs_D, &%sScs_K, &%sScs_Stgs, &%sScs_Sol, &%sScs_Info);\n' %
-                (info_opt['prefix'], info_opt['prefix'], info_opt['prefix'], info_opt['prefix'],
-                 info_opt['prefix']))
+        f.write('  if (initialized == 0 || %sCanon_Outdated.A) {\n' % info_opt['prefix'])
+        f.write('    %sScs_Work = scs_init(&%sScs_D, &%sScs_K, &%sScs_Stgs);\n' %
+                (info_opt['prefix'], info_opt['prefix'], info_opt['prefix'], info_opt['prefix']))
+        f.write('    initialized = 1;\n')
+        f.write('  } else if (%sCanon_Outdated.b && %sCanon_Outdated.c) {\n' % (info_opt['prefix'], info_opt['prefix']))
+        f.write('    scs_update(%sScs_Work, %sCanon_Params.b, %sCanon_Params.c);\n' %
+                (info_opt['prefix'], info_opt['prefix'], info_opt['prefix']))
+        f.write('  } else if (%sCanon_Outdated.b) {\n' % info_opt['prefix'])
+        f.write('    scs_update(%sScs_Work, %sCanon_Params.b, SCS_NULL);\n' %
+                (info_opt['prefix'], info_opt['prefix']))
+        f.write('  } else if (%sCanon_Outdated.c) {\n' % info_opt['prefix'])
+        f.write('    scs_update(%sScs_Work, SCS_NULL, %sCanon_Params.c);\n' %
+                (info_opt['prefix'], info_opt['prefix']))
+        f.write('  }\n')
+        f.write('  scs_solve(%sScs_Work, &%sScs_Sol, &%sScs_Info, (initialized && %sScs_Stgs.warm_start));\n' %
+                (info_opt['prefix'], info_opt['prefix'], info_opt['prefix'], info_opt['prefix']))
     elif info_opt['solver_name'] == 'ECOS':
         for p_id, size in info_can['p_id_to_size'].items():
             if size == 1:
