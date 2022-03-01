@@ -490,9 +490,9 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
         # modify CMakeLists.txt
         with open(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'), 'r') as f:
             cmake_data = f.read()
-        cmake_data = cmake_data.replace('include/', '${CMAKE_CURRENT_SOURCE_DIR}/include/')
-        cmake_data = cmake_data.replace('src/', '${CMAKE_CURRENT_SOURCE_DIR}/src/')
-        cmake_data = cmake_data.replace('${LINSYS}/', '${CMAKE_CURRENT_SOURCE_DIR}/${LINSYS}/')
+        cmake_data = cmake_data.replace(' include/', ' ${CMAKE_CURRENT_SOURCE_DIR}/include/')
+        cmake_data = cmake_data.replace(' src/', ' ${CMAKE_CURRENT_SOURCE_DIR}/src/')
+        cmake_data = cmake_data.replace(' ${LINSYS}/', ' ${CMAKE_CURRENT_SOURCE_DIR}/${LINSYS}/')
         with open(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'), 'w') as f:
             f.write(cmake_data)
 
