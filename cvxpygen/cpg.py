@@ -18,6 +18,7 @@ import pickle
 import warnings
 import osqp
 from cvxpygen import utils
+from cvxpygen.utils import C
 import cvxpy as cp
 import numpy as np
 from scipy import sparse
@@ -592,44 +593,44 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
 
     # summarize information on options, codegen, user parameters / variables, canonicalization in dictionaries
 
-    info_opt = {'code_dir': code_dir,
-                'solver_name': solver_name,
-                'unroll': unroll,
-                'prefix': prefix}
+    info_opt = {C.CODE_DIR: code_dir,
+                C.SOLVER_NAME: solver_name,
+                C.UNROLL: unroll,
+                C.PREFIX: prefix}
 
-    info_cg = {'ret_prim_func_exists': ret_prim_func_exists,
-               'ret_dual_func_exists': ret_dual_func_exists,
-               'nonzero_d': nonzero_d,
-               'is_maximization': type(problem.objective) == Maximize}
+    info_cg = {C.RET_PRIM_FUNC_EXISTS: ret_prim_func_exists,
+               C.RET_DUAL_FUNC_EXISTS: ret_dual_func_exists,
+               C.NONZERO_D: nonzero_d,
+               C.IS_MAXIMIZATION: type(problem.objective) == Maximize}
 
-    info_usr = {'p_writable': user_p_writable,
-                'p_flat_usp': user_p_flat_usp,
-                'p_col_to_name_usp': user_p_col_to_name_usp,
-                'p_name_to_shape': user_p_name_to_shape,
-                'p_name_to_size_usp': user_p_name_to_size_usp,
-                'p_name_to_canon_outdated': user_p_name_to_canon_outdated,
-                'p_name_to_sparsity': user_p_name_to_sparsity,
-                'p_name_to_sparsity_type': user_p_name_to_sparsity_type,
-                'v_name_to_indices': var_name_to_indices,
-                'v_name_to_size': var_name_to_size,
-                'v_name_to_shape': var_name_to_shape,
-                'v_name_to_init': var_name_to_init,
-                'v_name_to_sym': var_name_to_sym,
-                'v_name_to_offset': var_name_to_offset,
-                'd_name_to_init': d_name_to_init,
-                'd_name_to_vec': d_name_to_vec,
-                'd_name_to_offset': d_name_to_offset,
-                'd_name_to_size': d_name_to_size,
-                'd_name_to_shape': d_name_to_shape,
-                'd_name_to_indices': d_name_to_indices}
+    info_usr = {C.P_WRITABLE: user_p_writable,
+                C.P_FLAT_USP: user_p_flat_usp,
+                C.P_COL_TO_NAME_USP: user_p_col_to_name_usp,
+                C.P_NAME_TO_SHAPE: user_p_name_to_shape,
+                C.P_NAME_TO_SIZE: user_p_name_to_size_usp,
+                C.P_NAME_TO_CANON_OUTDATED: user_p_name_to_canon_outdated,
+                C.P_NAME_TO_SPARSITY: user_p_name_to_sparsity,
+                C.P_NAME_TO_SPARSITY_TYPE: user_p_name_to_sparsity_type,
+                C.V_NAME_TO_INDICES: var_name_to_indices,
+                C.V_NAME_TO_SIZE: var_name_to_size,
+                C.V_NAME_TO_SHAPE: var_name_to_shape,
+                C.V_NAME_TO_INIT: var_name_to_init,
+                C.V_NAME_TO_SYM: var_name_to_sym,
+                C.V_NAME_TO_OFFSET: var_name_to_offset,
+                C.D_NAME_TO_INIT: d_name_to_init,
+                C.D_NAME_TO_VEC: d_name_to_vec,
+                C.D_NAME_TO_OFFSET: d_name_to_offset,
+                C.D_NAME_TO_SIZE: d_name_to_size,
+                C.D_NAME_TO_SHAPE: d_name_to_shape,
+                C.D_NAME_TO_INDICES: d_name_to_indices}
 
-    info_can = {'p': canon_p,
-                'p_id_to_size': canon_p_id_to_size,
-                'p_id_to_changes': canon_p_id_to_changes,
-                'p_id_to_mapping': canon_p_id_to_mapping,
-                'constants': canon_constants,
-                'settings_names_to_type': settings_names_to_type,
-                'settings_names_to_default': settings_names_to_default}
+    info_can = {C.P: canon_p,
+                C.P_ID_TO_SIZE: canon_p_id_to_size,
+                C.P_ID_TO_CHANGES: canon_p_id_to_changes,
+                C.P_ID_TO_MAPPING: canon_p_id_to_mapping,
+                C.CONSTANTS: canon_constants,
+                C.SETTINGS_NAMES_TO_TYPE: settings_names_to_type,
+                C.SETTINGS_NAMES_TO_DEFAULT: settings_names_to_default}
 
     # 'workspace' prototypes
     with open(os.path.join(code_dir, 'c', 'include', 'cpg_workspace.h'), 'w') as f:
