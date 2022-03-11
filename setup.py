@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 MAJOR = 0
 MINOR = 1
-MICRO = 3
+MICRO = 4
 VERSION = '%d.%d.%d' % (MAJOR, MINOR, MICRO)
 
 
@@ -20,8 +20,18 @@ setup(
     description='Code generation with CVXPY',
     long_description=readme(),
     long_description_content_type='text/markdown',
-    author='Maximilian Schaller',
-    author_email='mschall@stanford.edu',
+    author='Maximilian Schaller, '
+           'Goran Banjac, '
+           'Bartolomeo Stellato, '
+           'Steven Diamond, '
+           'Akshay Agrawal, '
+           'Stephen Boyd',
+    author_email='mschall@stanford.edu, '
+                 'goranbanjac1989@gmail.com, '
+                 'bstellato@princeton.edu, '
+                 'diamond@cs.stanford.edu, '
+                 'akshayka@cs.stanford.edu, '
+                 'boyd@stanford.edu',
     url='https://github.com/cvxgrp/cvxpygen',
     packages=find_packages(),
     python_requires='>=3.6',

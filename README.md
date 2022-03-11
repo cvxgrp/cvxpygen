@@ -18,7 +18,7 @@ As of today, CVXPYgen works with linear, quadratic, and second-order cone progra
 under the [GNU General Public License v3.0](https://github.com/embotech/ecos/blob/develop/COPYING).**
 
 This package has similar functionality as the package [cvxpy_codegen](https://github.com/moehle/cvxpy_codegen),
-which appears to be deprecated.
+which appears to be unsupported.
 
 ## Installation
 
