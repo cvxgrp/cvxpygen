@@ -97,7 +97,7 @@ Next to the positional argument `problem`, all keyword arguments for the `genera
 | `solver`         | canonical solver to generate code with                             | CVXPY default |
 | `unroll`         | unroll loops in canonicalization code                              | `False` |
 | `prefix`         | prefix for unique code symbols when dealing with multiple problems | `''`
-| `wrapper`        | compile python wrapper for CVXPY interface                         | `True` |
+| `wrapper`        | compile Python wrapper for CVXPY interface                         | `True` |
 
 You can find an overview of the code generation result in `nonneg_LS/README.html`.
 

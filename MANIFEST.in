@@ -4,6 +4,7 @@ include cvxpygen/template/*
 include cvxpygen/solvers/osqp-python/LICENSE
 include cvxpygen/solvers/scs/*
 include cvxpygen/solvers/scs/cmake/*.cmake
+include cvxpygen/solvers/scs/cmake/*.in
 include cvxpygen/solvers/scs/src/*.c
 include cvxpygen/solvers/scs/include/*.h
 include cvxpygen/solvers/scs/linsys/*
