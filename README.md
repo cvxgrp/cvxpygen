@@ -1,9 +1,12 @@
 
 # CVXPYgen - Code generation with CVXPY
 
-CVXPYgen takes a convex optimization problem family modeled with CVXPY and generates a corresponding solver in C.
-This custom solver is specific to the problem family and accepts different parameter values.
+CVXPYgen takes a convex optimization problem family modeled with CVXPY and generates a custom solver implementation in C.
+This generated solver is specific to the problem family and accepts different parameter values.
 In particular, this solver is suitable for deployment on embedded systems.
+In addition, CVXPYgen creates a Python wrapper for prototyping and desktop (non-embedded) applications.
+
+An overview of CVXPYgen can be found in our [manuscript](https://web.stanford.edu/~boyd/papers/cvxpygen.html).
 
 CVXPYgen accepts CVXPY problems that are compliant with [Disciplined Convex Programming (DCP)](https://www.cvxpy.org/tutorial/dcp/index.html).
 DCP is a system for constructing mathematical expressions with known curvature from a given library of base functions. 
@@ -14,11 +17,11 @@ Solving a DPP-compliant problem repeatedly for different values of the parameter
 For now, CVXPYgen is a separate module, until it will be integrated into CVXPY.
 As of today, CVXPYgen works with linear, quadratic, and second-order cone programs.
 
-**Important: When generating code with the ECOS solver, the generated code is licensed 
-under the [GNU General Public License v3.0](https://github.com/embotech/ecos/blob/develop/COPYING).**
-
 This package has similar functionality as the package [cvxpy_codegen](https://github.com/moehle/cvxpy_codegen),
 which appears to be unsupported.
+
+**Important: When generating code with the ECOS solver, the generated code is licensed 
+under the [GNU General Public License v3.0](https://github.com/embotech/ecos/blob/develop/COPYING).**
 
 ## Installation
 
