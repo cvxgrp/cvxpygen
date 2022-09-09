@@ -6,7 +6,7 @@ def get_dual_vec(prob):
     dual_values = []
     for constr in prob.constraints:
         if constr.args[0].size == 1:
-            dual_values.append(np.atleast_1d(constr.dual_value))
+            dual_values.append(np.atleast_1d(constr.dual_value).flatten())
         else:
             dual_values.append(constr.dual_value.flatten())
     return np.concatenate(dual_values)
