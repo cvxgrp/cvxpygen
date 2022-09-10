@@ -15,12 +15,12 @@ from cvxpygen import cpg
 
 def actuator_problem():
 
-    # define dimensions
-    n, m = 8, 3
+    # define dimensions (test for degenerate vectors and matrices)
+    n, m = 1, 1
 
     # define variables
     u = cp.Variable(n, name='u')
-    delta_u = cp.Variable(n, name='delta_u')
+    delta_u = cp.Variable((n, n), name='delta_u')
 
     # define parameters
     A = cp.Parameter((m, n), name='A')
@@ -114,15 +114,13 @@ def assign_data(prob, name, seed):
 
     if name == 'actuator':
 
-        prob.param_dict['A'].value = np.array([[1, 0, 1, 0, 1, 0, 1, 0],
-                                               [0, 1, 0, 1, 0, 1, 0, 1],
-                                               [1, -1, 1, 1, -1, 1, -1, -1]])
-        prob.param_dict['w'].value = np.array([1, 1, 1])
+        prob.param_dict['A'].value = np.array([[1]])
+        prob.param_dict['w'].value = np.array([1])
         prob.param_dict['lamb_sm'].value = np.random.rand()
-        prob.param_dict['kappa'].value = 0.1 * np.ones(8)
-        prob.param_dict['u_prev'].value = np.zeros(8)
-        prob.param_dict['u_min'].value = -np.ones(8)
-        prob.param_dict['u_max'].value = np.ones(8)
+        prob.param_dict['kappa'].value = 0.1 * np.ones(1)
+        prob.param_dict['u_prev'].value = 0 * np.ones(1)
+        prob.param_dict['u_min'].value = -1 * np.ones(1)
+        prob.param_dict['u_max'].value = 1 * np.ones(1)
 
     elif name == 'MPC':
 
@@ -166,7 +164,7 @@ def assign_data(prob, name, seed):
 
 def get_primal_vec(prob, name):
     if name == 'actuator':
-        return np.concatenate((prob.var_dict['u'].value, prob.var_dict['delta_u'].value))
+        return np.array((prob.var_dict['u'].value.squeeze(), prob.var_dict['delta_u'].value.squeeze()))
     elif name == 'MPC':
         return np.concatenate((prob.var_dict['U'].value.flatten(), prob.var_dict['X'].value.flatten()))
     elif name == 'portfolio':

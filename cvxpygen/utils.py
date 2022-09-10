@@ -115,6 +115,14 @@ def param_is_empty(param):
         return param.size == 0
 
 
+def is_mathematical_scalar(x):
+    """
+    Check if input is a scalar in mathematical sense, e.g., returning True for vectors with length 1
+    """
+
+    return True if np.isscalar(x) else x.size == 1
+
+
 def write_problem_summary(name_to_shape, name_to_size):
     """
     Create html code for param / variables table entries
@@ -322,7 +330,7 @@ def write_workspace_def(f, info_opt, info_usr, info_can):
         names = list(info_usr[C.P_WRITABLE].keys())
         for name in names:
             value = info_usr[C.P_WRITABLE][name]
-            if np.isscalar(value):
+            if is_mathematical_scalar(value):
                 user_casts.append('')
                 user_values.append('%.20f' % value)
             else:
@@ -399,7 +407,7 @@ def write_workspace_def(f, info_opt, info_usr, info_can):
     if any(info_usr[C.V_NAME_TO_SYM]) or info_opt[C.SOLVER_NAME] == 'ECOS':
         f.write('// User-defined variables\n')
     for name, value in info_usr[C.V_NAME_TO_INIT].items():
-        if np.isscalar(value):
+        if is_mathematical_scalar(value):
             prim_cast.append('')
         else:
             prim_cast.append('(c_float *) ')
@@ -412,7 +420,7 @@ def write_workspace_def(f, info_opt, info_usr, info_can):
     CPG_Prim_values = []
     for name, var in info_usr[C.V_NAME_TO_INIT].items():
         offset = info_usr[C.V_NAME_TO_OFFSET][name]
-        if np.isscalar(var):
+        if is_mathematical_scalar(var):
             CPG_Prim_values.append('0')
         else:
             if info_usr[C.V_NAME_TO_SYM][name] or info_opt[C.SOLVER_NAME] == 'ECOS':
@@ -429,7 +437,7 @@ def write_workspace_def(f, info_opt, info_usr, info_can):
         if info_opt[C.SOLVER_NAME] == 'ECOS':
             f.write('\n// Dual variables associated with user-defined constraints\n')
         for name, value in info_usr[C.D_NAME_TO_INIT].items():
-            if np.isscalar(value):
+            if is_mathematical_scalar(value):
                 dual_cast.append('')
             else:
                 dual_cast.append('(c_float *) ')
@@ -443,7 +451,7 @@ def write_workspace_def(f, info_opt, info_usr, info_can):
         for name, var in info_usr[C.D_NAME_TO_INIT].items():
             vec = info_usr[C.D_NAME_TO_VEC][name]
             offset = info_usr[C.D_NAME_TO_OFFSET][name]
-            if np.isscalar(var):
+            if is_mathematical_scalar(var):
                 CPG_Dual_values.append('0')
             else:
                 if info_opt[C.SOLVER_NAME] == 'OSQP':
@@ -633,7 +641,7 @@ def write_workspace_prot(f, info_opt, info_usr, info_can):
     f.write('// Primal solution\n')
     f.write('typedef struct {\n')
     for name, var in info_usr[C.V_NAME_TO_INIT].items():
-        if np.isscalar(var):
+        if is_mathematical_scalar(var):
             s = ''
         else:
             s = '*'
@@ -644,7 +652,7 @@ def write_workspace_prot(f, info_opt, info_usr, info_can):
         f.write('// Dual solution\n')
         f.write('typedef struct {\n')
         for name, var in info_usr[C.D_NAME_TO_INIT].items():
-            if np.isscalar(var):
+            if is_mathematical_scalar(var):
                 s = ''
             else:
                 s = '*'
@@ -683,7 +691,7 @@ def write_workspace_prot(f, info_opt, info_usr, info_can):
     if info_opt[C.UNROLL]:
         f.write('\n// User-defined parameters\n')
         for name, value in info_usr[C.P_WRITABLE].items():
-            if not np.isscalar(value):
+            if not is_mathematical_scalar(value):
                 osqp_utils.write_vec_extern(f, value, info_opt[C.PREFIX]+'cpg_'+name, 'c_float')
         f.write('\n// Struct containing all user-defined parameters\n')
         write_struct_prot(f, '%sCPG_Params' % info_opt[C.PREFIX], 'CPG_Params_t')
@@ -714,14 +722,14 @@ def write_workspace_prot(f, info_opt, info_usr, info_can):
         f.write('\n// User-defined variables\n')
         for name, value in info_usr[C.V_NAME_TO_INIT].items():
             if info_usr[C.V_NAME_TO_SYM][name] or info_opt[C.SOLVER_NAME] == 'ECOS':
-                if not np.isscalar(value):
+                if not is_mathematical_scalar(value):
                     osqp_utils.write_vec_extern(f, value.flatten(order='F'), info_opt[C.PREFIX]+'cpg_'+name,
                                                 'c_float')
 
     if info_opt[C.SOLVER_NAME] == 'ECOS':
         f.write('\n// Dual variables associated with user-defined constraints\n')
         for name, value in info_usr[C.D_NAME_TO_INIT].items():
-            if not np.isscalar(value):
+            if not is_mathematical_scalar(value):
                 osqp_utils.write_vec_extern(f, value.flatten(order='F'), info_opt[C.PREFIX]+'cpg_'+name, 'c_float')
 
     f.write('\n// Struct containing primal solution\n')
@@ -1118,7 +1126,7 @@ def write_example_def(f, info_opt, info_usr):
 
     f.write('  // Update first entry of every user-defined parameter\n')
     for name, value in info_usr[C.P_WRITABLE].items():
-        if np.isscalar(value):
+        if is_mathematical_scalar(value):
             f.write('  %scpg_update_%s(%.20f);\n' % (info_opt[C.PREFIX], name, value))
         else:
             f.write('  %scpg_update_%s(0, %.20f);\n' % (info_opt[C.PREFIX], name, value[0]))
@@ -1137,7 +1145,7 @@ def write_example_def(f, info_opt, info_usr):
         int_format_str = 'd'
 
     for name, var in info_usr[C.V_NAME_TO_INIT].items():
-        if np.isscalar(var):
+        if is_mathematical_scalar(var):
             f.write('  printf("%s = %%f\\n", %sCPG_Result.prim->%s);\n' % (name, info_opt[C.PREFIX], name))
         else:
             f.write('  for(i=0; i<%d; i++) {\n' % var.size)
@@ -1148,7 +1156,7 @@ def write_example_def(f, info_opt, info_usr):
     if len(info_usr[C.D_NAME_TO_INIT]) > 0:
         f.write('\n  // Print dual solution\n')
     for name, var in info_usr[C.D_NAME_TO_INIT].items():
-        if np.isscalar(var):
+        if is_mathematical_scalar(var):
             f.write('  printf("%s = %%f\\n", %sCPG_Result.dual->%s);\n' % (name, info_opt[C.PREFIX], name))
         else:
             f.write('  for(i=0; i<%d; i++) {\n' % var.size)
@@ -1213,7 +1221,12 @@ def write_module_def(f, info_opt, info_usr, info_can):
     f.write('    #include "include/cpg_solve.h"\n')
     f.write('}\n\n')
     f.write('namespace py = pybind11;\n\n')
-    f.write('static int i;\n\n')
+    if max(
+            max(info_usr[C.P_NAME_TO_SIZE].values()),
+            max(info_usr[C.V_NAME_TO_SIZE].values()),
+            max(info_usr[C.D_NAME_TO_SIZE].values())
+    ) > 1:
+        f.write('static int i;\n\n')
 
     # cpp function that maps parameters to results
     f.write('%sCPG_Result_cpp_t %ssolve_cpp(struct %sCPG_Updated_cpp_t& CPG_Updated_cpp, '
@@ -1242,7 +1255,7 @@ def write_module_def(f, info_opt, info_usr, info_can):
 
     f.write('    %sCPG_Prim_cpp_t CPG_Prim_cpp {};\n' % info_opt[C.PREFIX])
     for name, var in info_usr[C.V_NAME_TO_INIT].items():
-        if np.isscalar(var):
+        if is_mathematical_scalar(var):
             f.write('    CPG_Prim_cpp.%s = %sCPG_Prim.%s;\n' % (name, info_opt[C.PREFIX], name))
         else:
             f.write('    for(i=0; i<%d; i++) {\n' % var.size)
@@ -1253,7 +1266,7 @@ def write_module_def(f, info_opt, info_usr, info_can):
     if len(info_usr[C.D_NAME_TO_INIT]) > 0:
         f.write('    %sCPG_Dual_cpp_t CPG_Dual_cpp {};\n' % info_opt[C.PREFIX])
         for name, var in info_usr[C.D_NAME_TO_INIT].items():
-            if np.isscalar(var):
+            if is_mathematical_scalar(var):
                 f.write('    CPG_Dual_cpp.%s = %sCPG_Dual.%s;\n' % (name, info_opt[C.PREFIX], name))
             else:
                 f.write('    for(i=0; i<%d; i++) {\n' % var.size)
@@ -1359,7 +1372,7 @@ def write_module_prot(f, info_opt, info_usr):
     f.write('// Primal solution\n')
     f.write('struct %sCPG_Prim_cpp_t {\n' % info_opt[C.PREFIX])
     for name, var in info_usr[C.V_NAME_TO_INIT].items():
-        if np.isscalar(var):
+        if is_mathematical_scalar(var):
             f.write('    double %s;\n' % name)
         else:
             f.write('    std::array<double, %d> %s;\n' % (var.size, name))
@@ -1370,7 +1383,7 @@ def write_module_prot(f, info_opt, info_usr):
         f.write('// Dual solution\n')
         f.write('struct %sCPG_Dual_cpp_t {\n' % info_opt[C.PREFIX])
         for name, var in info_usr[C.D_NAME_TO_INIT].items():
-            if np.isscalar(var):
+            if is_mathematical_scalar(var):
                 f.write('    double %s;\n' % name)
             else:
                 f.write('    std::array<double, %d> %s;\n' % (var.size, name))
@@ -1508,12 +1521,18 @@ def write_method(f, info_opt, info_usr):
         if len(shape) == 2:
             f.write('    prob.var_dict[\'%s\'].value = np.array(res.cpg_prim.%s).reshape((%d, %d), order=\'F\')\n' %
                     (name, name, shape[0], shape[1]))
+        elif len(shape) == 1:
+            f.write('    prob.var_dict[\'%s\'].value = np.array(res.cpg_prim.%s).reshape(%d)\n'
+                    % (name, name, shape[0]))
         else:
             f.write('    prob.var_dict[\'%s\'].value = np.array(res.cpg_prim.%s)\n' % (name, name))
     for i, (name, shape) in enumerate(info_usr[C.D_NAME_TO_SHAPE].items()):
         if len(shape) == 2:
             f.write('    prob.constraints[%d].save_dual_value('
                     'np.array(res.cpg_dual.%s).reshape((%d, %d), order=\'F\'))\n' % (i, name, shape[0], shape[1]))
+        elif len(shape) == 1:
+            f.write('    prob.constraints[%d].save_dual_value(np.array(res.cpg_dual.%s).reshape(%d))\n'
+                    % (i, name, shape[0]))
         else:
             f.write('    prob.constraints[%d].save_dual_value(np.array(res.cpg_dual.%s))\n' % (i, name))
 
@@ -1583,7 +1602,7 @@ def replace_html_data(text, info_opt, info_usr):
     CPGPRIMTYPEDEF = '\n// Struct type with primal solution\n'
     CPGPRIMTYPEDEF += 'typedef struct {\n'
     for name, var in info_usr[C.V_NAME_TO_INIT].items():
-        if np.isscalar(var):
+        if is_mathematical_scalar(var):
             s = ''
         else:
             s = '*'
@@ -1596,7 +1615,7 @@ def replace_html_data(text, info_opt, info_usr):
         CPGDUALTYPEDEF = '\n// Struct type with dual solution\n'
         CPGDUALTYPEDEF += 'typedef struct {\n'
         for name, var in info_usr[C.D_NAME_TO_INIT].items():
-            if np.isscalar(var):
+            if is_mathematical_scalar(var):
                 s = ''
             else:
                 s = '*'
