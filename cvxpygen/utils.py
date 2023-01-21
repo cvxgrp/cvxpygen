@@ -1222,9 +1222,9 @@ def write_module_def(f, info_opt, info_usr, info_can):
     f.write('}\n\n')
     f.write('namespace py = pybind11;\n\n')
     if max(
-            max(info_usr[C.P_NAME_TO_SIZE].values()),
-            max(info_usr[C.V_NAME_TO_SIZE].values()),
-            max(info_usr[C.D_NAME_TO_SIZE].values())
+            max(info_usr[C.P_NAME_TO_SIZE].values(), default=0),
+            max(info_usr[C.V_NAME_TO_SIZE].values(), default=0),
+            max(info_usr[C.D_NAME_TO_SIZE].values(), default=0)
     ) > 1:
         f.write('static int i;\n\n')
 
