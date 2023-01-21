@@ -62,8 +62,17 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
         shutil.copy(os.path.join(cvxpygen_directory, 'template', file), code_dir)
 
     # problem data
-    data, solving_chain, inverse_data = problem.get_problem_data(solver=solver, gp=False, enforce_dpp=True,
-                                                                 verbose=False)
+    solver_opts = {}
+    # TODO support quadratic objective for SCS.
+    if solver == 'SCS':
+        solver_opts['use_quad_obj'] = False
+    data, solving_chain, inverse_data = problem.get_problem_data(
+        solver=solver,
+        gp=False,
+        enforce_dpp=True,
+        verbose=False,
+        solver_opts=solver_opts,
+    )
 
     # catch non-supported cone types
     solver_name = solving_chain.solver.name()
