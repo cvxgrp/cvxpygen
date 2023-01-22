@@ -38,7 +38,7 @@ setup(
     py_modules=['cpg', 'utils'],
     include_package_data=True,
     install_requires=[
-        'cmake >= 3.5',
+        'cmake',
         'cvxpy >= 1.3',
         'pybind11 >= 2.8.0',
         'osqp >= 0.6.2',
