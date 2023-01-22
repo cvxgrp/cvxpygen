@@ -38,9 +38,9 @@ setup(
     py_modules=['cpg', 'utils'],
     include_package_data=True,
     install_requires=[
-        'cmake',
+        'cmake >= 3.5',
         'cvxpy >= 1.3',
-        'pybind11',
+        'pybind11 >= 2.8',
         'osqp >= 0.6.2',
         'scipy >= 1.1.0',
         'numpy >= 1.15',
