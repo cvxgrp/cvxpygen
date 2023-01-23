@@ -4,7 +4,7 @@ channels:
   - anaconda
   - defaults
 dependencies:
-  - python>=3.6
+  - python>=3.7
   - cmake>=3.5
-  - cvxpy>=1.1.18
-  - pybind11>=2.8.0
+  - cvxpy>=1.3
+  - pybind11>=2.8

@@ -62,8 +62,17 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
         shutil.copy(os.path.join(cvxpygen_directory, 'template', file), code_dir)
 
     # problem data
-    data, solving_chain, inverse_data = problem.get_problem_data(solver=solver, gp=False, enforce_dpp=True,
-                                                                 verbose=False)
+    solver_opts = {}
+    # TODO support quadratic objective for SCS.
+    if solver == 'SCS':
+        solver_opts['use_quad_obj'] = False
+    data, solving_chain, inverse_data = problem.get_problem_data(
+        solver=solver,
+        gp=False,
+        enforce_dpp=True,
+        verbose=False,
+        solver_opts=solver_opts,
+    )
 
     # catch non-supported cone types
     solver_name = solving_chain.solver.name()
@@ -256,8 +265,8 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
         n_eq = data['n_eq']
         n_ineq = data['n_ineq']
 
-        indices_obj, indptr_obj, shape_obj = p_prob.problem_data_index_P
-        indices_constr, indptr_constr, shape_constr = p_prob.problem_data_index_A
+        indices_obj, indptr_obj, shape_obj = p_prob.reduced_P.problem_data_index
+        indices_constr, indptr_constr, shape_constr = p_prob.reduced_A.problem_data_index
 
         canon_constants = {}
 
@@ -271,7 +280,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
         n_ineq = 0
 
         indices_obj, indptr_obj, shape_obj = None, None, None
-        indices_constr, indptr_constr, shape_constr = p_prob.problem_data_index
+        indices_constr, indptr_constr, shape_constr = p_prob.reduced_A.problem_data_index
 
         canon_constants = {'n': n_var, 'm': n_eq, 'z': p_prob.cone_dims.zero, 'l': p_prob.cone_dims.nonneg,
                            'q': np.array(p_prob.cone_dims.soc), 'qsize': len(p_prob.cone_dims.soc)}
@@ -286,7 +295,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
         n_ineq = data['G'].shape[0]
 
         indices_obj, indptr_obj, shape_obj = None, None, None
-        indices_constr, indptr_constr, shape_constr = p_prob.problem_data_index
+        indices_constr, indptr_constr, shape_constr = p_prob.reduced_A.problem_data_index
 
         canon_constants = {'n': n_var, 'm': n_ineq, 'p': n_eq, 'l': p_prob.cone_dims.nonneg,
                            'n_cones': len(p_prob.cone_dims.soc), 'q': np.array(p_prob.cone_dims.soc),
@@ -316,7 +325,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
         if solver_name == 'OSQP':
 
             if p_id == 'P':
-                mapping = p_prob.reduced_P
+                mapping = p_prob.reduced_P.reduced_mat
                 indices = indices_obj
                 shape = (n_var, n_var)
             elif p_id == 'q':
@@ -324,7 +333,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
             elif p_id == 'd':
                 mapping = p_prob.q[-1]
             elif p_id == 'A':
-                mapping = p_prob.reduced_A[:n_data_constr_mat]
+                mapping = p_prob.reduced_A.reduced_mat[:n_data_constr_mat]
                 indices = indices_constr[:n_data_constr_mat]
                 shape = (n_eq+n_ineq, n_var)
             elif p_id == 'l':
@@ -366,10 +375,10 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
                 indices = indices_constr[mapping_rows] - n_eq
 
             if p_id.isupper():
-                mapping = -p_prob.reduced_A[mapping_rows]
+                mapping = -p_prob.reduced_A.reduced_mat[mapping_rows]
 
         if p_id in canon_p_ids_constr_vec:
-            mapping_to_sparse = sign_constr_vec*p_prob.reduced_A[mapping_rows]
+            mapping_to_sparse = sign_constr_vec*p_prob.reduced_A.reduced_mat[mapping_rows]
             mapping_to_dense = sparse.lil_matrix(np.zeros((shape[0], mapping_to_sparse.shape[1])))
             for i_data in range(mapping_to_sparse.shape[0]):
                 mapping_to_dense[indices[i_data], :] = mapping_to_sparse[i_data, :]
