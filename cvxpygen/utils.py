@@ -381,7 +381,7 @@ def write_workspace_def(f, info_opt, info_usr, info_can):
             struct_values.append('0')
             if info_opt[C.SOLVER_NAME] == 'ECOS':
                 struct_values_ECOS.append('0')
-        elif length == 1:
+        elif p_id=='d':
             struct_values.append('%.20f' % p)
             if info_opt[C.SOLVER_NAME] == 'ECOS':
                 struct_values_ECOS.append('%.20f' % p)
@@ -890,7 +890,7 @@ def write_solve_def(f, info_opt, info_cg, info_usr, info_can):
     f.write('// Retrieve solver info\n')
     f.write('void %scpg_retrieve_info(){\n' % info_opt[C.PREFIX])
     if info_cg[C.NONZERO_D]:
-        d_str = ' + *%sCanon_Params.d' % info_opt[C.PREFIX]
+        d_str = ' + %sCanon_Params.d' % info_opt[C.PREFIX]
     else:
         d_str = ''
     if info_cg[C.IS_MAXIMIZATION]:

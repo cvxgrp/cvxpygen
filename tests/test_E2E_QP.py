@@ -60,7 +60,7 @@ def MPC_problem():
 
     # define objective
     objective = cp.Minimize(
-        cp.sum_squares(Psqrt @ X[:, H - 1]) + cp.sum_squares(Qsqrt @ X[:, :H]) + cp.sum_squares(Rsqrt @ U))
+        cp.sum_squares(Psqrt @ X[:, H - 1]) + cp.sum_squares(Qsqrt @ X[:, :H]) + cp.sum_squares(Rsqrt @ U)+1)
 
     # define constraints
     constraints = [X[:, 1:] == A @ X[:, :H] + B @ U,

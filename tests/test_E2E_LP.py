@@ -54,7 +54,7 @@ def resource_problem():
     r = cp.Parameter(m, name='r')
 
     # define objective
-    objective = cp.Maximize(cp.trace(cp.minimum(X @ W.T, S)))
+    objective = cp.Maximize(cp.trace(cp.minimum(X @ W.T, S))+26)
 
     # define constraints
     constraints = [X_min <= X, X <= X_max,
