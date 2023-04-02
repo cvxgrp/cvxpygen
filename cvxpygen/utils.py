@@ -52,6 +52,7 @@ class C:
     CONSTANTS = 'constants'
     SETTINGS_NAMES_TO_TYPE = 'settings_names_to_type'
     SETTINGS_NAMES_TO_DEFAULT = 'settings_names_to_default'
+    SETTINGS_LIST = 'settings_list'
 
 
 def write_description(f, file_type, content):
@@ -1564,7 +1565,7 @@ def write_method(f, info_opt, info_usr):
     f.write('    return prob.value\n')
 
 
-def replace_html_data(text, info_opt, info_usr):
+def replace_html_data(text, info_opt, info_usr, info_can):
     """
     Replace placeholder strings in html documentation file
     """
@@ -1670,5 +1671,9 @@ def replace_html_data(text, info_opt, info_usr):
     CPGSETTINGSDECLARATIONS += 'void %scpg_set_solver_&lt;setting_name&gt;' \
                                '(&lt;setting_type&gt; &lt;setting_name&gt;_new);\n' % info_opt[C.PREFIX]
     CPGSETTINGSDECLARATIONS += '...\n'
+    text = text.replace('$CPGSETTINGSDECLARATIONS', CPGSETTINGSDECLARATIONS)
 
-    return text.replace('$CPGSETTINGSDECLARATIONS', CPGSETTINGSDECLARATIONS)
+    # settings list
+    CPGSETTINGSLIST = ', '.join([('<code>%s</code>' % s) for s in info_can[C.SETTINGS_LIST]])
+
+    return text.replace('$CPGSETTINGSLIST', CPGSETTINGSLIST)

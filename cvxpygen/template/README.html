@@ -127,7 +127,10 @@ $CPGSETTINGSDECLARATIONS
         </dd>
         <dd>
             where <code>&lt;setting_name&gt;</code> and <code>&lt;setting_type&gt;</code> are
-            the name and type of the solver setting to be updated, respectively.
+            the name and type of the solver setting to be updated, respectively. With the chosen
+            numerical solver $CPGSOLVERNAME, you can update these settings:
+$CPGSETTINGSLIST
+            .
         </dd>
       <dt><code>c/src/cpg_workspace.c</code> contains the static allocation of the C variables declared in <code>include/cpg_workspace.h</code>.</dt>
       <dt><code>c/src/cpg_solve.c</code> contains the definition of functions declared in <code>include/cpg_solve.h</code>.</dt>

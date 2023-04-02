@@ -138,8 +138,10 @@ sys.stdout.write('Objective function value: %.6f\n' % val)
 The argument `updated_params` specifies which user-defined parameter values are new.
 If the argument is omitted, all parameter values are assumed to be new.
 If only a subset of the user-defined parameters have new values, use this argument to speed up the solver.
-Most solver settings can be specified as keyword arguments like without code generation. 
+
+**Most solver settings can be specified as keyword arguments** like without code generation. 
 Here, we use `verbose=False` to suppress printing.
+The list of changeable settings differs by solver and is documented in `<code_dir>/README.html` after code generation.
 
 Comparing the standard and codegen methods for this example, both the solutions and objective values are close.
 Especially for smaller problems like this, the new solve method ``'cpg'`` is significantly faster than solving without code generation.

@@ -639,7 +639,8 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
                 C.P_ID_TO_MAPPING: canon_p_id_to_mapping,
                 C.CONSTANTS: canon_constants,
                 C.SETTINGS_NAMES_TO_TYPE: settings_names_to_type,
-                C.SETTINGS_NAMES_TO_DEFAULT: settings_names_to_default}
+                C.SETTINGS_NAMES_TO_DEFAULT: settings_names_to_default,
+                C.SETTINGS_LIST: settings_names}
 
     # 'workspace' prototypes
     with open(os.path.join(code_dir, 'c', 'include', 'cpg_workspace.h'), 'w') as f:
@@ -698,7 +699,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
     # html documentation file
     with open(os.path.join(code_dir, 'README.html'), 'r') as f:
         html_data = f.read()
-    html_data = utils.replace_html_data(html_data, info_opt, info_usr)
+    html_data = utils.replace_html_data(html_data, info_opt, info_usr, info_can)
     with open(os.path.join(code_dir, 'README.html'), 'w') as f:
         f.write(html_data)
 
