@@ -27,7 +27,7 @@ def ADP_problem():
     G = cp.Parameter((n, m), name='G')
 
     # define objective
-    objective = cp.Minimize(cp.sum_squares(f + G @ u) + cp.sum_squares(Rsqrt @ u))
+    objective = cp.Minimize(cp.sum_squares(f + G @ u) + cp.sum_squares(Rsqrt @ u)+98)
 
     # define constraints
     constraints = [cp.norm(u, 2) <= 1]
