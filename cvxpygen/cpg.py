@@ -58,7 +58,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
     for d in ['src', 'include']:
         os.mkdir(os.path.join(code_dir, 'cpp', d))
     shutil.copy(os.path.join(cvxpygen_directory, 'template', 'CMakeLists.txt'), os.path.join(code_dir, 'c'))
-    for file in ['setup.py', 'README.html']:
+    for file in ['setup.py', 'README.html', '__init__.py']:
         shutil.copy(os.path.join(cvxpygen_directory, 'template', file), code_dir)
 
     # problem data
