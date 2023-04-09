@@ -31,7 +31,7 @@ from cvxpy.reductions.solvers.conic_solvers.scs_conif import SCS
 from cvxpy.reductions.solvers.conic_solvers.ecos_conif import ECOS
 
 
-def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefix='', wrapper=True):
+def generate_code(problem, code_dir='CPG_code', solver=None, enable_settings=[], unroll=False, prefix='', wrapper=True):
     """
     Generate C code for CVXPY problem and (optionally) python wrapper
     """
@@ -439,6 +439,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
         canon_p_id_to_changes[p_id] = mapping[:, :-1].nnz > 0
         canon_p_id_to_size[p_id] = mapping.shape[0]
 
+    # TODO: move this into a config file
     if solver_name == 'OSQP':
 
         # solver settings
@@ -447,6 +448,53 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
         settings_types = ['c_float', 'c_int', 'c_float', 'c_float', 'c_float', 'c_float', 'c_float', 'c_int', 'c_int',
                           'c_int']
         settings_defaults = []
+
+        # extra settings
+        extra_settings_names = ['verbose', 'polish', 'polish_refine_iter', 'delta']
+        extra_settings_types = ['c_int', 'c_int', 'c_int', 'c_float']
+        extra_settings_defaults = [None] * len(extra_settings_names)
+
+    elif solver_name == 'SCS':
+
+        # solver settings
+        settings_names = ['normalize', 'scale', 'adaptive_scale', 'rho_x', 'max_iters', 'eps_abs',  'eps_rel',
+                          'eps_infeas', 'alpha', 'time_limit_secs', 'verbose', 'warm_start', 'acceleration_lookback',
+                          'acceleration_interval', 'write_data_filename', 'log_csv_filename']
+        settings_types = ['c_int', 'c_float', 'c_int', 'c_float', 'c_int', 'c_float', 'c_float', 'c_float', 'c_float',
+                          'c_float', 'c_int', 'c_int', 'c_int', 'c_int', 'const char*', 'const char*']
+        settings_defaults = ['1', '0.1', '1', '1e-6', '1e5', '1e-4', '1e-4', '1e-7', '1.5', '0', '0', '0', '0', '1',
+                             'SCS_NULL', 'SCS_NULL']
+
+        # extra settings
+        extra_settings_names = []
+        extra_settings_types = []
+        extra_settings_defaults = []
+
+    elif solver_name == 'ECOS':
+
+        # solver settings
+        settings_names = ['feastol', 'abstol', 'reltol', 'feastol_inacc', 'abstol_inacc', 'reltol_inacc', 'maxit']
+        settings_types = ['c_float', 'c_float', 'c_float', 'c_float', 'c_float', 'c_float', 'c_int']
+        settings_defaults = ['1e-8', '1e-8', '1e-8', '1e-4', '5e-5', '5e-5', '100']
+
+        # extra settings
+        extra_settings_names = []
+        extra_settings_types = []
+        extra_settings_defaults = []
+
+    # add extra settings
+    extra_settings_n2t = {n: t for n, t in zip(extra_settings_names, extra_settings_types)}
+    extra_settings_n2d = {n: d for n, d in zip(extra_settings_names, extra_settings_defaults)}
+
+    for s in (set(enable_settings)-set(settings_names)):
+        if s in extra_settings_names:
+            settings_names.append(s)
+            settings_types.append(extra_settings_n2t[s])
+            settings_defaults.append(extra_settings_n2d[s])
+        else:
+            warnings.warn('Cannot enable setting %s for solver %s' % (s, solver_name))
+
+    if solver_name == 'OSQP':
 
         # OSQP codegen
         osqp_obj = osqp.OSQP()
@@ -465,16 +513,24 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
                         os.path.join(solver_code_dir, 'LICENSE'))
         shutil.copy(os.path.join(cvxpygen_directory, 'template', 'LICENSE'), code_dir)
 
-    elif solver_name == 'SCS':
+        # modify for extra settings
+        if 'verbose' in enable_settings:
+            utils.replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'),
+                [('message(STATUS "Disabling printing for embedded")', 'message(STATUS "Not disabling printing for embedded by user request")'),
+                 ('set(PRINTING OFF)', '')])
+            utils.replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'include', 'constants.h'),
+                [('# ifdef __cplusplus\n}', '#  define VERBOSE (1)\n\n# ifdef __cplusplus\n}')])
+            utils.replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'include', 'types.h'),
+                [('} OSQPInfo;', '  c_int status_polish;\n} OSQPInfo;'),
+                 ('} OSQPSettings;', '  c_int polish;\n  c_int verbose;\n} OSQPSettings;'),
+                 ('# ifndef EMBEDDED\n  c_int nthreads; ///< number of threads active\n# endif // ifndef EMBEDDED', '  c_int nthreads;')])
+            utils.replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'include', 'osqp.h'),
+                [('# ifdef __cplusplus\n}', 'c_int osqp_update_verbose(OSQPWorkspace *work, c_int verbose_new);\n\n# ifdef __cplusplus\n}')])
+            utils.replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'src', 'osqp', 'osqp.c'),
+                [('void osqp_set_default_settings(OSQPSettings *settings) {', 'void osqp_set_default_settings(OSQPSettings *settings) {\n  settings->verbose = VERBOSE;')])
+            
 
-        # solver settings
-        settings_names = ['normalize', 'scale', 'adaptive_scale', 'rho_x', 'max_iters', 'eps_abs',  'eps_rel',
-                          'eps_infeas', 'alpha', 'time_limit_secs', 'verbose', 'warm_start', 'acceleration_lookback',
-                          'acceleration_interval', 'write_data_filename', 'log_csv_filename']
-        settings_types = ['c_int', 'c_float', 'c_int', 'c_float', 'c_int', 'c_float', 'c_float', 'c_float', 'c_float',
-                          'c_float', 'c_int', 'c_int', 'c_int', 'c_int', 'const char*', 'const char*']
-        settings_defaults = ['1', '0.1', '1', '1e-6', '1e5', '1e-4', '1e-4', '1e-7', '1.5', '0', '0', '0', '0', '1',
-                             'SCS_NULL', 'SCS_NULL']
+    elif solver_name == 'SCS':
 
         # copy sources
         if os.path.isdir(solver_code_dir):
@@ -527,11 +583,6 @@ def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefi
             f.write(setup_text)
 
     elif solver_name == 'ECOS':
-
-        # solver settings
-        settings_names = ['feastol', 'abstol', 'reltol', 'feastol_inacc', 'abstol_inacc', 'reltol_inacc', 'maxit']
-        settings_types = ['c_float', 'c_float', 'c_float', 'c_float', 'c_float', 'c_float', 'c_int']
-        settings_defaults = ['1e-8', '1e-8', '1e-8', '1e-4', '5e-5', '5e-5', '100']
 
         # copy sources
         if os.path.isdir(solver_code_dir):
