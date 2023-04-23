@@ -244,8 +244,10 @@ def test_OSQP_verbose():
     verbose_output = io.StringIO()
     sys.stdout = verbose_output
     
+    _ = utils_test.check(prob, 'OSQP', 'actuator', get_primal_vec, verbose=False)
+    assert 'optimal objective' not in verbose_output.getvalue()
+
     _ = utils_test.check(prob, 'OSQP', 'actuator', get_primal_vec, verbose=True)
+    assert 'optimal objective' in verbose_output.getvalue()
 
     sys.stdout = sys.__stdout__
-    
-    assert 'optimal objective' in verbose_output.getvalue()
