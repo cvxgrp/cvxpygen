@@ -71,6 +71,19 @@ def write_description(f, file_type, content):
     f.write('%s\n\n' % comment_str[::-1])
 
 
+def replace_in_file(filepath, replacements):
+    """
+    Replace strings in file
+    """
+
+    with open(filepath, 'r') as f:
+        t = f.read()
+    for old, new in replacements:
+        t = t.replace(old, new)
+    with open(filepath, 'w') as f:
+        f.write(t)
+
+
 def replace_inf(v):
     """
     Replace infinity by large number

@@ -12,23 +12,23 @@ def get_dual_vec(prob):
     return np.concatenate(dual_values)
 
 
-def check(prob, solver, name, func_get_primal_vec):
+def check(prob, solver, name, func_get_primal_vec, **extra_settings):
 
     if solver == 'OSQP':
         val_py = prob.solve(solver='OSQP', eps_abs=1e-3, eps_rel=1e-3, max_iter=4000, polish=False,
-                            adaptive_rho_interval=int(1e6), warm_start=False)
+                            adaptive_rho_interval=int(1e6), warm_start=False, **extra_settings)
     elif solver == 'SCS':
-        val_py = prob.solve(solver='SCS', warm_start=False, verbose=False)
+        val_py = prob.solve(solver='SCS', warm_start=False, verbose=False, **extra_settings)
     else:
-        val_py = prob.solve(solver='ECOS')
+        val_py = prob.solve(solver='ECOS', **extra_settings)
     prim_py = func_get_primal_vec(prob, name)
     dual_py = get_dual_vec(prob)
     if solver == 'OSQP':
-        val_cg = prob.solve(method='CPG', warm_start=False)
+        val_cg = prob.solve(method='CPG', warm_start=False, **extra_settings)
     elif solver == 'SCS':
-        val_cg = prob.solve(method='CPG', warm_start=False, verbose=False)
+        val_cg = prob.solve(method='CPG', warm_start=False, verbose=False, **extra_settings)
     else:
-        val_cg = prob.solve(method='CPG')
+        val_cg = prob.solve(method='CPG', **extra_settings)
     prim_cg = func_get_primal_vec(prob, name)
     dual_cg = get_dual_vec(prob)
     prim_py_norm = np.linalg.norm(prim_py, 2)
