@@ -1498,19 +1498,21 @@ def write_method(f, info_opt, info_usr):
 
     f.write('    # set parameter values\n')
     f.write('    par = cpg_module.%scpg_params()\n' % info_opt[C.PREFIX])
+    # prob.param_dict is a computed property. Avoid repeated calls in the loop.
+    f.write('    param_dict = prob.param_dict\n')
     for name, size in info_usr[C.P_NAME_TO_SIZE].items():
         if name in info_usr[C.P_NAME_TO_SPARSITY].keys():
-            f.write('    n = prob.param_dict[\'%s\'].shape[0]\n' % name)
+            f.write('    n = param_dict[\'%s\'].shape[0]\n' % name)
             if info_usr[C.P_NAME_TO_SPARSITY_TYPE][name] == 'diag':
                 f.write('    %s_coordinates = np.arange(0, n**2, n+1)\n' % name)
             else:
                 f.write('    %s_coordinates = np.unique([coord[0]+coord[1]*n for coord in '
-                        'prob.param_dict[\'%s\'].attributes[\'sparsity\']])\n' % (name, name))
+                        'param_dict[\'%s\'].attributes[\'sparsity\']])\n' % (name, name))
             if size == 1:
-                f.write('    par.%s = prob.param_dict[\'%s\'].value[coordinates]\n' % (name, name))
+                f.write('    par.%s = param_dict[\'%s\'].value[coordinates]\n' % (name, name))
             else:
                 f.write('    %s_value = []\n' % name)
-                f.write('    %s_flat = prob.param_dict[\'%s\'].value.flatten(order=\'F\')\n' % (name, name))
+                f.write('    %s_flat = param_dict[\'%s\'].value.flatten(order=\'F\')\n' % (name, name))
                 f.write('    for coord in %s_coordinates:\n' % name)
                 f.write('        %s_value.append(%s_flat[coord])\n' % (name, name))
                 f.write('        %s_flat[coord] = 0\n' % name)
@@ -1520,9 +1522,9 @@ def write_method(f, info_opt, info_usr):
                 f.write('    par.%s = list(%s_value)\n' % (name, name))
         else:
             if size == 1:
-                f.write('    par.%s = prob.param_dict[\'%s\'].value\n' % (name, name))
+                f.write('    par.%s = param_dict[\'%s\'].value\n' % (name, name))
             else:
-                f.write('    par.%s = list(prob.param_dict[\'%s\'].value.flatten(order=\'F\'))\n' % (name, name))
+                f.write('    par.%s = list(param_dict[\'%s\'].value.flatten(order=\'F\'))\n' % (name, name))
 
     f.write('\n    # solve\n')
     f.write('    t0 = time.time()\n')
