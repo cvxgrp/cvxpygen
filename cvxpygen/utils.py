@@ -1535,13 +1535,13 @@ def write_method(f, info_opt, info_usr):
     f.write('    prob._clear_solution()\n')
     for name, shape in info_usr[C.V_NAME_TO_SHAPE].items():
         if len(shape) == 2:
-            f.write('    prob.var_dict[\'%s\'].value = np.array(res.cpg_prim.%s).reshape((%d, %d), order=\'F\')\n' %
+            f.write('    prob.var_dict[\'%s\'].save_value(np.array(res.cpg_prim.%s).reshape((%d, %d), order=\'F\'))\n' %
                     (name, name, shape[0], shape[1]))
         elif len(shape) == 1:
-            f.write('    prob.var_dict[\'%s\'].value = np.array(res.cpg_prim.%s).reshape(%d)\n'
+            f.write('    prob.var_dict[\'%s\'].save_value(np.array(res.cpg_prim.%s).reshape(%d))\n'
                     % (name, name, shape[0]))
         else:
-            f.write('    prob.var_dict[\'%s\'].value = np.array(res.cpg_prim.%s)\n' % (name, name))
+            f.write('    prob.var_dict[\'%s\'].save_value(np.array(res.cpg_prim.%s))\n' % (name, name))
     for i, (name, shape) in enumerate(info_usr[C.D_NAME_TO_SHAPE].items()):
         if len(shape) == 2:
             f.write('    prob.constraints[%d].save_dual_value('
