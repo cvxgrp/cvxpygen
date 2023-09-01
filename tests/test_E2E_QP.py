@@ -4,6 +4,7 @@ import cvxpy as cp
 import numpy as np
 import glob
 import os
+import io
 import importlib
 import itertools
 import pickle
@@ -222,3 +223,31 @@ def test(name, solver, style, seed):
         assert np.linalg.norm(dual_cg - dual_py, 2) / dual_py_norm < 0.1
     else:
         assert np.linalg.norm(dual_cg, 2) < 1e-3
+
+    
+def test_OSQP_verbose():
+
+    prob = actuator_problem()
+    prob = assign_data(prob, 'actuator', 0)
+
+    cpg.generate_code(prob, code_dir='test_actuator_OSQP_verbose', solver='OSQP', unroll=False, prefix='actuator_OSQP_verbose', enable_settings=['verbose'])
+    assert len(glob.glob(os.path.join('test_actuator_OSQP_verbose', 'cpg_module.*'))) > 0
+
+    with open('test_actuator_OSQP_verbose/problem.pickle', 'rb') as f:
+        prob = pickle.load(f)
+
+    module = importlib.import_module('test_actuator_OSQP_verbose.cpg_solver')
+    prob.register_solve('CPG', module.cpg_solve)
+
+    prob = assign_data(prob, 'actuaor', 0)
+
+    verbose_output = io.StringIO()
+    sys.stdout = verbose_output
+    
+    _ = utils_test.check(prob, 'OSQP', 'actuator', get_primal_vec, verbose=False)
+    assert 'optimal objective' not in verbose_output.getvalue()
+
+    _ = utils_test.check(prob, 'OSQP', 'actuator', get_primal_vec, verbose=True)
+    assert 'optimal objective' in verbose_output.getvalue()
+
+    sys.stdout = sys.__stdout__

@@ -94,13 +94,14 @@ cpg.generate_code(problem, code_dir='nonneg_LS', solver='SCS')
 where the generated code is stored inside `nonneg_LS` and the `SCS` solver is used. 
 Next to the positional argument `problem`, all keyword arguments for the `generate_code()` method are summarized below.
 
-| Argument         | Meaning       | Default       |
-| -------------    | ------------- | ------------- |
-| `code_dir`       | directory for code to be stored in                                 | `'CPG_code'` |
-| `solver`         | canonical solver to generate code with                             | CVXPY default |
-| `unroll`         | unroll loops in canonicalization code                              | `False` |
-| `prefix`         | prefix for unique code symbols when dealing with multiple problems | `''`
-| `wrapper`        | compile Python wrapper for CVXPY interface                         | `True` |
+| Argument         | Meaning       | Type          | Default       |
+| -------------    | ------------- | ------------- | ------------- |
+| `code_dir`       | directory for code to be stored in                                 | String          | `'CPG_code'`  |
+| `solver`         | canonical solver to generate code with                             | String          | CVXPY default |
+| `enable_settings`| enabled settings that are otherwise locked by embedded solver      | List of Strings | `[]`          |
+| `unroll`         | unroll loops in canonicalization code                              | Bool            | `False`       |
+| `prefix`         | prefix for unique code symbols when dealing with multiple problems | String          | `''`          |
+| `wrapper`        | compile Python wrapper for CVXPY interface                         | Bool            | `True`        |
 
 You can find an overview of the code generation result in `nonneg_LS/README.html`.
 

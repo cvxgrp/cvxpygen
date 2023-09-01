@@ -33,7 +33,7 @@ from cvxpy.reductions.solvers.conic_solvers.scs_conif import SCS
 from cvxpy.reductions.solvers.conic_solvers.ecos_conif import ECOS
 
 
-def generate_code(problem, code_dir='CPG_code', solver=None, unroll=False, prefix='', wrapper=True):
+def generate_code(problem, code_dir='CPG_code', solver=None, enable_settings=[], unroll=False, prefix='', wrapper=True):
     """
     Generate C code for CVXPY problem and (optionally) python wrapper
     """
