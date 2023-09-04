@@ -5,6 +5,14 @@ import numpy as np
 
 
 @dataclass
+class Configuration:
+    code_dir: str
+    solver_name: str
+    unroll: bool
+    prefix: str
+
+
+@dataclass
 class AffineMap:
     mapping_rows: list = field(default_factory=list)
     mapping: list = field(default_factory=list)
@@ -20,7 +28,9 @@ class ParameterCanon:
     p_id_to_mapping: dict[str, sp.csr_matrix] = field(default_factory=dict)
     p_id_to_changes: dict[str, bool] = field(default_factory=dict)
     p_id_to_size: dict[str, int] = field(default_factory=dict)
-    nonzero_d = True
+    nonzero_d: bool = True
+    is_maximization: bool = False
+    user_p_name_to_canon_outdated: dict[str, list[str]] = field(default_factory=dict)
 
 
 @dataclass

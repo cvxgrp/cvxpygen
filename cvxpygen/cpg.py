@@ -18,10 +18,9 @@ import pickle
 import warnings
 
 from cvxpygen import utils
-from cvxpygen.mappings import PrimalVariableInfo, DualVariableInfo, ConstraintInfo, ParameterCanon, \
-    ParameterInfo
+from cvxpygen.mappings import Configuration, PrimalVariableInfo, DualVariableInfo, ConstraintInfo, \
+    ParameterCanon, ParameterInfo
 from cvxpygen.solvers import get_interface_class
-from cvxpygen.utils import C
 import cvxpy as cp
 import numpy as np
 from scipy import sparse
@@ -77,76 +76,34 @@ def generate_code(problem, code_dir='CPG_code', solver=None, enable_settings=[],
     parameter_info = get_parameter_info(param_prob)
 
     # dimensions and information specific to solver
-    solver_interface = interface_class(data, param_prob)  # noqa
+    solver_interface = interface_class(data, param_prob, enable_settings)  # noqa
 
     constraint_info = get_constraint_info(solver_interface)
 
     adjacency, parameter_canon = process_canonical_parameters(constraint_info, param_prob,
                                                               parameter_info, solver_interface,
-                                                              solver_name)
+                                                              solver_name, problem)
 
     cvxpygen_directory = os.path.dirname(os.path.realpath(__file__))
     solver_code_dir = os.path.join(code_dir, 'c', 'solver_code')
     solver_interface.generate_code(code_dir, solver_code_dir, cvxpygen_directory, parameter_canon)
 
-    param_name_to_canon_outdated = {
+    parameter_canon.user_p_name_to_canon_outdated = {
         user_p_name: [solver_interface.canon_p_ids[j] for j in np.nonzero(adjacency[:, i])[0]]
         for i, user_p_name in enumerate(parameter_info.names)}
 
-    # avoid non-alphanumeric first character in problem name
-    prefix = adjust_problem_name(prefix)
+    # configuration
+    configuration = get_configuration(code_dir, solver, unroll, prefix)
 
-    # summarize information on options, codegen, user parameters / variables,
-    # canonicalization in dictionaries
-    info_opt = {C.CODE_DIR: code_dir,
-                C.SOLVER_NAME: solver_name,
-                C.UNROLL: unroll,
-                C.PREFIX: prefix}
-
-    info_cg = {C.RET_PRIM_FUNC_EXISTS: solver_interface.ret_prim_func_exists(variable_info),
-               C.RET_DUAL_FUNC_EXISTS: solver_interface.ret_dual_func_exists(dual_variable_info),
-               C.NONZERO_D: parameter_canon.nonzero_d,
-               C.IS_MAXIMIZATION: type(problem.objective) == Maximize}
-
-    info_usr = {C.P_WRITABLE: parameter_info.writable,
-                C.P_FLAT_USP: parameter_info.flat_usp,
-                C.P_COL_TO_NAME_USP: parameter_info.col_to_name_usp,
-                C.P_NAME_TO_SHAPE: parameter_info.name_to_shape,
-                C.P_NAME_TO_SIZE: parameter_info.name_to_size_usp,
-                C.P_NAME_TO_CANON_OUTDATED: param_name_to_canon_outdated,
-                C.P_NAME_TO_SPARSITY: parameter_info.name_to_sparsity,
-                C.P_NAME_TO_SPARSITY_TYPE: parameter_info.name_to_sparsity_type,
-                C.V_NAME_TO_INDICES: variable_info.name_to_indices,
-                C.V_NAME_TO_SIZE: variable_info.name_to_size,
-                C.V_NAME_TO_SHAPE: variable_info.name_to_shape,
-                C.V_NAME_TO_INIT: variable_info.name_to_init,
-                C.V_NAME_TO_SYM: variable_info.name_to_sym,
-                C.V_NAME_TO_OFFSET: variable_info.name_to_offset,
-                C.D_NAME_TO_INIT: dual_variable_info.name_to_init,
-                C.D_NAME_TO_VEC: dual_variable_info.name_to_vec,
-                C.D_NAME_TO_OFFSET: dual_variable_info.name_to_offset,
-                C.D_NAME_TO_SIZE: dual_variable_info.name_to_size,
-                C.D_NAME_TO_SHAPE: dual_variable_info.name_to_shape,
-                C.D_NAME_TO_INDICES: dual_variable_info.name_to_indices}
-
-    info_can = {C.P: parameter_canon.p,
-                C.P_ID_TO_SIZE: parameter_canon.p_id_to_size,
-                C.P_ID_TO_CHANGES: parameter_canon.p_id_to_changes,
-                C.P_ID_TO_MAPPING: parameter_canon.p_id_to_mapping,
-                C.CONSTANTS: solver_interface.canon_constants,
-                C.SETTINGS_NAMES_TO_TYPE: solver_interface.settings_names_to_type,
-                C.SETTINGS_NAMES_TO_DEFAULT: solver_interface.settings_names_to_default,
-                C.SETTINGS_LIST: solver_interface.settings_names}
-
-    write_c_code(code_dir, info_opt, info_cg, info_can, info_usr, problem)
+    write_c_code(problem, configuration, variable_info, dual_variable_info, parameter_info,
+                 parameter_canon, solver_interface)
 
     sys.stdout.write('CVXPYgen finished generating code.\n')
 
     if wrapper:
         compile_python_module(code_dir)
 
-
-def process_canonical_parameters(constraint_info, param_prob, parameter_info, solver_interface, solver_name):
+def process_canonical_parameters(constraint_info, param_prob, parameter_info, solver_interface, solver_name, problem):
     adjacency = np.zeros(shape=(len(solver_interface.canon_p_ids), parameter_info.num), dtype=bool)
     parameter_canon = ParameterCanon()
     # compute affine mapping for each canonical parameter
@@ -171,6 +128,7 @@ def process_canonical_parameters(constraint_info, param_prob, parameter_info, so
         parameter_canon.p_id_to_mapping[p_id] = affine_map.mapping.tocsr()
         parameter_canon.p_id_to_changes[p_id] = affine_map.mapping[:, :-1].nnz > 0
         parameter_canon.p_id_to_size[p_id] = affine_map.mapping.shape[0]
+    parameter_canon.is_maximization = type(problem.objective) == Maximize
     return adjacency, parameter_canon
 
 
@@ -344,64 +302,68 @@ def update_adjacency_matrix(adjacency, i, parameter_info, mapping) -> np.ndarray
     return adjacency
 
 
-def write_c_code(code_dir: str, info_opt: dict, info_cg: dict, info_can: dict, info_usr: dict,
-                 problem: cp.Problem) -> None:
+def write_c_code(problem: cp.Problem, configuration: dict, variable_info: dict, dual_variable_info: dict,
+                 parameter_info: dict, parameter_canon: dict, solver_interface: dict) -> None:
     # 'workspace' prototypes
-    with open(os.path.join(code_dir, 'c', 'include', 'cpg_workspace.h'), 'w') as f:
-        utils.write_workspace_prot(f, info_opt, info_usr, info_can)
+    with open(os.path.join(configuration.code_dir, 'c', 'include', 'cpg_workspace.h'), 'w') as f:
+        utils.write_workspace_prot(f, configuration, variable_info, dual_variable_info, parameter_info, parameter_canon, solver_interface)
     # 'workspace' definitions
-    with open(os.path.join(code_dir, 'c', 'src', 'cpg_workspace.c'), 'w') as f:
-        utils.write_workspace_def(f, info_opt, info_usr, info_can)
+    with open(os.path.join(configuration.code_dir, 'c', 'src', 'cpg_workspace.c'), 'w') as f:
+        utils.write_workspace_def(f, configuration, variable_info, dual_variable_info, parameter_info, parameter_canon, solver_interface)
     # 'solve' prototypes
-    with open(os.path.join(code_dir, 'c', 'include', 'cpg_solve.h'), 'w') as f:
-        utils.write_solve_prot(f, info_opt, info_cg, info_usr, info_can)
+    with open(os.path.join(configuration.code_dir, 'c', 'include', 'cpg_solve.h'), 'w') as f:
+        utils.write_solve_prot(f, configuration, variable_info, dual_variable_info, parameter_info, parameter_canon, solver_interface)
     # 'solve' definitions
-    with open(os.path.join(code_dir, 'c', 'src', 'cpg_solve.c'), 'w') as f:
-        utils.write_solve_def(f, info_opt, info_cg, info_usr, info_can)
+    with open(os.path.join(configuration.code_dir, 'c', 'src', 'cpg_solve.c'), 'w') as f:
+        utils.write_solve_def(f, configuration, variable_info, dual_variable_info, parameter_info, parameter_canon, solver_interface)
     # 'example' definitions
-    with open(os.path.join(code_dir, 'c', 'src', 'cpg_example.c'), 'w') as f:
-        utils.write_example_def(f, info_opt, info_usr)
+    with open(os.path.join(configuration.code_dir, 'c', 'src', 'cpg_example.c'), 'w') as f:
+        utils.write_example_def(f, configuration, variable_info, dual_variable_info, parameter_info)
     # adapt top-level CMakeLists.txt
-    with open(os.path.join(code_dir, 'c', 'CMakeLists.txt'), 'r') as f:
+    with open(os.path.join(configuration.code_dir, 'c', 'CMakeLists.txt'), 'r') as f:
         cmake_data = f.read()
-    cmake_data = utils.replace_cmake_data(cmake_data, info_opt)
-    with open(os.path.join(code_dir, 'c', 'CMakeLists.txt'), 'w') as f:
+    cmake_data = utils.replace_cmake_data(cmake_data, configuration)
+    with open(os.path.join(configuration.code_dir, 'c', 'CMakeLists.txt'), 'w') as f:
         f.write(cmake_data)
     # adapt solver CMakeLists.txt
-    with open(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'), 'a') as f:
-        utils.write_canon_cmake(f, info_opt)
+    with open(os.path.join(configuration.code_dir, 'c', 'solver_code', 'CMakeLists.txt'), 'a') as f:
+        utils.write_canon_cmake(f, configuration)
     # binding module prototypes
-    with open(os.path.join(code_dir, 'cpp', 'include', 'cpg_module.hpp'), 'w') as f:
-        utils.write_module_prot(f, info_opt, info_usr)
+    with open(os.path.join(configuration.code_dir, 'cpp', 'include', 'cpg_module.hpp'), 'w') as f:
+        utils.write_module_prot(f, configuration, parameter_info, variable_info, dual_variable_info)
     # binding module definition
-    with open(os.path.join(code_dir, 'cpp', 'src', 'cpg_module.cpp'), 'w') as f:
-        utils.write_module_def(f, info_opt, info_usr, info_can)
+    with open(os.path.join(configuration.code_dir, 'cpp', 'src', 'cpg_module.cpp'), 'w') as f:
+        utils.write_module_def(f, configuration, variable_info, dual_variable_info, parameter_info, solver_interface)
     # adapt setup.py
-    with open(os.path.join(code_dir, 'setup.py'), 'r') as f:
+    with open(os.path.join(configuration.code_dir, 'setup.py'), 'r') as f:
         setup_data = f.read()
     setup_data = utils.replace_setup_data(setup_data)
-    with open(os.path.join(code_dir, 'setup.py'), 'w') as f:
+    with open(os.path.join(configuration.code_dir, 'setup.py'), 'w') as f:
         f.write(setup_data)
     # custom CVXPY solve method
-    with open(os.path.join(code_dir, 'cpg_solver.py'), 'w') as f:
-        utils.write_method(f, info_opt, info_usr)
+    with open(os.path.join(configuration.code_dir, 'cpg_solver.py'), 'w') as f:
+        utils.write_method(f, configuration, variable_info, dual_variable_info, parameter_info)
     # serialize problem formulation
-    with open(os.path.join(code_dir, 'problem.pickle'), 'wb') as f:
+    with open(os.path.join(configuration.code_dir, 'problem.pickle'), 'wb') as f:
         pickle.dump(cp.Problem(problem.objective, problem.constraints), f)
     # html documentation file
-    with open(os.path.join(code_dir, 'README.html'), 'r') as f:
+    with open(os.path.join(configuration.code_dir, 'README.html'), 'r') as f:
         html_data = f.read()
-    html_data = utils.replace_html_data(html_data, info_opt, info_usr, info_can)
-    with open(os.path.join(code_dir, 'README.html'), 'w') as f:
+    html_data = utils.replace_html_data(html_data, configuration, variable_info, dual_variable_info, parameter_info, solver_interface)
+    with open(os.path.join(configuration.code_dir, 'README.html'), 'w') as f:
         f.write(html_data)
 
 
-def adjust_problem_name(prefix):
+def adjust_prefix(prefix):
     if prefix != '':
         if not prefix[0].isalpha():
             prefix = '_' + prefix
         prefix = prefix + '_'
     return prefix
+
+
+def get_configuration(code_dir, solver_name, unroll, prefix) -> Configuration:
+    return Configuration(code_dir, solver_name, unroll, adjust_prefix(prefix))
 
 
 def get_parameter_info(p_prob) -> ParameterInfo:

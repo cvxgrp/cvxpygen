@@ -1,11 +1,13 @@
 import os
 import shutil
+import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from platform import system
 
 import numpy as np
 
+from cvxpygen import utils
 from cvxpygen.mappings import PrimalVariableInfo, DualVariableInfo, ConstraintInfo, AffineMap, \
     ParameterCanon
 
@@ -24,8 +26,9 @@ def get_interface_class(solver_name: str) -> "SolverInterface":
 
 class SolverInterface(ABC):
 
-    def __init__(self, n_var, n_eq, n_ineq, indices_obj, indptr_obj, shape_obj, indices_constr,
-                 indptr_constr, shape_constr, canon_constants):
+    def __init__(self, solver_name, n_var, n_eq, n_ineq, indices_obj, indptr_obj, shape_obj,
+                 indices_constr, indptr_constr, shape_constr, canon_constants, enable_settings):
+        self.solver_name = solver_name
         self.n_var = n_var
         self.n_eq = n_eq
         self.n_ineq = n_ineq
@@ -36,6 +39,9 @@ class SolverInterface(ABC):
         self.indptr_constr = indptr_constr
         self.shape_constr = shape_constr
         self.canon_constants = canon_constants
+        self.enable_settings = enable_settings
+
+        self.configure_settings()
 
     @property
     @abstractmethod
@@ -75,6 +81,13 @@ class SolverInterface(ABC):
     def ret_dual_func_exists(dual_variable_info: DualVariableInfo) -> bool:
         return any([s == 1 for s in dual_variable_info.sizes])
 
+    def configure_settings(self) -> None:
+        for i, s in enumerate(self.settings_names):
+            if s in self.enable_settings:
+                self.settings_enabled[i] = True
+        for s in set(self.enable_settings)-set(self.settings_names):
+            warnings.warn('Cannot enable setting %s for solver %s' % (s, self.solver_name))
+
     def get_affine_map(self, p_id, param_prob, constraint_info: ConstraintInfo) -> AffineMap:
         affine_map = AffineMap()
 
@@ -112,12 +125,18 @@ class SolverInterface(ABC):
         return affine_map
 
     @property
+    def settings_names_enabled(self):
+        return [name for name, enabled in zip(self.settings_names, self.settings_enabled) if enabled]
+
+    @property
     def settings_names_to_type(self):
-        return {name: typ for name, typ in zip(self.settings_names, self.settings_types)}
+        return {name: typ for name, typ, enabled in zip(self.settings_names, self.settings_types, self.settings_enabled)
+                if enabled}
 
     @property
     def settings_names_to_default(self):
-        return {name: typ for name, typ in zip(self.settings_names, self.settings_defaults)}
+        return {name: typ for name, typ, enabled in zip(self.settings_names, self.settings_defaults, self.settings_enabled)
+                if enabled}
 
     @staticmethod
     def check_unsupported_cones(cone_dims: "ConeDims") -> None:
@@ -130,20 +149,22 @@ class SolverInterface(ABC):
 
 
 class OSQPInterface(SolverInterface):
+    solver_name = 'OSQP'
     canon_p_ids = ['P', 'q', 'd', 'A', 'l', 'u']
     canon_p_ids_constr_vec = ['l', 'u']
     sign_constr_vec = -1
 
     # solver settings
     settings_names = ['rho', 'max_iter', 'eps_abs', 'eps_rel', 'eps_prim_inf', 'eps_dual_inf',
-                      'alpha',
-                      'scaled_termination', 'check_termination', 'warm_start']
+                      'alpha', 'scaled_termination', 'check_termination', 'warm_start',
+                      'verbose', 'polish', 'polish_refine_iter', 'delta']
     settings_types = ['c_float', 'c_int', 'c_float', 'c_float', 'c_float', 'c_float', 'c_float',
-                      'c_int', 'c_int',
-                      'c_int']
+                      'c_int', 'c_int', 'c_int', 'c_int', 'c_int', 'c_int', 'c_float']
+    settings_enabled = [True, True, True, True, True, True, True, True, True, True,
+                        False, False, False, False]
     settings_defaults = []
 
-    def __init__(self, data, p_prob):
+    def __init__(self, data, p_prob, enable_settings):
         n_var = data['n_var']
         n_eq = data['n_eq']
         n_ineq = data['n_ineq']
@@ -153,9 +174,8 @@ class OSQPInterface(SolverInterface):
 
         canon_constants = {}
 
-        super().__init__(n_var, n_eq, n_ineq, indices_obj, indptr_obj, shape_obj,
-                         indices_constr,
-                         indptr_constr, shape_constr, canon_constants)
+        super().__init__(self.solver_name, n_var, n_eq, n_ineq, indices_obj, indptr_obj, shape_obj,
+                         indices_constr, indptr_constr, shape_constr, canon_constants, enable_settings)
 
     def generate_code(self, code_dir, solver_code_dir, cvxpygen_directory,
                       parameter_canon: ParameterCanon) -> None:
@@ -180,6 +200,27 @@ class OSQPInterface(SolverInterface):
         shutil.copyfile(os.path.join(cvxpygen_directory, 'solvers', 'osqp-python', 'LICENSE'),
                         os.path.join(solver_code_dir, 'LICENSE'))
         shutil.copy(os.path.join(cvxpygen_directory, 'template', 'LICENSE'), code_dir)
+
+        # modify for extra settings
+        if 'verbose' in self.enable_settings:
+            utils.replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'),
+                [('message(STATUS "Disabling printing for embedded")', 'message(STATUS "Not disabling printing for embedded by user request")'),
+                 ('set(PRINTING OFF)', '')])
+            utils.replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'include', 'constants.h'),
+                [('# ifdef __cplusplus\n}', '#  define VERBOSE (1)\n\n# ifdef __cplusplus\n}')])
+            utils.replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'include', 'types.h'),
+                [('} OSQPInfo;', '  c_int status_polish;\n} OSQPInfo;'),
+                 ('} OSQPSettings;', '  c_int polish;\n  c_int verbose;\n} OSQPSettings;'),
+                 ('# ifndef EMBEDDED\n  c_int nthreads; ///< number of threads active\n# endif // ifndef EMBEDDED', '  c_int nthreads;')])
+            utils.replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'include', 'osqp.h'),
+                [('# ifdef __cplusplus\n}', 'c_int osqp_update_verbose(OSQPWorkspace *work, c_int verbose_new);\n\n# ifdef __cplusplus\n}')])
+            utils.replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'src', 'osqp', 'util.c'),
+                [('// Print Settings', '/* Print Settings'),
+                 ('LINSYS_SOLVER_NAME[settings->linsys_solver]);', 'LINSYS_SOLVER_NAME[settings->linsys_solver]);*/')])
+            utils.replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'src', 'osqp', 'osqp.c'),
+                [('void osqp_set_default_settings(OSQPSettings *settings) {', 'void osqp_set_default_settings(OSQPSettings *settings) {\n  settings->verbose = VERBOSE;'),
+                 ('c_int osqp_update_verbose', '#endif // EMBEDDED\n\nc_int osqp_update_verbose'),
+                 ('verbose = verbose_new;\n\n  return 0;\n}\n\n#endif // EMBEDDED', 'verbose = verbose_new;\n\n  return 0;\n}')])
 
     def get_affine_map(self, p_id, param_prob, constraint_info: ConstraintInfo) -> AffineMap:
         affine_map = AffineMap()
@@ -215,6 +256,7 @@ class OSQPInterface(SolverInterface):
 
 
 class SCSInterface(SolverInterface):
+    solver_name = 'SCS'
     canon_p_ids = ['c', 'd', 'A', 'b']
     canon_p_ids_constr_vec = ['b']
     sign_constr_vec = 1
@@ -228,11 +270,13 @@ class SCSInterface(SolverInterface):
     settings_types = ['c_int', 'c_float', 'c_int', 'c_float', 'c_int', 'c_float', 'c_float',
                       'c_float', 'c_float',
                       'c_float', 'c_int', 'c_int', 'c_int', 'c_int', 'const char*', 'const char*']
+    settings_enabled = [True, True, True, True, True, True, True, True, True, True, True, True,
+                        True, True, True, True]
     settings_defaults = ['1', '0.1', '1', '1e-6', '1e5', '1e-4', '1e-4', '1e-7', '1.5', '0', '0',
                          '0', '0', '1',
                          'SCS_NULL', 'SCS_NULL']
 
-    def __init__(self, data, p_prob):
+    def __init__(self, data, p_prob, enable_settings):
         n_var = p_prob.x.size
         n_eq = data['A'].shape[0]
         n_ineq = 0
@@ -246,9 +290,8 @@ class SCSInterface(SolverInterface):
                            'q': np.array(p_prob.cone_dims.soc),
                            'qsize': len(p_prob.cone_dims.soc)}
 
-        super().__init__(n_var, n_eq, n_ineq, indices_obj, indptr_obj, shape_obj,
-                         indices_constr,
-                         indptr_constr, shape_constr, canon_constants)
+        super().__init__(self.solver_name, n_var, n_eq, n_ineq, indices_obj, indptr_obj, shape_obj,
+                         indices_constr, indptr_constr, shape_constr, canon_constants, enable_settings)
 
     @staticmethod
     def check_unsupported_cones(cone_dims: "ConeDims") -> None:
@@ -313,6 +356,7 @@ class SCSInterface(SolverInterface):
 
 
 class ECOSInterface(SolverInterface):
+    solver_name = 'ECOS'
     canon_p_ids = ['c', 'd', 'A', 'b', 'G', 'h']
     canon_p_ids_constr_vec = ['b', 'h']
     sign_constr_vec = 1
@@ -321,9 +365,10 @@ class ECOSInterface(SolverInterface):
     settings_names = ['feastol', 'abstol', 'reltol', 'feastol_inacc', 'abstol_inacc',
                       'reltol_inacc', 'maxit']
     settings_types = ['c_float', 'c_float', 'c_float', 'c_float', 'c_float', 'c_float', 'c_int']
+    settings_enabled = [True, True, True, True, True, True, True]
     settings_defaults = ['1e-8', '1e-8', '1e-8', '1e-4', '5e-5', '5e-5', '100']
 
-    def __init__(self, data, p_prob):
+    def __init__(self, data, p_prob, enable_settings):
         n_var = p_prob.x.size
         n_eq = p_prob.cone_dims.zero
         n_ineq = data['G'].shape[0]
@@ -338,8 +383,8 @@ class ECOSInterface(SolverInterface):
                            'q': np.array(p_prob.cone_dims.soc),
                            'e': p_prob.cone_dims.exp}
 
-        super().__init__(n_var, n_eq, n_ineq, indices_obj, indptr_obj, shape_obj,
-                         indices_constr, indptr_constr, shape_constr, canon_constants)
+        super().__init__(self.solver_name, n_var, n_eq, n_ineq, indices_obj, indptr_obj, shape_obj,
+                         indices_constr, indptr_constr, shape_constr, canon_constants, enable_settings)
 
     @staticmethod
     def check_unsupported_cones(cone_dims: "ConeDims") -> None:

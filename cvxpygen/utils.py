@@ -16,45 +16,6 @@ from datetime import datetime
 from osqp.codegen import utils as osqp_utils
 
 
-class C:
-    CODE_DIR = 'code_dir'
-    SOLVER_NAME = 'solver_name'
-    UNROLL = 'unroll'
-    PREFIX = 'prefix'
-    RET_PRIM_FUNC_EXISTS = 'ret_prim_func_exists'
-    RET_DUAL_FUNC_EXISTS = 'ret_dual_func_exists'
-    NONZERO_D = 'nonzero_d'
-    IS_MAXIMIZATION = 'is_maximization'
-    P_WRITABLE = 'p_writable'
-    P_FLAT_USP = 'p_flat_usp'
-    P_COL_TO_NAME_USP = 'p_col_to_name_usp'
-    P_NAME_TO_SHAPE = 'p_name_to_shape'
-    P_NAME_TO_SIZE = 'p_name_to_size_usp'
-    P_NAME_TO_CANON_OUTDATED = 'p_name_to_canon_outdated'
-    P_NAME_TO_SPARSITY = 'p_name_to_sparsity'
-    P_NAME_TO_SPARSITY_TYPE = 'p_name_to_sparsity_type'
-    V_NAME_TO_INDICES = 'v_name_to_indices'
-    V_NAME_TO_SIZE = 'v_name_to_size'
-    V_NAME_TO_SHAPE = 'v_name_to_shape'
-    V_NAME_TO_INIT = 'v_name_to_init'
-    V_NAME_TO_SYM = 'v_name_to_sym'
-    V_NAME_TO_OFFSET = 'v_name_to_offset'
-    D_NAME_TO_INIT = 'd_name_to_init'
-    D_NAME_TO_VEC = 'd_name_to_vec'
-    D_NAME_TO_OFFSET = 'd_name_to_offset'
-    D_NAME_TO_SIZE = 'd_name_to_size'
-    D_NAME_TO_SHAPE = 'd_name_to_shape'
-    D_NAME_TO_INDICES = 'd_name_to_indices'
-    P = 'p'
-    P_ID_TO_SIZE = 'p_id_to_size'
-    P_ID_TO_CHANGES = 'p_id_to_changes'
-    P_ID_TO_MAPPING = 'p_id_to_mapping'
-    CONSTANTS = 'constants'
-    SETTINGS_NAMES_TO_TYPE = 'settings_names_to_type'
-    SETTINGS_NAMES_TO_DEFAULT = 'settings_names_to_default'
-    SETTINGS_LIST = 'settings_list'
-
-
 def write_description(f, file_type, content):
     """
     Timestamp and file content to beginning of file
@@ -109,7 +70,7 @@ def csc_to_dict(m):
 
     d = dict()
     d['i'] = m.indices
-    d[C.P] = m.indptr
+    d['p'] = m.indptr
     d['x'] = m.data
     d['nzmax'] = m.nnz
     (d['m'], d['n']) = m.shape
@@ -286,7 +247,7 @@ def write_ecos_setup_update(f, canon_constants, prefix):
     """
     n = canon_constants['n']
     m = canon_constants['m']
-    p = canon_constants[C.P]
+    p = canon_constants['p']
     ell = canon_constants['l']
     n_cones = canon_constants['n_cones']
     e = canon_constants['e']
@@ -330,51 +291,51 @@ def write_ecos_setup_update(f, canon_constants, prefix):
     f.write('  }\n')
 
 
-def write_workspace_def(f, info_opt, info_usr, info_can):
+def write_workspace_def(f, configuration, variable_info, dual_variable_info, parameter_info, parameter_canon, solver_interface):
 
     write_description(f, 'c', 'Variable definitions')
     f.write('#include "cpg_workspace.h"\n')
-    if info_opt[C.SOLVER_NAME] == 'OSQP':
+    if configuration.solver_name == 'OSQP':
         f.write('#include "workspace.h"\n')
 
-    if info_opt[C.UNROLL]:
+    if configuration.unroll:
         f.write('\n// User-defined parameters\n')
         user_casts = []
         user_values = []
-        names = list(info_usr[C.P_WRITABLE].keys())
+        names = list(parameter_info.writable.keys())
         for name in names:
-            value = info_usr[C.P_WRITABLE][name]
+            value = parameter_info.writable[name]
             if is_mathematical_scalar(value):
                 user_casts.append('')
                 user_values.append('%.20f' % value)
             else:
-                osqp_utils.write_vec(f, value, info_opt[C.PREFIX] + 'cpg_' + name, 'c_float')
+                osqp_utils.write_vec(f, value, configuration.prefix + 'cpg_' + name, 'c_float')
                 f.write('\n')
                 user_casts.append('(c_float *) ')
-                user_values.append('&' + info_opt[C.PREFIX] + 'cpg_' + name)
+                user_values.append('&' + configuration.prefix + 'cpg_' + name)
         f.write('// Struct containing all user-defined parameters\n')
-        write_struct_def(f, names, user_casts, user_values, '%sCPG_Params' % info_opt[C.PREFIX], 'CPG_Params_t')
+        write_struct_def(f, names, user_casts, user_values, '%sCPG_Params' % configuration.prefix, 'CPG_Params_t')
         f.write('\n')
     else:
         f.write('\n// Vector containing flattened user-defined parameters\n')
-        osqp_utils.write_vec(f, info_usr[C.P_FLAT_USP], '%scpg_params_vec' % info_opt[C.PREFIX], 'c_float')
+        osqp_utils.write_vec(f, parameter_info.flat_usp, '%scpg_params_vec' % configuration.prefix, 'c_float')
         f.write('\n// Sparse mappings from user-defined to canonical parameters\n')
-        for p_id, mapping in info_can[C.P_ID_TO_MAPPING].items():
-            if info_can[C.P_ID_TO_CHANGES][p_id]:
-                osqp_utils.write_mat(f, csc_to_dict(mapping), '%scanon_%s_map' % (info_opt[C.PREFIX], p_id))
+        for p_id, mapping in parameter_canon.p_id_to_mapping.items():
+            if parameter_canon.p_id_to_changes[p_id]:
+                osqp_utils.write_mat(f, csc_to_dict(mapping), '%scanon_%s_map' % (configuration.prefix, p_id))
                 f.write('\n')
 
-    p_ids = list(info_can[C.P].keys())
+    p_ids = list(parameter_canon.p.keys())
     canon_casts = []
     f.write('// Canonical parameters\n')
     for p_id in p_ids:
-        p = info_can[C.P][p_id]
+        p = parameter_canon.p[p_id]
         if p_id == 'd':
             canon_casts.append('')
         else:
-            write_param_def(f, replace_inf(p), p_id, info_opt[C.PREFIX], '')
-            if info_opt[C.SOLVER_NAME] == 'ECOS':
-                write_param_def(f, replace_inf(p), p_id, info_opt[C.PREFIX], '_ECOS')
+            write_param_def(f, replace_inf(p), p_id, configuration.prefix, '')
+            if configuration.solver_name == 'ECOS':
+                write_param_def(f, replace_inf(p), p_id, configuration.prefix, '_ECOS')
             if p_id.isupper():
                 canon_casts.append('')
             else:
@@ -385,144 +346,144 @@ def write_workspace_def(f, info_opt, info_usr, info_can):
     struct_values = []
     struct_values_ECOS = []
     for i, p_id in enumerate(p_ids):
-        p = info_can[C.P][p_id]
+        p = parameter_canon.p[p_id]
         if type(p) == dict:
             length = len(p['x'])
         else:
             length = len(p)
         if length == 0:
             struct_values.append('0')
-            if info_opt[C.SOLVER_NAME] == 'ECOS':
+            if configuration.solver_name == 'ECOS':
                 struct_values_ECOS.append('0')
         elif p_id=='d':
             struct_values.append('%.20f' % p)
-            if info_opt[C.SOLVER_NAME] == 'ECOS':
+            if configuration.solver_name == 'ECOS':
                 struct_values_ECOS.append('%.20f' % p)
         else:
-            struct_values.append('&%scanon_%s' % (info_opt[C.PREFIX], p_id))
-            if info_opt[C.SOLVER_NAME] == 'ECOS':
-                struct_values_ECOS.append('&%scanon_%s_ECOS' % (info_opt[C.PREFIX], p_id))
+            struct_values.append('&%scanon_%s' % (configuration.prefix, p_id))
+            if configuration.solver_name == 'ECOS':
+                struct_values_ECOS.append('&%scanon_%s_ECOS' % (configuration.prefix, p_id))
 
-    write_struct_def(f, p_ids, canon_casts, struct_values, '%sCanon_Params' % info_opt[C.PREFIX], 'Canon_Params_t')
+    write_struct_def(f, p_ids, canon_casts, struct_values, '%sCanon_Params' % configuration.prefix, 'Canon_Params_t')
     f.write('\n')
-    if info_opt[C.SOLVER_NAME] == 'ECOS':
-        write_struct_def(f, p_ids, canon_casts, struct_values_ECOS, '%sCanon_Params_ECOS' % info_opt[C.PREFIX],
+    if configuration.solver_name == 'ECOS':
+        write_struct_def(f, p_ids, canon_casts, struct_values_ECOS, '%sCanon_Params_ECOS' % configuration.prefix,
                          'Canon_Params_t')
         f.write('\n')
 
     # Boolean struct for outdated parameter flags
     f.write('// Struct containing flags for outdated canonical parameters\n')
-    f.write('Canon_Outdated_t %sCanon_Outdated = {\n' % info_opt[C.PREFIX])
-    for p_id in info_can[C.P].keys():
+    f.write('Canon_Outdated_t %sCanon_Outdated = {\n' % configuration.prefix)
+    for p_id in parameter_canon.p.keys():
         f.write('.%s = 0,\n' % p_id)
     f.write('};\n\n')
 
     prim_cast = []
-    if any(info_usr[C.V_NAME_TO_SYM]) or info_opt[C.SOLVER_NAME] == 'ECOS':
+    if any(variable_info.name_to_sym) or configuration.solver_name == 'ECOS':
         f.write('// User-defined variables\n')
-    for name, value in info_usr[C.V_NAME_TO_INIT].items():
+    for name, value in variable_info.name_to_init.items():
         if is_mathematical_scalar(value):
             prim_cast.append('')
         else:
             prim_cast.append('(c_float *) ')
-            if info_usr[C.V_NAME_TO_SYM][name] or info_opt[C.SOLVER_NAME] == 'ECOS':
-                osqp_utils.write_vec(f, value.flatten(order='F'), info_opt[C.PREFIX] + name, 'c_float')
+            if variable_info.name_to_sym[name] or configuration.solver_name == 'ECOS':
+                osqp_utils.write_vec(f, value.flatten(order='F'), configuration.prefix + name, 'c_float')
                 f.write('\n')
 
     f.write('// Struct containing primal solution\n')
-    CPG_Prim_fields = list(info_usr[C.V_NAME_TO_INIT].keys())
+    CPG_Prim_fields = list(variable_info.name_to_init.keys())
     CPG_Prim_values = []
-    for name, var in info_usr[C.V_NAME_TO_INIT].items():
-        offset = info_usr[C.V_NAME_TO_OFFSET][name]
+    for name, var in variable_info.name_to_init.items():
+        offset = variable_info.name_to_offset[name]
         if is_mathematical_scalar(var):
             CPG_Prim_values.append('0')
         else:
-            if info_usr[C.V_NAME_TO_SYM][name] or info_opt[C.SOLVER_NAME] == 'ECOS':
-                CPG_Prim_values.append('&' + info_opt[C.PREFIX] + name)
+            if variable_info.name_to_sym[name] or configuration.solver_name == 'ECOS':
+                CPG_Prim_values.append('&' + configuration.prefix + name)
             else:
-                if info_opt[C.SOLVER_NAME] == 'OSQP':
+                if configuration.solver_name == 'OSQP':
                     CPG_Prim_values.append('&xsolution + %d' % offset)
-                elif info_opt[C.SOLVER_NAME] == 'SCS':
-                    CPG_Prim_values.append('&%sscs_x + %d' % (info_opt[C.PREFIX], offset))
-    write_struct_def(f, CPG_Prim_fields, prim_cast, CPG_Prim_values, '%sCPG_Prim' % info_opt[C.PREFIX], 'CPG_Prim_t')
+                elif configuration.solver_name == 'SCS':
+                    CPG_Prim_values.append('&%sscs_x + %d' % (configuration.prefix, offset))
+    write_struct_def(f, CPG_Prim_fields, prim_cast, CPG_Prim_values, '%sCPG_Prim' % configuration.prefix, 'CPG_Prim_t')
 
-    if len(info_usr[C.D_NAME_TO_INIT]) > 0:
+    if len(dual_variable_info.name_to_init) > 0:
         dual_cast = []
-        if info_opt[C.SOLVER_NAME] == 'ECOS':
+        if configuration.solver_name == 'ECOS':
             f.write('\n// Dual variables associated with user-defined constraints\n')
-        for name, value in info_usr[C.D_NAME_TO_INIT].items():
+        for name, value in dual_variable_info.name_to_init.items():
             if is_mathematical_scalar(value):
                 dual_cast.append('')
             else:
                 dual_cast.append('(c_float *) ')
-                if info_opt[C.SOLVER_NAME] == 'ECOS':
-                    osqp_utils.write_vec(f, value.flatten(order='F'), info_opt[C.PREFIX] + name, 'c_float')
+                if configuration.solver_name == 'ECOS':
+                    osqp_utils.write_vec(f, value.flatten(order='F'), configuration.prefix + name, 'c_float')
                     f.write('\n')
 
         f.write('// Struct containing dual solution\n')
-        CPG_Dual_fields = info_usr[C.D_NAME_TO_INIT].keys()
+        CPG_Dual_fields = dual_variable_info.name_to_init.keys()
         CPG_Dual_values = []
-        for name, var in info_usr[C.D_NAME_TO_INIT].items():
-            vec = info_usr[C.D_NAME_TO_VEC][name]
-            offset = info_usr[C.D_NAME_TO_OFFSET][name]
+        for name, var in dual_variable_info.name_to_init.items():
+            vec = dual_variable_info.name_to_vec[name]
+            offset = dual_variable_info.name_to_offset[name]
             if is_mathematical_scalar(var):
                 CPG_Dual_values.append('0')
             else:
-                if info_opt[C.SOLVER_NAME] == 'OSQP':
+                if configuration.solver_name == 'OSQP':
                     CPG_Dual_values.append('&%ssolution + %d' % (vec, offset))
-                elif info_opt[C.SOLVER_NAME] == 'SCS':
-                    CPG_Dual_values.append('&%sscs_%s + %d' % (info_opt[C.PREFIX], vec, offset))
+                elif configuration.solver_name == 'SCS':
+                    CPG_Dual_values.append('&%sscs_%s + %d' % (configuration.prefix, vec, offset))
                 else:
-                    CPG_Dual_values.append('&' + info_opt[C.PREFIX] + name)
-        write_struct_def(f, CPG_Dual_fields, dual_cast, CPG_Dual_values, '%sCPG_Dual' % info_opt[C.PREFIX],
+                    CPG_Dual_values.append('&' + configuration.prefix + name)
+        write_struct_def(f, CPG_Dual_fields, dual_cast, CPG_Dual_values, '%sCPG_Dual' % configuration.prefix,
                          'CPG_Dual_t')
 
     f.write('\n// Struct containing solver info\n')
     CPG_Info_fields = ['obj_val', 'iter', 'status', 'pri_res', 'dua_res']
-    if info_opt[C.SOLVER_NAME] in ['OSQP', 'SCS']:
+    if configuration.solver_name in ['OSQP', 'SCS']:
         CPG_Info_values = ['0', '0', '"unknown"', '0', '0']
-    elif info_opt[C.SOLVER_NAME] == 'ECOS':
+    elif configuration.solver_name == 'ECOS':
         CPG_Info_values = ['0', '0', '0', '0', '0']
     else:
         raise ValueError("Problem class cannot be addressed by the OSQP or ECOS solver!")
     info_cast = ['', '', '', '', '']
-    write_struct_def(f, CPG_Info_fields, info_cast, CPG_Info_values, '%sCPG_Info' % info_opt[C.PREFIX], 'CPG_Info_t')
+    write_struct_def(f, CPG_Info_fields, info_cast, CPG_Info_values, '%sCPG_Info' % configuration.prefix, 'CPG_Info_t')
 
     f.write('\n// Struct containing solution and info\n')
-    if len(info_usr[C.D_NAME_TO_INIT]) > 0:
+    if len(dual_variable_info.name_to_init) > 0:
         CPG_Result_fields = ['prim', 'dual', 'info']
         result_cast = ['', '', '']
-        CPG_Result_values = ['&%sCPG_Prim' % info_opt[C.PREFIX], '&%sCPG_Dual' % info_opt[C.PREFIX],
-                             '&%sCPG_Info' % info_opt[C.PREFIX]]
+        CPG_Result_values = ['&%sCPG_Prim' % configuration.prefix, '&%sCPG_Dual' % configuration.prefix,
+                             '&%sCPG_Info' % configuration.prefix]
     else:
         CPG_Result_fields = ['prim', 'info']
         result_cast = ['', '']
-        CPG_Result_values = ['&%sCPG_Prim' % info_opt[C.PREFIX], '&%sCPG_Info' % info_opt[C.PREFIX]]
-    write_struct_def(f, CPG_Result_fields, result_cast, CPG_Result_values, '%sCPG_Result' % info_opt[C.PREFIX],
+        CPG_Result_values = ['&%sCPG_Prim' % configuration.prefix, '&%sCPG_Info' % configuration.prefix]
+    write_struct_def(f, CPG_Result_fields, result_cast, CPG_Result_values, '%sCPG_Result' % configuration.prefix,
                      'CPG_Result_t')
 
-    if info_opt[C.SOLVER_NAME] == 'SCS':
+    if configuration.solver_name == 'SCS':
 
         f.write('\n// SCS matrix A\n')
         scs_A_fiels = ['x', 'i', 'p', 'm', 'n']
         scs_A_casts = ['(c_float *) ', '(c_int *) ', '(c_int *) ', '', '']
-        scs_A_values = ['&%scanon_A_x' % info_opt[C.PREFIX], '&%scanon_A_i' % info_opt[C.PREFIX],
-                        '&%scanon_A_p' % info_opt[C.PREFIX], str(info_can[C.CONSTANTS]['m']),
-                        str(info_can[C.CONSTANTS]['n'])]
-        write_struct_def(f, scs_A_fiels, scs_A_casts, scs_A_values, '%sScs_A' % info_opt[C.PREFIX], 'ScsMatrix')
+        scs_A_values = ['&%scanon_A_x' % configuration.prefix, '&%scanon_A_i' % configuration.prefix,
+                        '&%scanon_A_p' % configuration.prefix, str(solver_interface.canon_constants['m']),
+                        str(solver_interface.canon_constants['n'])]
+        write_struct_def(f, scs_A_fiels, scs_A_casts, scs_A_values, '%sScs_A' % configuration.prefix, 'ScsMatrix')
 
         f.write('\n// Struct containing SCS data\n')
         scs_d_fiels = ['m', 'n', 'A', 'P', 'b', 'c']
         scs_d_casts = ['', '', '', '', '(c_float *) ', '(c_float *) ']
-        scs_d_values = [str(info_can[C.CONSTANTS]['m']), str(info_can[C.CONSTANTS]['n']), '&%sScs_A'
-                        % info_opt[C.PREFIX], 'SCS_NULL', '&%scanon_b' % info_opt[C.PREFIX], '&%scanon_c'
-                        % info_opt[C.PREFIX]]
-        write_struct_def(f, scs_d_fiels, scs_d_casts, scs_d_values, '%sScs_D' % info_opt[C.PREFIX], 'ScsData')
+        scs_d_values = [str(solver_interface.canon_constants['m']), str(solver_interface.canon_constants['n']), '&%sScs_A'
+                        % configuration.prefix, 'SCS_NULL', '&%scanon_b' % configuration.prefix, '&%scanon_c'
+                        % configuration.prefix]
+        write_struct_def(f, scs_d_fiels, scs_d_casts, scs_d_values, '%sScs_D' % configuration.prefix, 'ScsData')
 
-        if info_can[C.CONSTANTS]['qsize'] > 0:
+        if solver_interface.canon_constants['qsize'] > 0:
             f.write('\n// SCS array of SOC dimensions\n')
-            osqp_utils.write_vec(f, info_can[C.CONSTANTS]['q'], '%sscs_q' % info_opt[C.PREFIX], 'c_int')
-            k_field_q_str = '&%sscs_q' % info_opt[C.PREFIX]
+            osqp_utils.write_vec(f, solver_interface.canon_constants['q'], '%sscs_q' % configuration.prefix, 'c_int')
+            k_field_q_str = '&%sscs_q' % configuration.prefix
         else:
             k_field_q_str = 'SCS_NULL'
 
@@ -530,29 +491,29 @@ def write_workspace_def(f, info_opt, info_usr, info_can):
         scs_k_fields = ['z', 'l', 'bu', 'bl', 'bsize', 'q', 'qsize', 's', 'ssize', 'ep', 'ed', 'p', 'psize']
         scs_k_casts = ['', '', '(c_float *) ', '(c_float *) ', '', '(c_int *) ', '', '(c_int *) ', '', '', '',
                        '(c_float *) ', '']
-        scs_k_values = [str(info_can[C.CONSTANTS]['z']), str(info_can[C.CONSTANTS]['l']), 'SCS_NULL', 'SCS_NULL', '0',
-                        k_field_q_str, str(info_can[C.CONSTANTS]['qsize']), 'SCS_NULL', '0', '0', '0', 'SCS_NULL', '0']
-        write_struct_def(f, scs_k_fields, scs_k_casts, scs_k_values, '%sScs_K' % info_opt[C.PREFIX], 'ScsCone')
+        scs_k_values = [str(solver_interface.canon_constants['z']), str(solver_interface.canon_constants['l']), 'SCS_NULL', 'SCS_NULL', '0',
+                        k_field_q_str, str(solver_interface.canon_constants['qsize']), 'SCS_NULL', '0', '0', '0', 'SCS_NULL', '0']
+        write_struct_def(f, scs_k_fields, scs_k_casts, scs_k_values, '%sScs_K' % configuration.prefix, 'ScsCone')
 
         f.write('\n// Struct containing SCS settings\n')
-        scs_stgs_fields = list(info_can[C.SETTINGS_NAMES_TO_DEFAULT].keys())
+        scs_stgs_fields = list(solver_interface.settings_names_to_default.keys())
         scs_stgs_casts = ['']*len(scs_stgs_fields)
-        scs_stgs_values = list(info_can[C.SETTINGS_NAMES_TO_DEFAULT].values())
+        scs_stgs_values = list(solver_interface.settings_names_to_default.values())
         write_struct_def(f, scs_stgs_fields, scs_stgs_casts, scs_stgs_values, '%sScs_Stgs'
-                         % info_opt[C.PREFIX], 'ScsSettings')
+                         % configuration.prefix, 'ScsSettings')
 
         f.write('\n// SCS solution\n')
-        osqp_utils.write_vec(f, np.zeros(info_can[C.CONSTANTS]['n']), '%sscs_x' % info_opt[C.PREFIX], 'c_float')
-        osqp_utils.write_vec(f, np.zeros(info_can[C.CONSTANTS]['m']), '%sscs_y' % info_opt[C.PREFIX], 'c_float')
-        osqp_utils.write_vec(f, np.zeros(info_can[C.CONSTANTS]['m']), '%sscs_s' % info_opt[C.PREFIX], 'c_float')
+        osqp_utils.write_vec(f, np.zeros(solver_interface.canon_constants['n']), '%sscs_x' % configuration.prefix, 'c_float')
+        osqp_utils.write_vec(f, np.zeros(solver_interface.canon_constants['m']), '%sscs_y' % configuration.prefix, 'c_float')
+        osqp_utils.write_vec(f, np.zeros(solver_interface.canon_constants['m']), '%sscs_s' % configuration.prefix, 'c_float')
 
         f.write('\n// Struct containing SCS solution\n')
         scs_sol_fields = ['x', 'y', 's']
         scs_sol_casts = ['(c_float *) ', '(c_float *) ', '(c_float *) ']
-        scs_sol_values = ['&%sscs_x' % info_opt[C.PREFIX], '&%sscs_y' % info_opt[C.PREFIX], '&%sscs_s'
-                          % info_opt[C.PREFIX]]
+        scs_sol_values = ['&%sscs_x' % configuration.prefix, '&%sscs_y' % configuration.prefix, '&%sscs_s'
+                          % configuration.prefix]
         write_struct_def(f, scs_sol_fields, scs_sol_casts, scs_sol_values, '%sScs_Sol'
-                         % info_opt[C.PREFIX], 'ScsSolution')
+                         % configuration.prefix, 'ScsSolution')
 
         f.write('\n// Struct containing SCS information\n')
         scs_info_fields = ['iter', 'status', 'status_val', 'scale_updates', 'pobj', 'dobj', 'res_pri', 'res_dual',
@@ -563,53 +524,53 @@ def write_workspace_def(f, info_opt, info_usr, info_can):
         scs_info_values = ['0', '"unknown"', '0', '0', '0', '0', '99', '99', '99', '99', '99', '99', '99', '0', '0',
                            '1', '0', '0', '0', '0', '0']
         write_struct_def(f, scs_info_fields, scs_info_casts, scs_info_values, '%sScs_Info'
-                         % info_opt[C.PREFIX], 'ScsInfo')
+                         % configuration.prefix, 'ScsInfo')
 
         f.write('\n// Pointer to struct containing SCS workspace\n')
-        f.write('ScsWork* %sScs_Work = 0;\n' % info_opt[C.PREFIX])
+        f.write('ScsWork* %sScs_Work = 0;\n' % configuration.prefix)
 
-    if info_opt[C.SOLVER_NAME] == 'ECOS':
+    if configuration.solver_name == 'ECOS':
 
         f.write('\n// Struct containing solver settings\n')
-        f.write('Canon_Settings_t %sCanon_Settings = {\n' % info_opt[C.PREFIX])
-        for name, default in info_can[C.SETTINGS_NAMES_TO_DEFAULT].items():
+        f.write('Canon_Settings_t %sCanon_Settings = {\n' % configuration.prefix)
+        for name, default in solver_interface.settings_names_to_default.items():
             f.write('.%s = %s,\n' % (name, default))
         f.write('};\n')
-        if info_can[C.CONSTANTS]['n_cones'] > 0:
+        if solver_interface.canon_constants['n_cones'] > 0:
             f.write('\n// ECOS array of SOC dimensions\n')
-            osqp_utils.write_vec(f, info_can[C.CONSTANTS]['q'], '%secos_q' % info_opt[C.PREFIX], 'c_int')
+            osqp_utils.write_vec(f, solver_interface.canon_constants['q'], '%secos_q' % configuration.prefix, 'c_int')
         f.write('\n// ECOS workspace\n')
-        f.write('pwork* %secos_workspace = 0;\n' % info_opt[C.PREFIX])
+        f.write('pwork* %secos_workspace = 0;\n' % configuration.prefix)
         f.write('\n// ECOS exit flag\n')
-        f.write('c_int %secos_flag = -99;\n' % info_opt[C.PREFIX])
+        f.write('c_int %secos_flag = -99;\n' % configuration.prefix)
 
 
-def write_workspace_prot(f, info_opt, info_usr, info_can):
+def write_workspace_prot(f, configuration, variable_info, dual_variable_info, parameter_info, parameter_canon, solver_interface):
     """"
     Write workspace initialization to file
     """
 
     write_description(f, 'c', 'Type definitions and variable declarations')
-    if info_opt[C.SOLVER_NAME] == 'OSQP':
+    if configuration.solver_name == 'OSQP':
         f.write('#include "types.h"\n\n')
-    elif info_opt[C.SOLVER_NAME] == 'SCS':
+    elif configuration.solver_name == 'SCS':
         f.write('#include "scs.h"\n\n')
-    elif info_opt[C.SOLVER_NAME] == 'ECOS':
+    elif configuration.solver_name == 'ECOS':
         f.write('#include "ecos.h"\n\n')
 
     # definition safeguard
     f.write('#ifndef CPG_TYPES_H\n')
     f.write('# define CPG_TYPES_H\n\n')
 
-    if info_opt[C.SOLVER_NAME] == 'SCS':
+    if configuration.solver_name == 'SCS':
         f.write('typedef scs_float c_float;\n')
         f.write('typedef scs_int c_int;\n\n')
-    elif info_opt[C.SOLVER_NAME] == 'ECOS':
+    elif configuration.solver_name == 'ECOS':
         f.write('typedef double c_float;\n')
         f.write('typedef int c_int;\n\n')
 
     # struct definitions
-    if info_opt[C.SOLVER_NAME] in ['SCS', 'ECOS']:
+    if configuration.solver_name in ['SCS', 'ECOS']:
         f.write('// Compressed sparse column (csc) matrix\n')
         f.write('typedef struct {\n')
         f.write('  c_int      nzmax;\n')
@@ -621,11 +582,11 @@ def write_workspace_prot(f, info_opt, info_usr, info_can):
         f.write('  c_int      nz;\n')
         f.write('} csc;\n\n')
 
-    if info_opt[C.UNROLL]:
+    if configuration.unroll:
         f.write('// User-defined parameters\n')
         f.write('typedef struct {\n')
         # single user parameters
-        for name, size in info_usr[C.P_NAME_TO_SIZE].items():
+        for name, size in parameter_info.name_to_size_usp.items():
             if size == 1:
                 s = ''
             else:
@@ -635,7 +596,7 @@ def write_workspace_prot(f, info_opt, info_usr, info_can):
 
     f.write('// Canonical parameters\n')
     f.write('typedef struct {\n')
-    for p_id in info_can[C.P].keys():
+    for p_id in parameter_canon.p.keys():
         if p_id.isupper():
             f.write('  csc        *%s   // Canonical parameter %s\n' % ((p_id+';').ljust(8), p_id))
         else:
@@ -648,13 +609,13 @@ def write_workspace_prot(f, info_opt, info_usr, info_can):
 
     f.write('// Flags indicating outdated canonical parameters\n')
     f.write('typedef struct {\n')
-    for p_id in info_can[C.P].keys():
+    for p_id in parameter_canon.p.keys():
         f.write('  int        %s    // Bool, if canonical parameter %s outdated\n' % ((p_id + ';').ljust(8), p_id))
     f.write('} Canon_Outdated_t;\n\n')
 
     f.write('// Primal solution\n')
     f.write('typedef struct {\n')
-    for name, var in info_usr[C.V_NAME_TO_INIT].items():
+    for name, var in variable_info.name_to_init.items():
         if is_mathematical_scalar(var):
             s = ''
         else:
@@ -662,10 +623,10 @@ def write_workspace_prot(f, info_opt, info_usr, info_can):
         f.write('  c_float    %s   // Your variable %s\n' % ((s + name + ';').ljust(9), name))
     f.write('} CPG_Prim_t;\n\n')
 
-    if len(info_usr[C.D_NAME_TO_INIT]) > 0:
+    if len(dual_variable_info.name_to_init) > 0:
         f.write('// Dual solution\n')
         f.write('typedef struct {\n')
-        for name, var in info_usr[C.D_NAME_TO_INIT].items():
+        for name, var in dual_variable_info.name_to_init.items():
             if is_mathematical_scalar(var):
                 s = ''
             else:
@@ -677,9 +638,9 @@ def write_workspace_prot(f, info_opt, info_usr, info_can):
     f.write('typedef struct {\n')
     f.write('  c_float    obj_val;    // Objective function value\n')
     f.write('  c_int      iter;       // Number of iterations\n')
-    if info_opt[C.SOLVER_NAME] in ['OSQP', 'SCS']:
+    if configuration.solver_name in ['OSQP', 'SCS']:
         f.write('  char       *status;    // Solver status\n')
-    elif info_opt[C.SOLVER_NAME] == 'ECOS':
+    elif configuration.solver_name == 'ECOS':
         f.write('  c_int      status;     // Solver status\n')
     f.write('  c_float    pri_res;    // Primal residual\n')
     f.write('  c_float    dua_res;    // Dual residual\n')
@@ -688,116 +649,116 @@ def write_workspace_prot(f, info_opt, info_usr, info_can):
     f.write('// Solution and solver information\n')
     f.write('typedef struct {\n')
     f.write('  CPG_Prim_t *prim;      // Primal solution\n')
-    if len(info_usr[C.D_NAME_TO_INIT]) > 0:
+    if len(dual_variable_info.name_to_init) > 0:
         f.write('  CPG_Dual_t *dual;      // Dual solution\n')
     f.write('  CPG_Info_t *info;      // Solver info\n')
     f.write('} CPG_Result_t;\n\n')
 
-    if info_opt[C.SOLVER_NAME] == 'ECOS':
+    if configuration.solver_name == 'ECOS':
         f.write('// Solver settings\n')
         f.write('typedef struct {\n')
-        for name, typ in info_can[C.SETTINGS_NAMES_TO_TYPE].items():
+        for name, typ in solver_interface.settings_names_to_type.items():
             f.write('  %s%s;\n' % (typ.ljust(11), name))
         f.write('} Canon_Settings_t;\n\n')
 
     f.write('#endif // ifndef CPG_TYPES_H\n')
 
-    if info_opt[C.UNROLL]:
+    if configuration.unroll:
         f.write('\n// User-defined parameters\n')
-        for name, value in info_usr[C.P_WRITABLE].items():
+        for name, value in parameter_info.writable.items():
             if not is_mathematical_scalar(value):
-                osqp_utils.write_vec_extern(f, value, info_opt[C.PREFIX]+'cpg_'+name, 'c_float')
+                osqp_utils.write_vec_extern(f, value, configuration.prefix+'cpg_'+name, 'c_float')
         f.write('\n// Struct containing all user-defined parameters\n')
-        write_struct_prot(f, '%sCPG_Params' % info_opt[C.PREFIX], 'CPG_Params_t')
+        write_struct_prot(f, '%sCPG_Params' % configuration.prefix, 'CPG_Params_t')
     else:
         f.write('\n// Vector containing flattened user-defined parameters\n')
-        osqp_utils.write_vec_extern(f, info_usr[C.P_FLAT_USP], '%scpg_params_vec' % info_opt[C.PREFIX], 'c_float')
+        osqp_utils.write_vec_extern(f, parameter_info.flat_usp, '%scpg_params_vec' % configuration.prefix, 'c_float')
         f.write('\n// Sparse mappings from user-defined to canonical parameters\n')
-        for p_id, mapping in info_can[C.P_ID_TO_MAPPING].items():
-            if info_can[C.P_ID_TO_CHANGES][p_id]:
-                osqp_utils.write_mat_extern(f, csc_to_dict(mapping), '%scanon_%s_map' % (info_opt[C.PREFIX], p_id))
+        for p_id, mapping in parameter_canon.p_id_to_mapping.items():
+            if parameter_canon.p_id_to_changes[p_id]:
+                osqp_utils.write_mat_extern(f, csc_to_dict(mapping), '%scanon_%s_map' % (configuration.prefix, p_id))
 
     f.write('\n// Canonical parameters\n')
-    for p_id, p in info_can[C.P].items():
+    for p_id, p in parameter_canon.p.items():
         if p_id != 'd':
-            write_param_prot(f, p, p_id, info_opt[C.PREFIX], '')
-            if info_opt[C.SOLVER_NAME] == 'ECOS':
-                write_param_prot(f, p, p_id, info_opt[C.PREFIX], '_ECOS')
+            write_param_prot(f, p, p_id, configuration.prefix, '')
+            if configuration.solver_name == 'ECOS':
+                write_param_prot(f, p, p_id, configuration.prefix, '_ECOS')
 
     f.write('\n// Struct containing canonical parameters\n')
-    write_struct_prot(f, '%sCanon_Params' % info_opt[C.PREFIX], 'Canon_Params_t')
-    if info_opt[C.SOLVER_NAME] == 'ECOS':
-        write_struct_prot(f, '%sCanon_Params_ECOS' % info_opt[C.PREFIX], 'Canon_Params_t')
+    write_struct_prot(f, '%sCanon_Params' % configuration.prefix, 'Canon_Params_t')
+    if configuration.solver_name == 'ECOS':
+        write_struct_prot(f, '%sCanon_Params_ECOS' % configuration.prefix, 'Canon_Params_t')
 
     f.write('\n// Struct containing flags for outdated canonical parameters\n')
-    f.write('extern Canon_Outdated_t %sCanon_Outdated;\n' % info_opt[C.PREFIX])
+    f.write('extern Canon_Outdated_t %sCanon_Outdated;\n' % configuration.prefix)
 
-    if any(info_usr[C.V_NAME_TO_SYM].values()) or info_opt[C.SOLVER_NAME] == 'ECOS':
+    if any(variable_info.name_to_sym.values()) or configuration.solver_name == 'ECOS':
         f.write('\n// User-defined variables\n')
-        for name, value in info_usr[C.V_NAME_TO_INIT].items():
-            if info_usr[C.V_NAME_TO_SYM][name] or info_opt[C.SOLVER_NAME] == 'ECOS':
+        for name, value in variable_info.name_to_init.items():
+            if variable_info.name_to_sym[name] or configuration.solver_name == 'ECOS':
                 if not is_mathematical_scalar(value):
-                    osqp_utils.write_vec_extern(f, value.flatten(order='F'), info_opt[C.PREFIX]+'cpg_'+name,
+                    osqp_utils.write_vec_extern(f, value.flatten(order='F'), configuration.prefix+'cpg_'+name,
                                                 'c_float')
 
-    if info_opt[C.SOLVER_NAME] == 'ECOS':
+    if configuration.solver_name == 'ECOS':
         f.write('\n// Dual variables associated with user-defined constraints\n')
-        for name, value in info_usr[C.D_NAME_TO_INIT].items():
+        for name, value in dual_variable_info.name_to_init.items():
             if not is_mathematical_scalar(value):
-                osqp_utils.write_vec_extern(f, value.flatten(order='F'), info_opt[C.PREFIX]+'cpg_'+name, 'c_float')
+                osqp_utils.write_vec_extern(f, value.flatten(order='F'), configuration.prefix+'cpg_'+name, 'c_float')
 
     f.write('\n// Struct containing primal solution\n')
-    write_struct_prot(f, '%sCPG_Prim' % info_opt[C.PREFIX], 'CPG_Prim_t')
+    write_struct_prot(f, '%sCPG_Prim' % configuration.prefix, 'CPG_Prim_t')
 
-    if len(info_usr[C.D_NAME_TO_INIT]) > 0:
+    if len(dual_variable_info.name_to_init) > 0:
         f.write('\n// Struct containing dual solution\n')
-        write_struct_prot(f, '%sCPG_Dual' % info_opt[C.PREFIX], 'CPG_Dual_t')
+        write_struct_prot(f, '%sCPG_Dual' % configuration.prefix, 'CPG_Dual_t')
 
     f.write('\n// Struct containing solver info\n')
-    write_struct_prot(f, '%sCPG_Info' % info_opt[C.PREFIX], 'CPG_Info_t')
+    write_struct_prot(f, '%sCPG_Info' % configuration.prefix, 'CPG_Info_t')
 
     f.write('\n// Struct containing solution and info\n')
-    write_struct_prot(f, '%sCPG_Result' % info_opt[C.PREFIX], 'CPG_Result_t')
+    write_struct_prot(f, '%sCPG_Result' % configuration.prefix, 'CPG_Result_t')
 
-    if info_opt[C.SOLVER_NAME] == 'SCS':
+    if configuration.solver_name == 'SCS':
         f.write('\n// SCS matrix A\n')
-        write_struct_prot(f, '%sscs_A' % info_opt[C.PREFIX], 'ScsMatrix')
+        write_struct_prot(f, '%sscs_A' % configuration.prefix, 'ScsMatrix')
         f.write('\n// Struct containing SCS data\n')
-        write_struct_prot(f, '%sScs_D' % info_opt[C.PREFIX], 'ScsData')
-        if info_can[C.CONSTANTS]['qsize'] > 0:
+        write_struct_prot(f, '%sScs_D' % configuration.prefix, 'ScsData')
+        if solver_interface.canon_constants['qsize'] > 0:
             f.write('\n// SCS array of SOC dimensions\n')
-            osqp_utils.write_vec_extern(f, info_can[C.CONSTANTS]['q'], '%sscs_q' % info_opt[C.PREFIX], 'c_int')
+            osqp_utils.write_vec_extern(f, solver_interface.canon_constants['q'], '%sscs_q' % configuration.prefix, 'c_int')
         f.write('\n// Struct containing SCS cone data\n')
-        write_struct_prot(f, '%sScs_K' % info_opt[C.PREFIX], 'ScsCone')
+        write_struct_prot(f, '%sScs_K' % configuration.prefix, 'ScsCone')
         f.write('\n// Struct containing SCS settings\n')
-        write_struct_prot(f, '%sScs_Stgs' % info_opt[C.PREFIX], 'ScsSettings')
+        write_struct_prot(f, '%sScs_Stgs' % configuration.prefix, 'ScsSettings')
         f.write('\n// SCS solution\n')
-        osqp_utils.write_vec_extern(f, np.zeros(info_can[C.CONSTANTS]['n']), '%sscs_x' % info_opt[C.PREFIX],
+        osqp_utils.write_vec_extern(f, np.zeros(solver_interface.canon_constants['n']), '%sscs_x' % configuration.prefix,
                                     'c_float')
-        osqp_utils.write_vec_extern(f, np.zeros(info_can[C.CONSTANTS]['m']), '%sscs_y' % info_opt[C.PREFIX],
+        osqp_utils.write_vec_extern(f, np.zeros(solver_interface.canon_constants['m']), '%sscs_y' % configuration.prefix,
                                     'c_float')
-        osqp_utils.write_vec_extern(f, np.zeros(info_can[C.CONSTANTS]['m']), '%sscs_s' % info_opt[C.PREFIX],
+        osqp_utils.write_vec_extern(f, np.zeros(solver_interface.canon_constants['m']), '%sscs_s' % configuration.prefix,
                                     'c_float')
         f.write('\n// Struct containing SCS solution\n')
-        write_struct_prot(f, '%sScs_Sol' % info_opt[C.PREFIX], 'ScsSolution')
+        write_struct_prot(f, '%sScs_Sol' % configuration.prefix, 'ScsSolution')
         f.write('\n// Struct containing SCS information\n')
-        write_struct_prot(f, '%sScs_Info' % info_opt[C.PREFIX], 'ScsInfo')
+        write_struct_prot(f, '%sScs_Info' % configuration.prefix, 'ScsInfo')
         f.write('\n// Pointer to struct containing SCS workspace\n')
-        write_struct_prot(f, '%sScs_Work' % info_opt[C.PREFIX], 'ScsWork*')
+        write_struct_prot(f, '%sScs_Work' % configuration.prefix, 'ScsWork*')
 
-    if info_opt[C.SOLVER_NAME] == 'ECOS':
+    if configuration.solver_name == 'ECOS':
         f.write('\n// Struct containing solver settings\n')
-        write_struct_prot(f, '%sCanon_Settings' % info_opt[C.PREFIX], 'Canon_Settings_t')
-        if info_can[C.CONSTANTS]['n_cones'] > 0:
+        write_struct_prot(f, '%sCanon_Settings' % configuration.prefix, 'Canon_Settings_t')
+        if solver_interface.canon_constants['n_cones'] > 0:
             f.write('\n// ECOS array of SOC dimensions\n')
-            osqp_utils.write_vec_extern(f, info_can[C.CONSTANTS]['q'], '%secos_q' % info_opt[C.PREFIX], 'c_int')
+            osqp_utils.write_vec_extern(f, solver_interface.canon_constants['q'], '%secos_q' % configuration.prefix, 'c_int')
         f.write('\n// ECOS workspace\n')
-        f.write('extern pwork* %secos_workspace;\n' % info_opt[C.PREFIX])
+        f.write('extern pwork* %secos_workspace;\n' % configuration.prefix)
         f.write('\n// ECOS exit flag\n')
-        f.write('extern c_int %secos_flag;\n' % info_opt[C.PREFIX])
+        f.write('extern c_int %secos_flag;\n' % configuration.prefix)
 
 
-def write_solve_def(f, info_opt, info_cg, info_usr, info_can):
+def write_solve_def(f, configuration, variable_info, dual_variable_info, parameter_info, parameter_canon, solver_interface):
     """
     Write parameter initialization function to file
     """
@@ -805,327 +766,327 @@ def write_solve_def(f, info_opt, info_cg, info_usr, info_can):
     write_description(f, 'c', 'Function definitions')
     f.write('#include "cpg_solve.h"\n')
     f.write('#include "cpg_workspace.h"\n')
-    if info_opt[C.SOLVER_NAME] == 'OSQP':
+    if configuration.solver_name == 'OSQP':
         f.write('#include "workspace.h"\n')
         f.write('#include "osqp.h"\n\n')
     else:
         f.write('\n')
 
-    if not info_opt[C.UNROLL]:
+    if not configuration.unroll:
         f.write('static c_int i;\n')
         f.write('static c_int j;\n')
 
-    if info_opt[C.UNROLL] and info_opt[C.SOLVER_NAME] == 'ECOS':
+    if configuration.unroll and configuration.solver_name == 'ECOS':
         f.write('static c_int i;\n')
 
-    if info_opt[C.SOLVER_NAME] in ['SCS', 'ECOS']:
+    if configuration.solver_name in ['SCS', 'ECOS']:
         f.write('static c_int initialized = 0;\n')
 
     f.write('\n// Update user-defined parameters\n')
-    if info_opt[C.UNROLL]:
-        for user_p_name, Canon_outdated_names in info_usr[C.P_NAME_TO_CANON_OUTDATED].items():
-            if info_usr[C.P_NAME_TO_SIZE][user_p_name] == 1:
-                f.write('void %scpg_update_%s(c_float val){\n' % (info_opt[C.PREFIX], user_p_name))
-                f.write('  %sCPG_Params.%s = val;\n' % (info_opt[C.PREFIX], user_p_name))
+    if configuration.unroll:
+        for user_p_name, Canon_outdated_names in parameter_canon.user_p_name_to_canon_outdated.items():
+            if parameter_info.name_to_size_usp[user_p_name] == 1:
+                f.write('void %scpg_update_%s(c_float val){\n' % (configuration.prefix, user_p_name))
+                f.write('  %sCPG_Params.%s = val;\n' % (configuration.prefix, user_p_name))
             else:
-                f.write('void %scpg_update_%s(c_int idx, c_float val){\n' % (info_opt[C.PREFIX], user_p_name))
-                f.write('  %sCPG_Params.%s[idx] = val;\n' % (info_opt[C.PREFIX], user_p_name))
+                f.write('void %scpg_update_%s(c_int idx, c_float val){\n' % (configuration.prefix, user_p_name))
+                f.write('  %sCPG_Params.%s[idx] = val;\n' % (configuration.prefix, user_p_name))
             for Canon_outdated_name in Canon_outdated_names:
-                f.write('  %sCanon_Outdated.%s = 1;\n' % (info_opt[C.PREFIX], Canon_outdated_name))
+                f.write('  %sCanon_Outdated.%s = 1;\n' % (configuration.prefix, Canon_outdated_name))
             f.write('}\n\n')
     else:
-        for base_col, name in info_usr[C.P_COL_TO_NAME_USP].items():
-            Canon_outdated_names = info_usr[C.P_NAME_TO_CANON_OUTDATED][name]
-            if info_usr[C.P_NAME_TO_SIZE][name] == 1:
-                f.write('void %scpg_update_%s(c_float val){\n' % (info_opt[C.PREFIX], name))
-                f.write('  %scpg_params_vec[%d] = val;\n' % (info_opt[C.PREFIX], base_col))
+        for base_col, name in parameter_info.col_to_name_usp.items():
+            Canon_outdated_names = parameter_canon.user_p_name_to_canon_outdated[name]
+            if parameter_info.name_to_size_usp[name] == 1:
+                f.write('void %scpg_update_%s(c_float val){\n' % (configuration.prefix, name))
+                f.write('  %scpg_params_vec[%d] = val;\n' % (configuration.prefix, base_col))
             else:
-                f.write('void %scpg_update_%s(c_int idx, c_float val){\n' % (info_opt[C.PREFIX], name))
-                f.write('  %scpg_params_vec[idx+%d] = val;\n' % (info_opt[C.PREFIX], base_col))
+                f.write('void %scpg_update_%s(c_int idx, c_float val){\n' % (configuration.prefix, name))
+                f.write('  %scpg_params_vec[idx+%d] = val;\n' % (configuration.prefix, base_col))
             for Canon_outdated_name in Canon_outdated_names:
-                f.write('  %sCanon_Outdated.%s = 1;\n' % (info_opt[C.PREFIX], Canon_outdated_name))
+                f.write('  %sCanon_Outdated.%s = 1;\n' % (configuration.prefix, Canon_outdated_name))
             f.write('}\n\n')
 
     f.write('// Map user-defined to canonical parameters\n')
 
-    for p_id, mapping in info_can[C.P_ID_TO_MAPPING].items():
-        if info_can[C.P_ID_TO_CHANGES][p_id]:
-            f.write('void %scpg_canonicalize_%s(){\n' % (info_opt[C.PREFIX], p_id))
+    for p_id, mapping in parameter_canon.p_id_to_mapping.items():
+        if parameter_canon.p_id_to_changes[p_id]:
+            f.write('void %scpg_canonicalize_%s(){\n' % (configuration.prefix, p_id))
             if p_id.isupper():
                 s = '->x'
             else:
                 s = ''
-            if info_opt[C.UNROLL]:
-                write_canonicalize_explicit(f, p_id, s, mapping, info_usr[C.P_COL_TO_NAME_USP],
-                                            info_usr[C.P_NAME_TO_SIZE], info_opt[C.PREFIX])
+            if configuration.unroll:
+                write_canonicalize_explicit(f, p_id, s, mapping, parameter_info.col_to_name_usp,
+                                            parameter_info.name_to_size_usp, configuration.prefix)
             else:
-                write_canonicalize(f, p_id, s, mapping, info_opt[C.PREFIX])
+                write_canonicalize(f, p_id, s, mapping, configuration.prefix)
             f.write('}\n\n')
 
-    if info_opt[C.SOLVER_NAME] == 'OSQP':
+    if configuration.solver_name == 'OSQP':
         obj_str = 'workspace.info->obj_val'
         prim_str = 'workspace.solution->x'
         dual_str = 'workspace.solution->'
-    elif info_opt[C.SOLVER_NAME] == 'SCS':
-        obj_str = '%sScs_Info.pobj' % info_opt[C.PREFIX]
-        prim_str = '%sscs_x' % info_opt[C.PREFIX]
-        dual_str = '%sscs_' % info_opt[C.PREFIX]
-    elif info_opt[C.SOLVER_NAME] == 'ECOS':
-        obj_str = '%secos_workspace->info->pcost' % info_opt[C.PREFIX]
-        prim_str = '%secos_workspace->x' % info_opt[C.PREFIX]
-        dual_str = '%secos_workspace->' % info_opt[C.PREFIX]
+    elif configuration.solver_name == 'SCS':
+        obj_str = '%sScs_Info.pobj' % configuration.prefix
+        prim_str = '%sscs_x' % configuration.prefix
+        dual_str = '%sscs_' % configuration.prefix
+    elif configuration.solver_name == 'ECOS':
+        obj_str = '%secos_workspace->info->pcost' % configuration.prefix
+        prim_str = '%secos_workspace->x' % configuration.prefix
+        dual_str = '%secos_workspace->' % configuration.prefix
     else:
         raise ValueError("Only OSQP and ECOS are supported!")
 
-    if info_cg[C.RET_PRIM_FUNC_EXISTS]:
+    if solver_interface.ret_prim_func_exists(variable_info):
         f.write('// Retrieve primal solution in terms of user-defined variables\n')
-        f.write('void %scpg_retrieve_prim(){\n' % info_opt[C.PREFIX])
-        for var_name, indices in info_usr[C.V_NAME_TO_INDICES].items():
+        f.write('void %scpg_retrieve_prim(){\n' % configuration.prefix)
+        for var_name, indices in variable_info.name_to_indices.items():
             if len(indices) == 1:
-                f.write('  %sCPG_Prim.%s = %s[%d];\n' % (info_opt[C.PREFIX], var_name, prim_str, indices))
-            elif info_usr[C.V_NAME_TO_SYM][var_name] or info_opt[C.SOLVER_NAME] == 'ECOS':
+                f.write('  %sCPG_Prim.%s = %s[%d];\n' % (configuration.prefix, var_name, prim_str, indices))
+            elif variable_info.name_to_sym[var_name] or configuration.solver_name == 'ECOS':
                 for i, idx in enumerate(indices):
-                    f.write('  %sCPG_Prim.%s[%d] = %s[%d];\n' % (info_opt[C.PREFIX], var_name, i, prim_str, idx))
+                    f.write('  %sCPG_Prim.%s[%d] = %s[%d];\n' % (configuration.prefix, var_name, i, prim_str, idx))
         f.write('}\n\n')
 
-    if info_cg[C.RET_DUAL_FUNC_EXISTS]:
+    if solver_interface.ret_dual_func_exists(dual_variable_info):
         f.write('// Retrieve dual solution in terms of user-defined constraints\n')
-        f.write('void %scpg_retrieve_dual(){\n' % info_opt[C.PREFIX])
-        for var_name, (vector, indices) in info_usr[C.D_NAME_TO_INDICES].items():
+        f.write('void %scpg_retrieve_dual(){\n' % configuration.prefix)
+        for var_name, (vector, indices) in dual_variable_info.name_to_indices.items():
             if len(indices) == 1:
-                f.write('  %sCPG_Dual.%s = %s%s[%d];\n' % (info_opt[C.PREFIX], var_name, dual_str, vector, indices))
-            elif info_opt[C.SOLVER_NAME] == 'ECOS':
+                f.write('  %sCPG_Dual.%s = %s%s[%d];\n' % (configuration.prefix, var_name, dual_str, vector, indices))
+            elif configuration.solver_name == 'ECOS':
                 for i, idx in enumerate(indices):
                     f.write('  %sCPG_Dual.%s[%d] = %s%s[%d];\n'
-                            % (info_opt[C.PREFIX], var_name, i, dual_str, vector, idx))
+                            % (configuration.prefix, var_name, i, dual_str, vector, idx))
         f.write('}\n\n')
 
     f.write('// Retrieve solver info\n')
-    f.write('void %scpg_retrieve_info(){\n' % info_opt[C.PREFIX])
-    if info_cg[C.NONZERO_D]:
-        d_str = ' + %sCanon_Params.d' % info_opt[C.PREFIX]
+    f.write('void %scpg_retrieve_info(){\n' % configuration.prefix)
+    if parameter_canon.nonzero_d:
+        d_str = ' + %sCanon_Params.d' % configuration.prefix
     else:
         d_str = ''
-    if info_cg[C.IS_MAXIMIZATION]:
-        f.write('  %sCPG_Info.obj_val = -(%s%s);\n' % (info_opt[C.PREFIX], obj_str, d_str))
+    if parameter_canon.is_maximization:
+        f.write('  %sCPG_Info.obj_val = -(%s%s);\n' % (configuration.prefix, obj_str, d_str))
     else:
-        f.write('  %sCPG_Info.obj_val = %s%s;\n' % (info_opt[C.PREFIX], obj_str, d_str))
-    if info_opt[C.SOLVER_NAME] == 'OSQP':
-        f.write('  %sCPG_Info.iter = workspace.info->iter;\n' % info_opt[C.PREFIX])
-        f.write('  %sCPG_Info.status = workspace.info->status;\n' % info_opt[C.PREFIX])
-        f.write('  %sCPG_Info.pri_res = workspace.info->pri_res;\n' % info_opt[C.PREFIX])
-        f.write('  %sCPG_Info.dua_res = workspace.info->dua_res;\n' % info_opt[C.PREFIX])
-    elif info_opt[C.SOLVER_NAME] == 'SCS':
-        f.write('  %sCPG_Info.iter = %sScs_Info.iter;\n' % (info_opt[C.PREFIX], info_opt[C.PREFIX]))
-        f.write('  %sCPG_Info.status = %sScs_Info.status;\n' % (info_opt[C.PREFIX], info_opt[C.PREFIX]))
-        f.write('  %sCPG_Info.pri_res = %sScs_Info.res_pri;\n' % (info_opt[C.PREFIX], info_opt[C.PREFIX]))
-        f.write('  %sCPG_Info.dua_res = %sScs_Info.res_dual;\n' % (info_opt[C.PREFIX], info_opt[C.PREFIX]))
-    elif info_opt[C.SOLVER_NAME] == 'ECOS':
-        f.write('  %sCPG_Info.iter = %secos_workspace->info->iter;\n' % (info_opt[C.PREFIX], info_opt[C.PREFIX]))
-        f.write('  %sCPG_Info.status = %secos_flag;\n' % (info_opt[C.PREFIX], info_opt[C.PREFIX]))
+        f.write('  %sCPG_Info.obj_val = %s%s;\n' % (configuration.prefix, obj_str, d_str))
+    if configuration.solver_name == 'OSQP':
+        f.write('  %sCPG_Info.iter = workspace.info->iter;\n' % configuration.prefix)
+        f.write('  %sCPG_Info.status = workspace.info->status;\n' % configuration.prefix)
+        f.write('  %sCPG_Info.pri_res = workspace.info->pri_res;\n' % configuration.prefix)
+        f.write('  %sCPG_Info.dua_res = workspace.info->dua_res;\n' % configuration.prefix)
+    elif configuration.solver_name == 'SCS':
+        f.write('  %sCPG_Info.iter = %sScs_Info.iter;\n' % (configuration.prefix, configuration.prefix))
+        f.write('  %sCPG_Info.status = %sScs_Info.status;\n' % (configuration.prefix, configuration.prefix))
+        f.write('  %sCPG_Info.pri_res = %sScs_Info.res_pri;\n' % (configuration.prefix, configuration.prefix))
+        f.write('  %sCPG_Info.dua_res = %sScs_Info.res_dual;\n' % (configuration.prefix, configuration.prefix))
+    elif configuration.solver_name == 'ECOS':
+        f.write('  %sCPG_Info.iter = %secos_workspace->info->iter;\n' % (configuration.prefix, configuration.prefix))
+        f.write('  %sCPG_Info.status = %secos_flag;\n' % (configuration.prefix, configuration.prefix))
         f.write('  %sCPG_Info.pri_res = %secos_workspace->info->pres;\n'
-                % (info_opt[C.PREFIX], info_opt[C.PREFIX]))
+                % (configuration.prefix, configuration.prefix))
         f.write('  %sCPG_Info.dua_res = %secos_workspace->info->dres;\n'
-                % (info_opt[C.PREFIX], info_opt[C.PREFIX]))
+                % (configuration.prefix, configuration.prefix))
     f.write('}\n\n')
 
     f.write('// Solve via canonicalization, canonical solve, retrieval\n')
-    f.write('void %scpg_solve(){\n' % info_opt[C.PREFIX])
+    f.write('void %scpg_solve(){\n' % configuration.prefix)
     f.write('  // Canonicalize if necessary\n')
-    if info_opt[C.SOLVER_NAME] == 'OSQP':
+    if configuration.solver_name == 'OSQP':
 
-        if info_can[C.P_ID_TO_CHANGES]['P'] and info_can[C.P_ID_TO_CHANGES]['A']:
+        if parameter_canon.p_id_to_changes['P'] and parameter_canon.p_id_to_changes['A']:
             f.write('  if (%sCanon_Outdated.P && %sCanon_Outdated.A) {\n'
-                    % (info_opt[C.PREFIX], info_opt[C.PREFIX]))
-            f.write('    %scpg_canonicalize_P();\n' % info_opt[C.PREFIX])
-            f.write('    %scpg_canonicalize_A();\n' % info_opt[C.PREFIX])
+                    % (configuration.prefix, configuration.prefix))
+            f.write('    %scpg_canonicalize_P();\n' % configuration.prefix)
+            f.write('    %scpg_canonicalize_A();\n' % configuration.prefix)
             f.write('    osqp_update_P_A(&workspace, %sCanon_Params.P->x, 0, 0, %sCanon_Params.A->x, 0, 0);\n'
-                    % (info_opt[C.PREFIX], info_opt[C.PREFIX]))
-            f.write('  } else if (%sCanon_Outdated.P) {\n' % info_opt[C.PREFIX])
-            f.write('    %scpg_canonicalize_P();\n' % info_opt[C.PREFIX])
-            f.write('    osqp_update_P(&workspace, %sCanon_Params.P->x, 0, 0);\n' % info_opt[C.PREFIX])
-            f.write('  } else if (%sCanon_Outdated.A) {\n' % info_opt[C.PREFIX])
-            f.write('    %scpg_canonicalize_A();\n' % info_opt[C.PREFIX])
-            f.write('    osqp_update_A(&workspace, %sCanon_Params.A->x, 0, 0);\n' % info_opt[C.PREFIX])
+                    % (configuration.prefix, configuration.prefix))
+            f.write('  } else if (%sCanon_Outdated.P) {\n' % configuration.prefix)
+            f.write('    %scpg_canonicalize_P();\n' % configuration.prefix)
+            f.write('    osqp_update_P(&workspace, %sCanon_Params.P->x, 0, 0);\n' % configuration.prefix)
+            f.write('  } else if (%sCanon_Outdated.A) {\n' % configuration.prefix)
+            f.write('    %scpg_canonicalize_A();\n' % configuration.prefix)
+            f.write('    osqp_update_A(&workspace, %sCanon_Params.A->x, 0, 0);\n' % configuration.prefix)
             f.write('  }\n')
         else:
-            if info_can[C.P_ID_TO_CHANGES]['P']:
-                f.write('  if (%sCanon_Outdated.P) {\n' % info_opt[C.PREFIX])
-                f.write('    %scpg_canonicalize_P();\n' % info_opt[C.PREFIX])
-                f.write('    osqp_update_P(&workspace, %sCanon_Params.P->x, 0, 0);\n' % info_opt[C.PREFIX])
+            if parameter_canon.p_id_to_changes['P']:
+                f.write('  if (%sCanon_Outdated.P) {\n' % configuration.prefix)
+                f.write('    %scpg_canonicalize_P();\n' % configuration.prefix)
+                f.write('    osqp_update_P(&workspace, %sCanon_Params.P->x, 0, 0);\n' % configuration.prefix)
                 f.write('  }\n')
-            if info_can[C.P_ID_TO_CHANGES]['A']:
-                f.write('  if (%sCanon_Outdated.A) {\n' % info_opt[C.PREFIX])
-                f.write('    %scpg_canonicalize_A();\n' % info_opt[C.PREFIX])
-                f.write('    osqp_update_A(&workspace, %sCanon_Params.A->x, 0, 0);\n' % info_opt[C.PREFIX])
+            if parameter_canon.p_id_to_changes['A']:
+                f.write('  if (%sCanon_Outdated.A) {\n' % configuration.prefix)
+                f.write('    %scpg_canonicalize_A();\n' % configuration.prefix)
+                f.write('    osqp_update_A(&workspace, %sCanon_Params.A->x, 0, 0);\n' % configuration.prefix)
                 f.write('  }\n')
 
-        if info_can[C.P_ID_TO_CHANGES]['q']:
-            f.write('  if (%sCanon_Outdated.q) {\n' % info_opt[C.PREFIX])
-            f.write('    %scpg_canonicalize_q();\n' % info_opt[C.PREFIX])
-            f.write('    osqp_update_lin_cost(&workspace, %sCanon_Params.q);\n' % info_opt[C.PREFIX])
+        if parameter_canon.p_id_to_changes['q']:
+            f.write('  if (%sCanon_Outdated.q) {\n' % configuration.prefix)
+            f.write('    %scpg_canonicalize_q();\n' % configuration.prefix)
+            f.write('    osqp_update_lin_cost(&workspace, %sCanon_Params.q);\n' % configuration.prefix)
             f.write('  }\n')
 
-        if info_can[C.P_ID_TO_CHANGES]['d']:
-            f.write('  if (%sCanon_Outdated.d) {\n' % info_opt[C.PREFIX])
-            f.write('    %scpg_canonicalize_d();\n' % info_opt[C.PREFIX])
+        if parameter_canon.p_id_to_changes['d']:
+            f.write('  if (%sCanon_Outdated.d) {\n' % configuration.prefix)
+            f.write('    %scpg_canonicalize_d();\n' % configuration.prefix)
             f.write('  }\n')
 
-        if info_can[C.P_ID_TO_CHANGES]['l'] and info_can[C.P_ID_TO_CHANGES]['u']:
+        if parameter_canon.p_id_to_changes['l'] and parameter_canon.p_id_to_changes['u']:
             f.write('  if (%sCanon_Outdated.l && %sCanon_Outdated.u) {\n'
-                    % (info_opt[C.PREFIX], info_opt[C.PREFIX]))
-            f.write('    %scpg_canonicalize_l();\n' % info_opt[C.PREFIX])
-            f.write('    %scpg_canonicalize_u();\n' % info_opt[C.PREFIX])
+                    % (configuration.prefix, configuration.prefix))
+            f.write('    %scpg_canonicalize_l();\n' % configuration.prefix)
+            f.write('    %scpg_canonicalize_u();\n' % configuration.prefix)
             f.write('    osqp_update_bounds(&workspace, %sCanon_Params.l, %sCanon_Params.u);\n'
-                    % (info_opt[C.PREFIX], info_opt[C.PREFIX]))
-            f.write('  } else if (%sCanon_Outdated.l) {\n' % info_opt[C.PREFIX])
-            f.write('    %scpg_canonicalize_l();\n' % info_opt[C.PREFIX])
-            f.write('    osqp_update_lower_bound(&workspace, %sCanon_Params.l);\n' % info_opt[C.PREFIX])
-            f.write('  } else if (%sCanon_Outdated.u) {\n' % info_opt[C.PREFIX])
-            f.write('    %scpg_canonicalize_u();\n' % info_opt[C.PREFIX])
-            f.write('    osqp_update_upper_bound(&workspace, %sCanon_Params.u);\n' % info_opt[C.PREFIX])
+                    % (configuration.prefix, configuration.prefix))
+            f.write('  } else if (%sCanon_Outdated.l) {\n' % configuration.prefix)
+            f.write('    %scpg_canonicalize_l();\n' % configuration.prefix)
+            f.write('    osqp_update_lower_bound(&workspace, %sCanon_Params.l);\n' % configuration.prefix)
+            f.write('  } else if (%sCanon_Outdated.u) {\n' % configuration.prefix)
+            f.write('    %scpg_canonicalize_u();\n' % configuration.prefix)
+            f.write('    osqp_update_upper_bound(&workspace, %sCanon_Params.u);\n' % configuration.prefix)
             f.write('  }\n')
         else:
-            if info_can[C.P_ID_TO_CHANGES]['l']:
-                f.write('  if (%sCanon_Outdated.l) {\n' % info_opt[C.PREFIX])
-                f.write('    %scpg_canonicalize_l();\n' % info_opt[C.PREFIX])
-                f.write('    osqp_update_lower_bound(&workspace, %sCanon_Params.l);\n' % info_opt[C.PREFIX])
+            if parameter_canon.p_id_to_changes['l']:
+                f.write('  if (%sCanon_Outdated.l) {\n' % configuration.prefix)
+                f.write('    %scpg_canonicalize_l();\n' % configuration.prefix)
+                f.write('    osqp_update_lower_bound(&workspace, %sCanon_Params.l);\n' % configuration.prefix)
                 f.write('  }\n')
-            if info_can[C.P_ID_TO_CHANGES]['u']:
-                f.write('  if (%sCanon_Outdated.u) {\n' % info_opt[C.PREFIX])
-                f.write('    %scpg_canonicalize_u();\n' % info_opt[C.PREFIX])
-                f.write('    osqp_update_upper_bound(&workspace, %sCanon_Params.u);\n' % info_opt[C.PREFIX])
+            if parameter_canon.p_id_to_changes['u']:
+                f.write('  if (%sCanon_Outdated.u) {\n' % configuration.prefix)
+                f.write('    %scpg_canonicalize_u();\n' % configuration.prefix)
+                f.write('    osqp_update_upper_bound(&workspace, %sCanon_Params.u);\n' % configuration.prefix)
                 f.write('  }\n')
 
-    elif info_opt[C.SOLVER_NAME] in ['SCS', 'ECOS']:
+    elif configuration.solver_name in ['SCS', 'ECOS']:
 
-        for p_id, changes in info_can[C.P_ID_TO_CHANGES].items():
+        for p_id, changes in parameter_canon.p_id_to_changes.items():
             if changes:
-                f.write('  if (%sCanon_Outdated.%s) {\n' % (info_opt[C.PREFIX], p_id))
-                f.write('    %scpg_canonicalize_%s();\n' % (info_opt[C.PREFIX], p_id))
+                f.write('  if (%sCanon_Outdated.%s) {\n' % (configuration.prefix, p_id))
+                f.write('    %scpg_canonicalize_%s();\n' % (configuration.prefix, p_id))
                 f.write('  }\n')
 
-    if info_opt[C.SOLVER_NAME] == 'OSQP':
+    if configuration.solver_name == 'OSQP':
         f.write('  // Solve with OSQP\n')
         f.write('  osqp_solve(&workspace);\n')
-    elif info_opt[C.SOLVER_NAME] == 'SCS':
+    elif configuration.solver_name == 'SCS':
         f.write('  // Solve with SCS\n')
-        f.write('  if (initialized == 0 || %sCanon_Outdated.A) {\n' % info_opt[C.PREFIX])
+        f.write('  if (initialized == 0 || %sCanon_Outdated.A) {\n' % configuration.prefix)
         f.write('    %sScs_Work = scs_init(&%sScs_D, &%sScs_K, &%sScs_Stgs);\n' %
-                (info_opt[C.PREFIX], info_opt[C.PREFIX], info_opt[C.PREFIX], info_opt[C.PREFIX]))
+                (configuration.prefix, configuration.prefix, configuration.prefix, configuration.prefix))
         f.write('    initialized = 1;\n')
-        f.write('  } else if (%sCanon_Outdated.b && %sCanon_Outdated.c) {\n' % (info_opt[C.PREFIX], info_opt[C.PREFIX]))
+        f.write('  } else if (%sCanon_Outdated.b && %sCanon_Outdated.c) {\n' % (configuration.prefix, configuration.prefix))
         f.write('    scs_update(%sScs_Work, %sCanon_Params.b, %sCanon_Params.c);\n' %
-                (info_opt[C.PREFIX], info_opt[C.PREFIX], info_opt[C.PREFIX]))
-        f.write('  } else if (%sCanon_Outdated.b) {\n' % info_opt[C.PREFIX])
+                (configuration.prefix, configuration.prefix, configuration.prefix))
+        f.write('  } else if (%sCanon_Outdated.b) {\n' % configuration.prefix)
         f.write('    scs_update(%sScs_Work, %sCanon_Params.b, SCS_NULL);\n' %
-                (info_opt[C.PREFIX], info_opt[C.PREFIX]))
-        f.write('  } else if (%sCanon_Outdated.c) {\n' % info_opt[C.PREFIX])
+                (configuration.prefix, configuration.prefix))
+        f.write('  } else if (%sCanon_Outdated.c) {\n' % configuration.prefix)
         f.write('    scs_update(%sScs_Work, SCS_NULL, %sCanon_Params.c);\n' %
-                (info_opt[C.PREFIX], info_opt[C.PREFIX]))
+                (configuration.prefix, configuration.prefix))
         f.write('  }\n')
         f.write('  scs_solve(%sScs_Work, &%sScs_Sol, &%sScs_Info, (initialized && %sScs_Stgs.warm_start));\n' %
-                (info_opt[C.PREFIX], info_opt[C.PREFIX], info_opt[C.PREFIX], info_opt[C.PREFIX]))
-    elif info_opt[C.SOLVER_NAME] == 'ECOS':
-        for p_id, size in info_can[C.P_ID_TO_SIZE].items():
+                (configuration.prefix, configuration.prefix, configuration.prefix, configuration.prefix))
+    elif configuration.solver_name == 'ECOS':
+        for p_id, size in parameter_canon.p_id_to_size.items():
             if size == 1:
                 f.write('  %sCanon_Params_ECOS.%s = %sCanon_Params.%s;\n'
-                        % (info_opt[C.PREFIX], p_id, info_opt[C.PREFIX], p_id))
+                        % (configuration.prefix, p_id, configuration.prefix, p_id))
             elif size > 1:
                 f.write('  for (i=0; i<%d; i++){\n' % size)
                 if p_id.isupper():
                     f.write('    %sCanon_Params_ECOS.%s->x[i] = %sCanon_Params.%s->x[i];\n'
-                            % (info_opt[C.PREFIX], p_id, info_opt[C.PREFIX], p_id))
+                            % (configuration.prefix, p_id, configuration.prefix, p_id))
                 else:
                     f.write('    %sCanon_Params_ECOS.%s[i] = %sCanon_Params.%s[i];\n'
-                            % (info_opt[C.PREFIX], p_id, info_opt[C.PREFIX], p_id))
+                            % (configuration.prefix, p_id, configuration.prefix, p_id))
                 f.write('  }\n')
         f.write('  // Initialize / update ECOS workspace and settings\n')
-        write_ecos_setup_update(f, info_can[C.CONSTANTS], info_opt[C.PREFIX])
-        for name in info_can[C.SETTINGS_NAMES_TO_TYPE].keys():
+        write_ecos_setup_update(f, solver_interface.canon_constants, configuration.prefix)
+        for name in solver_interface.settings_names_to_type.keys():
             f.write('  %secos_workspace->stgs->%s = %sCanon_Settings.%s;\n'
-                    % (info_opt[C.PREFIX], name, info_opt[C.PREFIX], name))
+                    % (configuration.prefix, name, configuration.prefix, name))
         f.write('  // Solve with ECOS\n')
-        f.write('  %secos_flag = ECOS_solve(%secos_workspace);\n' % (info_opt[C.PREFIX], info_opt[C.PREFIX]))
+        f.write('  %secos_flag = ECOS_solve(%secos_workspace);\n' % (configuration.prefix, configuration.prefix))
 
     f.write('  // Retrieve results\n')
-    if info_cg[C.RET_PRIM_FUNC_EXISTS]:
-        f.write('  %scpg_retrieve_prim();\n' % info_opt[C.PREFIX])
-    if info_cg[C.RET_DUAL_FUNC_EXISTS]:
-        f.write('  %scpg_retrieve_dual();\n' % info_opt[C.PREFIX])
-    f.write('  %scpg_retrieve_info();\n' % info_opt[C.PREFIX])
+    if solver_interface.ret_prim_func_exists(variable_info):
+        f.write('  %scpg_retrieve_prim();\n' % configuration.prefix)
+    if solver_interface.ret_dual_func_exists(dual_variable_info):
+        f.write('  %scpg_retrieve_dual();\n' % configuration.prefix)
+    f.write('  %scpg_retrieve_info();\n' % configuration.prefix)
 
     f.write('  // Reset flags for outdated canonical parameters\n')
-    for p_id in info_can[C.P_ID_TO_SIZE].keys():
-        f.write('  %sCanon_Outdated.%s = 0;\n' % (info_opt[C.PREFIX], p_id))
+    for p_id in parameter_canon.p_id_to_size.keys():
+        f.write('  %sCanon_Outdated.%s = 0;\n' % (configuration.prefix, p_id))
 
     f.write('}\n\n')
 
     f.write('// Update solver settings\n')
-    f.write('void %scpg_set_solver_default_settings(){\n' % info_opt[C.PREFIX])
-    if info_opt[C.SOLVER_NAME] == 'OSQP':
+    f.write('void %scpg_set_solver_default_settings(){\n' % configuration.prefix)
+    if configuration.solver_name == 'OSQP':
         f.write('  osqp_set_default_settings(&settings);\n')
-    elif info_opt[C.SOLVER_NAME] == 'SCS':
-        f.write('  scs_set_default_settings(&%sScs_Stgs);\n' % info_opt[C.PREFIX])
-    elif info_opt[C.SOLVER_NAME] == 'ECOS':
-        for name, value in info_can[C.SETTINGS_NAMES_TO_DEFAULT].items():
-            f.write('  %sCanon_Settings.%s = %s;\n' % (info_opt[C.PREFIX], name, value))
+    elif configuration.solver_name == 'SCS':
+        f.write('  scs_set_default_settings(&%sScs_Stgs);\n' % configuration.prefix)
+    elif configuration.solver_name == 'ECOS':
+        for name, value in solver_interface.settings_names_to_default.items():
+            f.write('  %sCanon_Settings.%s = %s;\n' % (configuration.prefix, name, value))
     f.write('}\n')
-    for name, typ in info_can[C.SETTINGS_NAMES_TO_TYPE].items():
-        f.write('\nvoid %scpg_set_solver_%s(%s %s_new){\n' % (info_opt[C.PREFIX], name, typ, name))
-        if info_opt[C.SOLVER_NAME] == 'OSQP':
+    for name, typ in solver_interface.settings_names_to_type.items():
+        f.write('\nvoid %scpg_set_solver_%s(%s %s_new){\n' % (configuration.prefix, name, typ, name))
+        if configuration.solver_name == 'OSQP':
             f.write('  osqp_update_%s(&workspace, %s_new);\n' % (name, name))
-        elif info_opt[C.SOLVER_NAME] == 'SCS':
-            f.write('  %sScs_Stgs.%s = %s_new;\n' % (info_opt[C.PREFIX], name, name))
-        elif info_opt[C.SOLVER_NAME] == 'ECOS':
-            f.write('  %sCanon_Settings.%s = %s_new;\n' % (info_opt[C.PREFIX], name, name))
+        elif configuration.solver_name == 'SCS':
+            f.write('  %sScs_Stgs.%s = %s_new;\n' % (configuration.prefix, name, name))
+        elif configuration.solver_name == 'ECOS':
+            f.write('  %sCanon_Settings.%s = %s_new;\n' % (configuration.prefix, name, name))
         f.write('}\n')
 
 
-def write_solve_prot(f, info_opt, info_cg, info_usr, info_can):
+def write_solve_prot(f, configuration, variable_info, dual_variable_info, parameter_info, parameter_canon, solver_interface):
     """
     Write function declarations to file
     """
 
     write_description(f, 'c', 'Function declarations')
-    if info_opt[C.SOLVER_NAME] == 'OSQP':
+    if configuration.solver_name == 'OSQP':
         f.write('#include "types.h"\n')
-    elif info_opt[C.SOLVER_NAME] in ['SCS', 'ECOS']:
+    elif configuration.solver_name in ['SCS', 'ECOS']:
         f.write('#include "cpg_workspace.h"\n')
 
     f.write('\n// Update user-defined parameter values\n')
-    for name, size in info_usr[C.P_NAME_TO_SIZE].items():
+    for name, size in parameter_info.name_to_size_usp.items():
         if size == 1:
-            f.write('extern void %scpg_update_%s(c_float val);\n' % (info_opt[C.PREFIX], name))
+            f.write('extern void %scpg_update_%s(c_float val);\n' % (configuration.prefix, name))
         else:
-            f.write('extern void %scpg_update_%s(c_int idx, c_float val);\n' % (info_opt[C.PREFIX], name))
+            f.write('extern void %scpg_update_%s(c_int idx, c_float val);\n' % (configuration.prefix, name))
 
     f.write('\n// Map user-defined to canonical parameters\n')
-    for p_id, changes in info_can[C.P_ID_TO_CHANGES].items():
+    for p_id, changes in parameter_canon.p_id_to_changes.items():
         if changes:
-            f.write('extern void %scpg_canonicalize_%s();\n' % (info_opt[C.PREFIX], p_id))
+            f.write('extern void %scpg_canonicalize_%s();\n' % (configuration.prefix, p_id))
 
-    if info_cg[C.RET_PRIM_FUNC_EXISTS]:
+    if solver_interface.ret_prim_func_exists(variable_info):
         f.write('\n// Retrieve primal solution in terms of user-defined variables\n')
-        f.write('extern void %scpg_retrieve_prim();\n' % info_opt[C.PREFIX])
+        f.write('extern void %scpg_retrieve_prim();\n' % configuration.prefix)
 
-    if info_cg[C.RET_DUAL_FUNC_EXISTS]:
+    if solver_interface.ret_dual_func_exists(dual_variable_info):
         f.write('\n// Retrieve dual solution in terms of user-defined constraints\n')
-        f.write('extern void %scpg_retrieve_dual();\n' % info_opt[C.PREFIX])
+        f.write('extern void %scpg_retrieve_dual();\n' % configuration.prefix)
 
     f.write('\n// Retrieve solver information\n')
-    f.write('extern void %scpg_retrieve_info();\n' % info_opt[C.PREFIX])
+    f.write('extern void %scpg_retrieve_info();\n' % configuration.prefix)
 
     f.write('\n// Solve via canonicalization, canonical solve, retrieval\n')
-    f.write('extern void %scpg_solve();\n' % info_opt[C.PREFIX])
+    f.write('extern void %scpg_solve();\n' % configuration.prefix)
 
     f.write('\n// Update solver settings\n')
-    f.write('extern void %scpg_set_solver_default_settings();\n' % info_opt[C.PREFIX])
-    for name, typ in info_can[C.SETTINGS_NAMES_TO_TYPE].items():
-        f.write('extern void %scpg_set_solver_%s(%s %s_new);\n' % (info_opt[C.PREFIX], name, typ, name))
+    f.write('extern void %scpg_set_solver_default_settings();\n' % configuration.prefix)
+    for name, typ in solver_interface.settings_names_to_type.items():
+        f.write('extern void %scpg_set_solver_%s(%s %s_new);\n' % (configuration.prefix, name, typ, name))
 
 
-def write_example_def(f, info_opt, info_usr):
+def write_example_def(f, configuration, variable_info, dual_variable_info, parameter_info):
     """
     Write main function to file
     """
@@ -1139,70 +1100,70 @@ def write_example_def(f, info_opt, info_usr):
     f.write('int main(int argc, char *argv[]){\n\n')
 
     f.write('  // Update first entry of every user-defined parameter\n')
-    for name, value in info_usr[C.P_WRITABLE].items():
+    for name, value in parameter_info.writable.items():
         if is_mathematical_scalar(value):
-            f.write('  %scpg_update_%s(%.20f);\n' % (info_opt[C.PREFIX], name, value))
+            f.write('  %scpg_update_%s(%.20f);\n' % (configuration.prefix, name, value))
         else:
-            f.write('  %scpg_update_%s(0, %.20f);\n' % (info_opt[C.PREFIX], name, value[0]))
+            f.write('  %scpg_update_%s(0, %.20f);\n' % (configuration.prefix, name, value[0]))
 
     f.write('\n  // Solve the problem instance\n')
-    f.write('  %scpg_solve();\n\n' % info_opt[C.PREFIX])
+    f.write('  %scpg_solve();\n\n' % configuration.prefix)
 
     f.write('  // Print objective function value\n')
-    f.write('  printf("obj = %%f\\n", %sCPG_Result.info->obj_val);\n\n' % info_opt[C.PREFIX])
+    f.write('  printf("obj = %%f\\n", %sCPG_Result.info->obj_val);\n\n' % configuration.prefix)
 
     f.write('  // Print primal solution\n')
 
-    if info_opt[C.SOLVER_NAME] == 'OSQP':
+    if configuration.solver_name == 'OSQP':
         int_format_str = 'lld'
     else:
         int_format_str = 'd'
 
-    for name, var in info_usr[C.V_NAME_TO_INIT].items():
+    for name, var in variable_info.name_to_init.items():
         if is_mathematical_scalar(var):
-            f.write('  printf("%s = %%f\\n", %sCPG_Result.prim->%s);\n' % (name, info_opt[C.PREFIX], name))
+            f.write('  printf("%s = %%f\\n", %sCPG_Result.prim->%s);\n' % (name, configuration.prefix, name))
         else:
             f.write('  for(i=0; i<%d; i++) {\n' % var.size)
             f.write('    printf("%s[%%%s] = %%f\\n", i, %sCPG_Result.prim->%s[i]);\n'
-                    % (name, int_format_str, info_opt[C.PREFIX], name))
+                    % (name, int_format_str, configuration.prefix, name))
             f.write('  }\n')
 
-    if len(info_usr[C.D_NAME_TO_INIT]) > 0:
+    if len(dual_variable_info.name_to_init) > 0:
         f.write('\n  // Print dual solution\n')
-    for name, var in info_usr[C.D_NAME_TO_INIT].items():
+    for name, var in dual_variable_info.name_to_init.items():
         if is_mathematical_scalar(var):
-            f.write('  printf("%s = %%f\\n", %sCPG_Result.dual->%s);\n' % (name, info_opt[C.PREFIX], name))
+            f.write('  printf("%s = %%f\\n", %sCPG_Result.dual->%s);\n' % (name, configuration.prefix, name))
         else:
             f.write('  for(i=0; i<%d; i++) {\n' % var.size)
             f.write('    printf("%s[%%%s] = %%f\\n", i, %sCPG_Result.dual->%s[i]);\n'
-                    % (name, int_format_str, info_opt[C.PREFIX], name))
+                    % (name, int_format_str, configuration.prefix, name))
             f.write('  }\n')
 
     f.write('\n  return 0;\n\n')
     f.write('}\n')
 
 
-def replace_cmake_data(cmake_data, info_opt):
+def replace_cmake_data(cmake_data, configuration):
     """
-    Add C.PREFIX prefix to directory/file lists in top-level CMakeLists.txt
+    Add configuration.prefix to directory/file lists in top-level CMakeLists.txt
     """
 
     now = datetime.now()
     cmake_data = cmake_data.replace('%DATE', now.strftime("on %B %d, %Y at %H:%M:%S"))
-    cmake_data = cmake_data.replace('cpg_include', info_opt[C.PREFIX]+'cpg_include')
-    cmake_data = cmake_data.replace('cpg_head', info_opt[C.PREFIX] + 'cpg_head')
-    return cmake_data.replace('cpg_src', info_opt[C.PREFIX] + 'cpg_src')
+    cmake_data = cmake_data.replace('cpg_include', configuration.prefix+'cpg_include')
+    cmake_data = cmake_data.replace('cpg_head', configuration.prefix + 'cpg_head')
+    return cmake_data.replace('cpg_src', configuration.prefix + 'cpg_src')
 
 
-def write_canon_cmake(f, info_opt):
+def write_canon_cmake(f, configuration):
     """
     Pass sources to parent scope in {OSQP/ECOS}_code/CMakeLists.txt
     """
 
-    if info_opt[C.SOLVER_NAME] == 'OSQP':
+    if configuration.solver_name == 'OSQP':
         f.write('\nset(solver_head "${osqp_headers}" PARENT_SCOPE)')
         f.write('\nset(solver_src "${osqp_src}" PARENT_SCOPE)')
-    elif info_opt[C.SOLVER_NAME] == 'SCS':
+    elif configuration.solver_name == 'SCS':
         f.write('\nset(solver_head')
         f.write('\n  ${${PROJECT_NAME}_HDR}')
         f.write('\n  ${DIRSRC}/private.h')
@@ -1215,12 +1176,12 @@ def write_canon_cmake(f, info_opt):
         f.write('\n  ${${PROJECT_NAME}_AMD_EXTERNAL_SRC})')
         f.write('\n\nset(solver_head "${solver_head}" PARENT_SCOPE)')
         f.write('\nset(solver_src "${solver_src}" PARENT_SCOPE)')
-    elif info_opt[C.SOLVER_NAME] == 'ECOS':
+    elif configuration.solver_name == 'ECOS':
         f.write('\nset(solver_head "${ecos_headers}" PARENT_SCOPE)')
         f.write('\nset(solver_src "${ecos_sources}" PARENT_SCOPE)')
 
 
-def write_module_def(f, info_opt, info_usr, info_can):
+def write_module_def(f, configuration, variable_info, dual_variable_info, parameter_info, solver_interface):
     """
     Write c++ file for pbind11 wrapper
     """
@@ -1236,65 +1197,65 @@ def write_module_def(f, info_opt, info_usr, info_can):
     f.write('}\n\n')
     f.write('namespace py = pybind11;\n\n')
     if max(
-            max(info_usr[C.P_NAME_TO_SIZE].values(), default=0),
-            max(info_usr[C.V_NAME_TO_SIZE].values(), default=0),
-            max(info_usr[C.D_NAME_TO_SIZE].values(), default=0)
+            max(parameter_info.name_to_size_usp.values(), default=0),
+            max(variable_info.name_to_size.values(), default=0),
+            max(dual_variable_info.name_to_size.values(), default=0)
     ) > 1:
         f.write('static int i;\n\n')
 
     # cpp function that maps parameters to results
     f.write('%sCPG_Result_cpp_t %ssolve_cpp(struct %sCPG_Updated_cpp_t& CPG_Updated_cpp, '
             'struct %sCPG_Params_cpp_t& CPG_Params_cpp){\n\n'
-            % (info_opt[C.PREFIX], info_opt[C.PREFIX], info_opt[C.PREFIX], info_opt[C.PREFIX]))
+            % (configuration.prefix, configuration.prefix, configuration.prefix, configuration.prefix))
 
     f.write('    // Pass changed user-defined parameter values to the solver\n')
-    for name, size in info_usr[C.P_NAME_TO_SIZE].items():
+    for name, size in parameter_info.name_to_size_usp.items():
         f.write('    if (CPG_Updated_cpp.%s) {\n' % name)
         if size == 1:
-            f.write('        %scpg_update_%s(CPG_Params_cpp.%s);\n' % (info_opt[C.PREFIX], name, name))
+            f.write('        %scpg_update_%s(CPG_Params_cpp.%s);\n' % (configuration.prefix, name, name))
         else:
             f.write('        for(i=0; i<%d; i++) {\n' % size)
-            f.write('            %scpg_update_%s(i, CPG_Params_cpp.%s[i]);\n' % (info_opt[C.PREFIX], name, name))
+            f.write('            %scpg_update_%s(i, CPG_Params_cpp.%s[i]);\n' % (configuration.prefix, name, name))
             f.write('        }\n')
         f.write('    }\n')
 
     # perform ASA procedure
     f.write('\n    // Solve\n')
     f.write('    std::clock_t ASA_start = std::clock();\n')
-    f.write('    %scpg_solve();\n' % info_opt[C.PREFIX])
+    f.write('    %scpg_solve();\n' % configuration.prefix)
     f.write('    std::clock_t ASA_end = std::clock();\n\n')
 
     # arrange and return results
     f.write('    // Arrange and return results\n')
 
-    f.write('    %sCPG_Prim_cpp_t CPG_Prim_cpp {};\n' % info_opt[C.PREFIX])
-    for name, var in info_usr[C.V_NAME_TO_INIT].items():
+    f.write('    %sCPG_Prim_cpp_t CPG_Prim_cpp {};\n' % configuration.prefix)
+    for name, var in variable_info.name_to_init.items():
         if is_mathematical_scalar(var):
-            f.write('    CPG_Prim_cpp.%s = %sCPG_Prim.%s;\n' % (name, info_opt[C.PREFIX], name))
+            f.write('    CPG_Prim_cpp.%s = %sCPG_Prim.%s;\n' % (name, configuration.prefix, name))
         else:
             f.write('    for(i=0; i<%d; i++) {\n' % var.size)
             f.write('        CPG_Prim_cpp.%s[i] = %sCPG_Prim.%s[i];\n'
-                    % (name, info_opt[C.PREFIX], name))
+                    % (name, configuration.prefix, name))
             f.write('    }\n')
 
-    if len(info_usr[C.D_NAME_TO_INIT]) > 0:
-        f.write('    %sCPG_Dual_cpp_t CPG_Dual_cpp {};\n' % info_opt[C.PREFIX])
-        for name, var in info_usr[C.D_NAME_TO_INIT].items():
+    if len(dual_variable_info.name_to_init) > 0:
+        f.write('    %sCPG_Dual_cpp_t CPG_Dual_cpp {};\n' % configuration.prefix)
+        for name, var in dual_variable_info.name_to_init.items():
             if is_mathematical_scalar(var):
-                f.write('    CPG_Dual_cpp.%s = %sCPG_Dual.%s;\n' % (name, info_opt[C.PREFIX], name))
+                f.write('    CPG_Dual_cpp.%s = %sCPG_Dual.%s;\n' % (name, configuration.prefix, name))
             else:
                 f.write('    for(i=0; i<%d; i++) {\n' % var.size)
-                f.write('        CPG_Dual_cpp.%s[i] = %sCPG_Dual.%s[i];\n' % (name, info_opt[C.PREFIX], name))
+                f.write('        CPG_Dual_cpp.%s[i] = %sCPG_Dual.%s[i];\n' % (name, configuration.prefix, name))
                 f.write('    }\n')
 
-    f.write('    %sCPG_Info_cpp_t CPG_Info_cpp {};\n' % info_opt[C.PREFIX])
+    f.write('    %sCPG_Info_cpp_t CPG_Info_cpp {};\n' % configuration.prefix)
     for field in ['obj_val', 'iter', 'status', 'pri_res', 'dua_res']:
-        f.write('    CPG_Info_cpp.%s = %sCPG_Info.%s;\n' % (field, info_opt[C.PREFIX], field))
+        f.write('    CPG_Info_cpp.%s = %sCPG_Info.%s;\n' % (field, configuration.prefix, field))
     f.write('    CPG_Info_cpp.time = 1.0*(ASA_end-ASA_start) / CLOCKS_PER_SEC;\n')
 
-    f.write('    %sCPG_Result_cpp_t CPG_Result_cpp {};\n' % info_opt[C.PREFIX])
+    f.write('    %sCPG_Result_cpp_t CPG_Result_cpp {};\n' % configuration.prefix)
     f.write('    CPG_Result_cpp.prim = CPG_Prim_cpp;\n')
-    if len(info_usr[C.D_NAME_TO_INIT]) > 0:
+    if len(dual_variable_info.name_to_init) > 0:
         f.write('    CPG_Result_cpp.dual = CPG_Dual_cpp;\n')
     f.write('    CPG_Result_cpp.info = CPG_Info_cpp;\n')
 
@@ -1305,60 +1266,60 @@ def write_module_def(f, info_opt, info_usr, info_can):
     # module
     f.write('PYBIND11_MODULE(cpg_module, m) {\n\n')
 
-    f.write('    py::class_<%sCPG_Params_cpp_t>(m, "%scpg_params")\n' % (info_opt[C.PREFIX], info_opt[C.PREFIX]))
+    f.write('    py::class_<%sCPG_Params_cpp_t>(m, "%scpg_params")\n' % (configuration.prefix, configuration.prefix))
     f.write('            .def(py::init<>())\n')
-    for name in info_usr[C.P_NAME_TO_SIZE].keys():
-        f.write('            .def_readwrite("%s", &%sCPG_Params_cpp_t::%s)\n' % (name, info_opt[C.PREFIX], name))
+    for name in parameter_info.name_to_size_usp.keys():
+        f.write('            .def_readwrite("%s", &%sCPG_Params_cpp_t::%s)\n' % (name, configuration.prefix, name))
     f.write('            ;\n\n')
 
     f.write('    py::class_<%sCPG_Updated_cpp_t>(m, "%scpg_updated")\n'
-            % (info_opt[C.PREFIX], info_opt[C.PREFIX]))
+            % (configuration.prefix, configuration.prefix))
     f.write('            .def(py::init<>())\n')
-    for name in info_usr[C.P_NAME_TO_SIZE].keys():
-        f.write('            .def_readwrite("%s", &%sCPG_Updated_cpp_t::%s)\n' % (name, info_opt[C.PREFIX], name))
+    for name in parameter_info.name_to_size_usp.keys():
+        f.write('            .def_readwrite("%s", &%sCPG_Updated_cpp_t::%s)\n' % (name, configuration.prefix, name))
     f.write('            ;\n\n')
 
-    f.write('    py::class_<%sCPG_Prim_cpp_t>(m, "%scpg_prim")\n' % (info_opt[C.PREFIX], info_opt[C.PREFIX]))
+    f.write('    py::class_<%sCPG_Prim_cpp_t>(m, "%scpg_prim")\n' % (configuration.prefix, configuration.prefix))
     f.write('            .def(py::init<>())\n')
-    for name in info_usr[C.V_NAME_TO_INIT].keys():
-        f.write('            .def_readwrite("%s", &%sCPG_Prim_cpp_t::%s)\n' % (name, info_opt[C.PREFIX], name))
+    for name in variable_info.name_to_init.keys():
+        f.write('            .def_readwrite("%s", &%sCPG_Prim_cpp_t::%s)\n' % (name, configuration.prefix, name))
     f.write('            ;\n\n')
 
-    if len(info_usr[C.D_NAME_TO_INIT]) > 0:
-        f.write('    py::class_<%sCPG_Dual_cpp_t>(m, "%scpg_dual")\n' % (info_opt[C.PREFIX], info_opt[C.PREFIX]))
+    if len(dual_variable_info.name_to_init) > 0:
+        f.write('    py::class_<%sCPG_Dual_cpp_t>(m, "%scpg_dual")\n' % (configuration.prefix, configuration.prefix))
         f.write('            .def(py::init<>())\n')
-        for name in info_usr[C.D_NAME_TO_INIT].keys():
-            f.write('            .def_readwrite("%s", &%sCPG_Dual_cpp_t::%s)\n' % (name, info_opt[C.PREFIX], name))
+        for name in dual_variable_info.name_to_init.keys():
+            f.write('            .def_readwrite("%s", &%sCPG_Dual_cpp_t::%s)\n' % (name, configuration.prefix, name))
         f.write('            ;\n\n')
 
-    f.write('    py::class_<%sCPG_Info_cpp_t>(m, "%scpg_info")\n' % (info_opt[C.PREFIX], info_opt[C.PREFIX]))
+    f.write('    py::class_<%sCPG_Info_cpp_t>(m, "%scpg_info")\n' % (configuration.prefix, configuration.prefix))
     f.write('            .def(py::init<>())\n')
-    f.write('            .def_readwrite("obj_val", &%sCPG_Info_cpp_t::obj_val)\n' % info_opt[C.PREFIX])
-    f.write('            .def_readwrite("iter", &%sCPG_Info_cpp_t::iter)\n' % info_opt[C.PREFIX])
-    f.write('            .def_readwrite("status", &%sCPG_Info_cpp_t::status)\n' % info_opt[C.PREFIX])
-    f.write('            .def_readwrite("pri_res", &%sCPG_Info_cpp_t::pri_res)\n' % info_opt[C.PREFIX])
-    f.write('            .def_readwrite("dua_res", &%sCPG_Info_cpp_t::dua_res)\n' % info_opt[C.PREFIX])
-    f.write('            .def_readwrite("time", &%sCPG_Info_cpp_t::time)\n' % info_opt[C.PREFIX])
+    f.write('            .def_readwrite("obj_val", &%sCPG_Info_cpp_t::obj_val)\n' % configuration.prefix)
+    f.write('            .def_readwrite("iter", &%sCPG_Info_cpp_t::iter)\n' % configuration.prefix)
+    f.write('            .def_readwrite("status", &%sCPG_Info_cpp_t::status)\n' % configuration.prefix)
+    f.write('            .def_readwrite("pri_res", &%sCPG_Info_cpp_t::pri_res)\n' % configuration.prefix)
+    f.write('            .def_readwrite("dua_res", &%sCPG_Info_cpp_t::dua_res)\n' % configuration.prefix)
+    f.write('            .def_readwrite("time", &%sCPG_Info_cpp_t::time)\n' % configuration.prefix)
     f.write('            ;\n\n')
 
-    f.write('    py::class_<%sCPG_Result_cpp_t>(m, "%scpg_result")\n' % (info_opt[C.PREFIX], info_opt[C.PREFIX]))
+    f.write('    py::class_<%sCPG_Result_cpp_t>(m, "%scpg_result")\n' % (configuration.prefix, configuration.prefix))
     f.write('            .def(py::init<>())\n')
-    f.write('            .def_readwrite("cpg_prim", &%sCPG_Result_cpp_t::prim)\n' % info_opt[C.PREFIX])
-    if len(info_usr[C.D_NAME_TO_INIT]) > 0:
-        f.write('            .def_readwrite("cpg_dual", &%sCPG_Result_cpp_t::dual)\n' % info_opt[C.PREFIX])
-    f.write('            .def_readwrite("cpg_info", &%sCPG_Result_cpp_t::info)\n' % info_opt[C.PREFIX])
+    f.write('            .def_readwrite("cpg_prim", &%sCPG_Result_cpp_t::prim)\n' % configuration.prefix)
+    if len(dual_variable_info.name_to_init) > 0:
+        f.write('            .def_readwrite("cpg_dual", &%sCPG_Result_cpp_t::dual)\n' % configuration.prefix)
+    f.write('            .def_readwrite("cpg_info", &%sCPG_Result_cpp_t::info)\n' % configuration.prefix)
     f.write('            ;\n\n')
 
-    f.write('    m.def("solve", &%ssolve_cpp);\n\n' % info_opt[C.PREFIX])
+    f.write('    m.def("solve", &%ssolve_cpp);\n\n' % configuration.prefix)
 
-    f.write('    m.def("set_solver_default_settings", &%scpg_set_solver_default_settings);\n' % info_opt[C.PREFIX])
-    for name in info_can[C.SETTINGS_NAMES_TO_TYPE].keys():
-        f.write('    m.def("set_solver_%s", &%scpg_set_solver_%s);\n' % (name, info_opt[C.PREFIX], name))
+    f.write('    m.def("set_solver_default_settings", &%scpg_set_solver_default_settings);\n' % configuration.prefix)
+    for name in solver_interface.settings_names_to_type.keys():
+        f.write('    m.def("set_solver_%s", &%scpg_set_solver_%s);\n' % (name, configuration.prefix, name))
 
     f.write('\n}\n')
 
 
-def write_module_prot(f, info_opt, info_usr):
+def write_module_prot(f, configuration, parameter_info, variable_info, dual_variable_info):
     """
     Write c++ file for pbind11 wrapper
     """
@@ -1367,8 +1328,8 @@ def write_module_prot(f, info_opt, info_usr):
 
     # cpp struct containing user-defined parameters
     f.write('// User-defined parameters\n')
-    f.write('struct %sCPG_Params_cpp_t {\n' % info_opt[C.PREFIX])
-    for name, size in info_usr[C.P_NAME_TO_SIZE].items():
+    f.write('struct %sCPG_Params_cpp_t {\n' % configuration.prefix)
+    for name, size in parameter_info.name_to_size_usp.items():
         if size == 1:
             f.write('    double %s;\n' % name)
         else:
@@ -1377,15 +1338,15 @@ def write_module_prot(f, info_opt, info_usr):
 
     # cpp struct containing update flags for user-defined parameters
     f.write('// Flags for updated user-defined parameters\n')
-    f.write('struct %sCPG_Updated_cpp_t {\n' % info_opt[C.PREFIX])
-    for name in info_usr[C.P_NAME_TO_SIZE].keys():
+    f.write('struct %sCPG_Updated_cpp_t {\n' % configuration.prefix)
+    for name in parameter_info.name_to_size_usp.keys():
         f.write('    bool %s;\n' % name)
     f.write('};\n\n')
 
     # cpp struct containing primal variables
     f.write('// Primal solution\n')
-    f.write('struct %sCPG_Prim_cpp_t {\n' % info_opt[C.PREFIX])
-    for name, var in info_usr[C.V_NAME_TO_INIT].items():
+    f.write('struct %sCPG_Prim_cpp_t {\n' % configuration.prefix)
+    for name, var in variable_info.name_to_init.items():
         if is_mathematical_scalar(var):
             f.write('    double %s;\n' % name)
         else:
@@ -1393,10 +1354,10 @@ def write_module_prot(f, info_opt, info_usr):
     f.write('};\n\n')
 
     # cpp struct containing dual variables
-    if len(info_usr[C.D_NAME_TO_INIT]) > 0:
+    if len(dual_variable_info.name_to_init) > 0:
         f.write('// Dual solution\n')
-        f.write('struct %sCPG_Dual_cpp_t {\n' % info_opt[C.PREFIX])
-        for name, var in info_usr[C.D_NAME_TO_INIT].items():
+        f.write('struct %sCPG_Dual_cpp_t {\n' % configuration.prefix)
+        for name, var in dual_variable_info.name_to_init.items():
             if is_mathematical_scalar(var):
                 f.write('    double %s;\n' % name)
             else:
@@ -1405,12 +1366,12 @@ def write_module_prot(f, info_opt, info_usr):
 
     # cpp struct containing info on results
     f.write('// Solver information\n')
-    f.write('struct %sCPG_Info_cpp_t {\n' % info_opt[C.PREFIX])
+    f.write('struct %sCPG_Info_cpp_t {\n' % configuration.prefix)
     f.write('    double obj_val;\n')
     f.write('    int iter;\n')
-    if info_opt[C.SOLVER_NAME] in ['OSQP', 'SCS']:
+    if configuration.solver_name in ['OSQP', 'SCS']:
         f.write('    char* status;\n')
-    elif info_opt[C.SOLVER_NAME] == 'ECOS':
+    elif configuration.solver_name == 'ECOS':
         f.write('    int status;\n')
     f.write('    double pri_res;\n')
     f.write('    double dua_res;\n')
@@ -1419,18 +1380,18 @@ def write_module_prot(f, info_opt, info_usr):
 
     # cpp struct containing objective value and user-defined variables
     f.write('// Solution and solver information\n')
-    f.write('struct %sCPG_Result_cpp_t {\n' % info_opt[C.PREFIX])
-    f.write('    %sCPG_Prim_cpp_t prim;\n' % info_opt[C.PREFIX])
-    if len(info_usr[C.D_NAME_TO_INIT]) > 0:
-        f.write('    %sCPG_Dual_cpp_t dual;\n' % info_opt[C.PREFIX])
-    f.write('    %sCPG_Info_cpp_t info;\n' % info_opt[C.PREFIX])
+    f.write('struct %sCPG_Result_cpp_t {\n' % configuration.prefix)
+    f.write('    %sCPG_Prim_cpp_t prim;\n' % configuration.prefix)
+    if len(dual_variable_info.name_to_init) > 0:
+        f.write('    %sCPG_Dual_cpp_t dual;\n' % configuration.prefix)
+    f.write('    %sCPG_Info_cpp_t info;\n' % configuration.prefix)
     f.write('};\n\n')
 
     # cpp function that maps parameters to results
     f.write('// Main solve function\n')
     f.write('%sCPG_Result_cpp_t %ssolve_cpp(struct %sCPG_Updated_cpp_t& CPG_Updated_cpp, '
             'struct %sCPG_Params_cpp_t& CPG_Params_cpp);\n'
-            % (info_opt[C.PREFIX], info_opt[C.PREFIX], info_opt[C.PREFIX], info_opt[C.PREFIX]))
+            % (configuration.prefix, configuration.prefix, configuration.prefix, configuration.prefix))
 
 
 def replace_setup_data(text):
@@ -1443,7 +1404,7 @@ def replace_setup_data(text):
     return text.replace('%DATE', now.strftime("on %B %d, %Y at %H:%M:%S"))
 
 
-def write_method(f, info_opt, info_usr):
+def write_method(f, configuration, variable_info, dual_variable_info, parameter_info):
     """
     Write function to be registered as custom CVXPY solve method
     """
@@ -1454,9 +1415,9 @@ def write_method(f, info_opt, info_usr):
     f.write('import numpy as np\n')
     f.write('from cvxpy.reductions import Solution\n')
     f.write('from cvxpy.problems.problem import SolverStats\n')
-    f.write('from %s import cpg_module\n\n\n' % info_opt[C.CODE_DIR].replace('/', '.').replace('\\', '.'))
+    f.write('from %s import cpg_module\n\n\n' % configuration.code_dir.replace('/', '.').replace('\\', '.'))
 
-    if info_opt[C.SOLVER_NAME] == 'ECOS':
+    if configuration.solver_name == 'ECOS':
         indent = ' ' * 24
         f.write('status_int_to_string = {0: "Optimal solution found", \n' +
                 indent + '1: "Certificate of primal infeasibility found", \n' +
@@ -1473,10 +1434,10 @@ def write_method(f, info_opt, info_usr):
 
     f.write('def cpg_solve(prob, updated_params=None, **kwargs):\n\n')
     f.write('    # set flags for updated parameters\n')
-    f.write('    upd = cpg_module.%scpg_updated()\n' % info_opt[C.PREFIX])
+    f.write('    upd = cpg_module.%scpg_updated()\n' % configuration.prefix)
     f.write('    if updated_params is None:\n')
     p_list_string = ''
-    for name in info_usr[C.P_NAME_TO_SIZE].keys():
+    for name in parameter_info.name_to_size_usp.keys():
         p_list_string += '"%s", ' % name
     f.write('        updated_params = [%s]\n' % p_list_string[:-2])
     f.write('    for p in updated_params:\n')
@@ -1488,7 +1449,7 @@ def write_method(f, info_opt, info_usr):
     f.write('    # set solver settings\n')
     f.write('    cpg_module.set_solver_default_settings()\n')
     f.write('    for key, value in kwargs.items():\n')
-    if info_opt[C.SOLVER_NAME] == 'ECOS':
+    if configuration.solver_name == 'ECOS':
         f.write('        if key == "max_iters":\n')
         f.write('            key = "maxit"\n')
     f.write('        try:\n')
@@ -1497,13 +1458,13 @@ def write_method(f, info_opt, info_usr):
     f.write('            raise(AttributeError(\'Solver setting "%s" not available.\' % key))\n\n')
 
     f.write('    # set parameter values\n')
-    f.write('    par = cpg_module.%scpg_params()\n' % info_opt[C.PREFIX])
+    f.write('    par = cpg_module.%scpg_params()\n' % configuration.prefix)
     # prob.param_dict is a computed property. Avoid repeated calls in the loop.
     f.write('    param_dict = prob.param_dict\n')
-    for name, size in info_usr[C.P_NAME_TO_SIZE].items():
-        if name in info_usr[C.P_NAME_TO_SPARSITY].keys():
+    for name, size in parameter_info.name_to_size_usp.items():
+        if name in parameter_info.name_to_sparsity.keys():
             f.write('    n = param_dict[\'%s\'].shape[0]\n' % name)
-            if info_usr[C.P_NAME_TO_SPARSITY_TYPE][name] == 'diag':
+            if parameter_info.name_to_sparsity_type[name] == 'diag':
                 f.write('    %s_coordinates = np.arange(0, n**2, n+1)\n' % name)
             else:
                 f.write('    %s_coordinates = np.unique([coord[0]+coord[1]*n for coord in '
@@ -1533,7 +1494,7 @@ def write_method(f, info_opt, info_usr):
 
     f.write('    # store solution in problem object\n')
     f.write('    prob._clear_solution()\n')
-    for name, shape in info_usr[C.V_NAME_TO_SHAPE].items():
+    for name, shape in variable_info.name_to_shape.items():
         if len(shape) == 2:
             f.write('    prob.var_dict[\'%s\'].save_value(np.array(res.cpg_prim.%s).reshape((%d, %d), order=\'F\'))\n' %
                     (name, name, shape[0], shape[1]))
@@ -1542,7 +1503,7 @@ def write_method(f, info_opt, info_usr):
                     % (name, name, shape[0]))
         else:
             f.write('    prob.var_dict[\'%s\'].save_value(np.array(res.cpg_prim.%s))\n' % (name, name))
-    for i, (name, shape) in enumerate(info_usr[C.D_NAME_TO_SHAPE].items()):
+    for i, (name, shape) in enumerate(dual_variable_info.name_to_shape.items()):
         if len(shape) == 2:
             f.write('    prob.constraints[%d].save_dual_value('
                     'np.array(res.cpg_dual.%s).reshape((%d, %d), order=\'F\'))\n' % (i, name, shape[0], shape[1]))
@@ -1553,9 +1514,9 @@ def write_method(f, info_opt, info_usr):
             f.write('    prob.constraints[%d].save_dual_value(np.array(res.cpg_dual.%s))\n' % (i, name))
 
     f.write('\n    # store additional solver information in problem object\n')
-    if info_opt[C.SOLVER_NAME] in ['OSQP', 'SCS']:
+    if configuration.solver_name in ['OSQP', 'SCS']:
         f.write('    prob._status = res.cpg_info.status\n')
-    elif info_opt[C.SOLVER_NAME] == 'ECOS':
+    elif configuration.solver_name == 'ECOS':
         f.write('    prob._status = status_int_to_string[res.cpg_info.status]\n')
     f.write('    if abs(res.cpg_info.obj_val) == 1e30:\n')
     f.write('        prob._value = np.sign(res.cpg_info.obj_val)*np.inf\n')
@@ -1575,12 +1536,12 @@ def write_method(f, info_opt, info_usr):
     f.write('    results_dict = {\'solver_specific_stats\': solver_specific_stats,\n')
     f.write('                    \'num_iters\': res.cpg_info.iter,\n')
     f.write('                    \'solve_time\': t1-t0}\n')
-    f.write('    prob._solver_stats = SolverStats(results_dict, \'%s\')\n\n' % info_opt[C.SOLVER_NAME])
+    f.write('    prob._solver_stats = SolverStats(results_dict, \'%s\')\n\n' % configuration.solver_name)
 
     f.write('    return prob.value\n')
 
 
-def replace_html_data(text, info_opt, info_usr, info_can):
+def replace_html_data(text, configuration, variable_info, dual_variable_info, parameter_info, solver_interface):
     """
     Replace placeholder strings in html documentation file
     """
@@ -1590,34 +1551,34 @@ def replace_html_data(text, info_opt, info_usr, info_can):
     text = text.replace('$DATE', now.strftime("on %B %d, %Y at %H:%M:%S"))
 
     # param summary
-    text = text.replace('$PARAMS', write_problem_summary(info_usr[C.P_NAME_TO_SHAPE], info_usr[C.P_NAME_TO_SIZE]))
+    text = text.replace('$PARAMS', write_problem_summary(parameter_info.name_to_shape, parameter_info.name_to_size_usp))
 
     # primal variable summary
-    text = text.replace('$PRIMALS', write_problem_summary(info_usr[C.V_NAME_TO_SHAPE], info_usr[C.V_NAME_TO_SIZE]))
+    text = text.replace('$PRIMALS', write_problem_summary(variable_info.name_to_shape, variable_info.name_to_size))
 
     # dual variable summary
-    text = text.replace('$DUALS', write_problem_summary(info_usr[C.D_NAME_TO_SHAPE], info_usr[C.D_NAME_TO_SIZE]))
+    text = text.replace('$DUALS', write_problem_summary(dual_variable_info.name_to_shape, dual_variable_info.name_to_size))
 
     # code_dir
-    text = text.replace('$CODEDIR', info_opt[C.CODE_DIR])
-    text = text.replace('$CDPYTHON', info_opt[C.CODE_DIR].replace('/', '.').replace('\\', '.'))
+    text = text.replace('$CODEDIR', configuration.code_dir)
+    text = text.replace('$CDPYTHON', configuration.code_dir.replace('/', '.').replace('\\', '.'))
 
     # solver name and docu
-    text = text.replace('$CPGSOLVERNAME', info_opt[C.SOLVER_NAME])
-    if info_opt[C.SOLVER_NAME] == 'OSQP':
+    text = text.replace('$CPGSOLVERNAME', configuration.solver_name)
+    if configuration.solver_name == 'OSQP':
         text = text.replace('$CPGSOLVERDOCUURL', 'https://osqp.org/docs/codegen/python.html')
-    elif info_opt[C.SOLVER_NAME] == 'SCS':
+    elif configuration.solver_name == 'SCS':
         text = text.replace('$CPGSOLVERDOCUURL', 'https://www.cvxgrp.org/scs/api/c.html')
-    elif info_opt[C.SOLVER_NAME] == 'ECOS':
+    elif configuration.solver_name == 'ECOS':
         text = text.replace('$CPGSOLVERDOCUURL', 'https://github.com/embotech/ecos/wiki/Usage-from-C')
 
     # CMake prefix
-    text = text.replace('$CPGCMAKELISTS', info_opt[C.PREFIX]+'cpg')
+    text = text.replace('$CPGCMAKELISTS', configuration.prefix+'cpg')
 
     # type definition of CPG_Prim_t
     CPGPRIMTYPEDEF = '\n// Struct type with primal solution\n'
     CPGPRIMTYPEDEF += 'typedef struct {\n'
-    for name, var in info_usr[C.V_NAME_TO_INIT].items():
+    for name, var in variable_info.name_to_init.items():
         if is_mathematical_scalar(var):
             s = ''
         else:
@@ -1627,10 +1588,10 @@ def replace_html_data(text, info_opt, info_usr, info_can):
     text = text.replace('$CPGPRIMTYPEDEF', CPGPRIMTYPEDEF)
 
     # type definition of CPG_Dual_t
-    if len(info_usr[C.D_NAME_TO_INIT]) > 0:
+    if len(dual_variable_info.name_to_init) > 0:
         CPGDUALTYPEDEF = '\n// Struct type with dual solution\n'
         CPGDUALTYPEDEF += 'typedef struct {\n'
-        for name, var in info_usr[C.D_NAME_TO_INIT].items():
+        for name, var in dual_variable_info.name_to_init.items():
             if is_mathematical_scalar(var):
                 s = ''
             else:
@@ -1647,9 +1608,9 @@ def replace_html_data(text, info_opt, info_usr, info_can):
     CPGINFOTYPEDEF += 'typedef struct {\n'
     CPGINFOTYPEDEF += '  c_float    obj_val;    // Objective function value\n'
     CPGINFOTYPEDEF += '  c_int      iter;       // Number of iterations\n'
-    if info_opt[C.SOLVER_NAME] in ['OSQP', 'SCS']:
+    if configuration.solver_name in ['OSQP', 'SCS']:
         CPGINFOTYPEDEF += '  char       *status;    // Solver status\n'
-    elif info_opt[C.SOLVER_NAME] == 'ECOS':
+    elif configuration.solver_name == 'ECOS':
         CPGINFOTYPEDEF += '  c_int      status;     // Solver status\n'
     CPGINFOTYPEDEF += '  c_float    pri_res;    // Primal residual\n'
     CPGINFOTYPEDEF += '  c_float    dua_res;    // Dual residual\n'
@@ -1660,7 +1621,7 @@ def replace_html_data(text, info_opt, info_usr, info_can):
     CPGRESULTTYPEDEF = '\n// Struct type with user-defined objective value and solution as fields\n'
     CPGRESULTTYPEDEF += 'typedef struct {\n'
     CPGRESULTTYPEDEF += '  CPG_Prim_t *prim;      // Primal solution\n'
-    if len(info_usr[C.D_NAME_TO_INIT]) > 0:
+    if len(dual_variable_info.name_to_init) > 0:
         CPGRESULTTYPEDEF += '  CPG_Dual_t *dual;      // Dual solution\n'
     CPGRESULTTYPEDEF += '  CPG_Info_t *info;      // Solver information\n'
     CPGRESULTTYPEDEF += '} CPG_Result_t;\n'
@@ -1668,27 +1629,27 @@ def replace_html_data(text, info_opt, info_usr, info_can):
 
     # update declarations
     CPGUPDATEDECLARATIONS = '\n// Update user-defined parameter values\n'
-    for name, size in info_usr[C.P_NAME_TO_SIZE].items():
+    for name, size in parameter_info.name_to_size_usp.items():
         if size == 1:
-            CPGUPDATEDECLARATIONS += 'void %scpg_update_%s(c_float value);\n' % (info_opt[C.PREFIX], name)
+            CPGUPDATEDECLARATIONS += 'void %scpg_update_%s(c_float value);\n' % (configuration.prefix, name)
         else:
-            CPGUPDATEDECLARATIONS += 'void %scpg_update_%s(c_int idx, c_float value);\n' % (info_opt[C.PREFIX], name)
+            CPGUPDATEDECLARATIONS += 'void %scpg_update_%s(c_int idx, c_float value);\n' % (configuration.prefix, name)
     text = text.replace('$CPGUPDATEDECLARATIONS', CPGUPDATEDECLARATIONS)
 
     # solve declarations
     CPGSOLVEDECLARATIONS = '\n// Solve via canonicalization, canonical solve, retrieval\n'
-    CPGSOLVEDECLARATIONS += 'void %scpg_solve();\n' % info_opt[C.PREFIX]
+    CPGSOLVEDECLARATIONS += 'void %scpg_solve();\n' % configuration.prefix
     text = text.replace('$CPGSOLVEDECLARATIONS', CPGSOLVEDECLARATIONS)
 
     # settings declarations
     CPGSETTINGSDECLARATIONS = '\n// Update solver settings\n'
-    CPGSETTINGSDECLARATIONS += 'void %scpg_set_solver_default_settings();\n' % info_opt[C.PREFIX]
+    CPGSETTINGSDECLARATIONS += 'void %scpg_set_solver_default_settings();\n' % configuration.prefix
     CPGSETTINGSDECLARATIONS += 'void %scpg_set_solver_&lt;setting_name&gt;' \
-                               '(&lt;setting_type&gt; &lt;setting_name&gt;_new);\n' % info_opt[C.PREFIX]
+                               '(&lt;setting_type&gt; &lt;setting_name&gt;_new);\n' % configuration.prefix
     CPGSETTINGSDECLARATIONS += '...\n'
     text = text.replace('$CPGSETTINGSDECLARATIONS', CPGSETTINGSDECLARATIONS)
 
     # settings list
-    CPGSETTINGSLIST = ', '.join([('<code>%s</code>' % s) for s in info_can[C.SETTINGS_LIST]])
+    CPGSETTINGSLIST = ', '.join([('<code>%s</code>' % s) for s in solver_interface.settings_names_enabled])
 
     return text.replace('$CPGSETTINGSLIST', CPGSETTINGSLIST)
