@@ -154,6 +154,9 @@ class OSQPInterface(SolverInterface):
     canon_p_ids_constr_vec = ['l', 'u']
     sign_constr_vec = -1
 
+    # header files
+    header_files = ['osqp.h', 'types.h', 'workspace.h']
+
     # solver settings
     settings_names = ['rho', 'max_iter', 'eps_abs', 'eps_rel', 'eps_prim_inf', 'eps_dual_inf',
                       'alpha', 'scaled_termination', 'check_termination', 'warm_start',
@@ -261,6 +264,9 @@ class SCSInterface(SolverInterface):
     canon_p_ids_constr_vec = ['b']
     sign_constr_vec = 1
 
+    # header files
+    header_files = ['scs.h']
+
     # solver settings
     settings_names = ['normalize', 'scale', 'adaptive_scale', 'rho_x', 'max_iters', 'eps_abs',
                       'eps_rel',
@@ -360,6 +366,9 @@ class ECOSInterface(SolverInterface):
     canon_p_ids = ['c', 'd', 'A', 'b', 'G', 'h']
     canon_p_ids_constr_vec = ['b', 'h']
     sign_constr_vec = 1
+
+    # header files
+    header_files = ['ecos.h']
 
     # solver settings
     settings_names = ['feastol', 'abstol', 'reltol', 'feastol_inacc', 'abstol_inacc',

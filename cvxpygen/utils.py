@@ -295,8 +295,6 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
 
     write_description(f, 'c', 'Variable definitions')
     f.write('#include "cpg_workspace.h"\n')
-    if configuration.solver_name == 'OSQP':
-        f.write('#include "workspace.h"\n')
 
     if configuration.unroll:
         f.write('\n// User-defined parameters\n')
@@ -551,15 +549,11 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
     """
 
     write_description(f, 'c', 'Type definitions and variable declarations')
-    if configuration.solver_name == 'OSQP':
-        f.write('#include "types.h"\n\n')
-    elif configuration.solver_name == 'SCS':
-        f.write('#include "scs.h"\n\n')
-    elif configuration.solver_name == 'ECOS':
-        f.write('#include "ecos.h"\n\n')
+    for header_file in solver_interface.header_files:
+        f.write('#include "%s"\n' % header_file)
 
     # definition safeguard
-    f.write('#ifndef CPG_TYPES_H\n')
+    f.write('\n#ifndef CPG_TYPES_H\n')
     f.write('# define CPG_TYPES_H\n\n')
 
     if configuration.solver_name == 'SCS':
@@ -765,12 +759,7 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
 
     write_description(f, 'c', 'Function definitions')
     f.write('#include "cpg_solve.h"\n')
-    f.write('#include "cpg_workspace.h"\n')
-    if configuration.solver_name == 'OSQP':
-        f.write('#include "workspace.h"\n')
-        f.write('#include "osqp.h"\n\n')
-    else:
-        f.write('\n')
+    f.write('#include "cpg_workspace.h"\n\n')
 
     if not configuration.unroll:
         f.write('static c_int i;\n')
@@ -1049,10 +1038,7 @@ def write_solve_prot(f, configuration, variable_info, dual_variable_info, parame
     """
 
     write_description(f, 'c', 'Function declarations')
-    if configuration.solver_name == 'OSQP':
-        f.write('#include "types.h"\n')
-    elif configuration.solver_name in ['SCS', 'ECOS']:
-        f.write('#include "cpg_workspace.h"\n')
+    f.write('#include "cpg_workspace.h"\n')
 
     f.write('\n// Update user-defined parameter values\n')
     for name, size in parameter_info.name_to_size_usp.items():
