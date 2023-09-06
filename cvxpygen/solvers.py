@@ -166,12 +166,15 @@ class OSQPInterface(SolverInterface):
     # solver status as integer vs. string
     status_is_int = False
 
+    # float and integer types
+    numeric_types = {'float': 'c_float', 'int': 'c_int'}
+
     # solver settings
     settings_names = ['rho', 'max_iter', 'eps_abs', 'eps_rel', 'eps_prim_inf', 'eps_dual_inf',
                       'alpha', 'scaled_termination', 'check_termination', 'warm_start',
                       'verbose', 'polish', 'polish_refine_iter', 'delta']
-    settings_types = ['c_float', 'c_int', 'c_float', 'c_float', 'c_float', 'c_float', 'c_float',
-                      'c_int', 'c_int', 'c_int', 'c_int', 'c_int', 'c_int', 'c_float']
+    settings_types = ['cpg_float', 'cpg_int', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float',
+                      'cpg_int', 'cpg_int', 'cpg_int', 'cpg_int', 'cpg_int', 'cpg_int', 'cpg_float']
     settings_enabled = [True, True, True, True, True, True, True, True, True, True,
                         False, False, False, False]
     settings_defaults = []
@@ -288,15 +291,18 @@ class SCSInterface(SolverInterface):
     # solver status as integer vs. string
     status_is_int = False
 
+    # float and integer types
+    numeric_types = {'float': 'scs_float', 'int': 'scs_int'}
+
     # solver settings
     settings_names = ['normalize', 'scale', 'adaptive_scale', 'rho_x', 'max_iters', 'eps_abs',
                       'eps_rel',
                       'eps_infeas', 'alpha', 'time_limit_secs', 'verbose', 'warm_start',
                       'acceleration_lookback',
                       'acceleration_interval', 'write_data_filename', 'log_csv_filename']
-    settings_types = ['c_int', 'c_float', 'c_int', 'c_float', 'c_int', 'c_float', 'c_float',
-                      'c_float', 'c_float',
-                      'c_float', 'c_int', 'c_int', 'c_int', 'c_int', 'const char*', 'const char*']
+    settings_types = ['cpg_int', 'cpg_float', 'cpg_int', 'cpg_float', 'cpg_int', 'cpg_float', 'cpg_float',
+                      'cpg_float', 'cpg_float',
+                      'cpg_float', 'cpg_int', 'cpg_int', 'cpg_int', 'cpg_int', 'const char*', 'const char*']
     settings_enabled = [True, True, True, True, True, True, True, True, True, True, True, True,
                         True, True, True, True]
     settings_defaults = ['1', '0.1', '1', '1e-6', '1e5', '1e-4', '1e-4', '1e-7', '1.5', '0', '0',
@@ -403,10 +409,13 @@ class ECOSInterface(SolverInterface):
     # solver status as integer vs. string
     status_is_int = True
 
+    # float and integer types
+    numeric_types = {'float': 'double', 'int': 'int'}
+
     # solver settings
     settings_names = ['feastol', 'abstol', 'reltol', 'feastol_inacc', 'abstol_inacc',
                       'reltol_inacc', 'maxit']
-    settings_types = ['c_float', 'c_float', 'c_float', 'c_float', 'c_float', 'c_float', 'c_int']
+    settings_types = ['cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_int']
     settings_enabled = [True, True, True, True, True, True, True]
     settings_defaults = ['1e-8', '1e-8', '1e-8', '1e-4', '5e-5', '5e-5', '100']
 

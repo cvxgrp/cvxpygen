@@ -13,7 +13,77 @@ limitations under the License.
 
 import numpy as np
 from datetime import datetime
-from osqp.codegen import utils as osqp_utils
+
+
+def write_vec_def(f, vec, name, typ):
+    """
+    Write vector to file
+    """
+    f.write('%s %s[%d] = {\n' % (typ, name, len(vec)))
+
+    # Write vector components
+    for i in range(len(vec)):
+        if typ == 'cpg_float':
+            f.write('(cpg_float)%.20f,\n' % vec[i])
+        else:
+            f.write('%i,\n' % vec[i])
+
+    f.write('};\n')
+
+
+def write_vec_prot(f, vec, name, typ):
+    """
+    Write vector to file
+    """
+    f.write('extern %s %s[%d];\n' % (typ, name, len(vec)))
+
+
+def write_mat_def(f, mat, name):
+    """
+    Write sparse matrix (scipy compressed sparse column) to file
+    """
+    write_vec_def(f, mat['i'], name + '_i', 'cpg_int')
+    write_vec_def(f, mat['p'], name + '_p', 'cpg_int')
+    write_vec_def(f, mat['x'], name + '_x', 'cpg_float')
+
+    f.write('cpg_csc %s = {' % name)
+    f.write('%d, ' % mat['nzmax'])
+    f.write('%d, ' % mat['m'])
+    f.write('%d, ' % mat['n'])
+    f.write('%s_p, ' % name)
+    f.write('%s_i, ' % name)
+    f.write('%s_x, ' % name)
+    f.write('%d};\n' % mat['nz'])
+
+
+def write_mat_prot(f, mat, name):
+    """
+    Write sparse matrix (scipy compressed sparse column) to file
+    """
+    f.write('extern cpg_csc %s;\n' % name)
+
+
+def write_dense_mat_def(f, mat, name):
+    """
+    Write dense matrix to file
+    """
+
+    f.write('cpg_float %s[%d] = {\n' % (name, mat.size))
+
+    # represent matrix as vector (Fortran style)
+    for j in range(mat.shape[1]):
+        for i in range(mat.shape[0]):
+            f.write('(cpg_float)%.20f,\n' % mat[i, j])
+
+    f.write('};\n')
+
+
+def write_dense_mat_prot(f, mat, name):
+    """
+    Write dense matrix to file
+    """
+
+    f.write("extern cpg_float cpg_%s[%d];\n" % (name, mat.size))
 
 
 def write_description(f, file_type, content):
@@ -65,7 +135,7 @@ def replace_inf(v):
 
 def csc_to_dict(m):
     """
-    Convert scipy csc matrix to dict that can be passed to osqp_utils.write_mat()
+    Convert scipy csc matrix to dict that can be passed to write_mat_def()
     """
 
     d = dict()
@@ -169,52 +239,29 @@ def write_canonicalize(f, canon_name, s, mapping, prefix):
 
 def write_param_def(f, param, name, prefix, suffix):
     """
-    Use osqp.codegen.utils for writing vectors and matrices
+    Write vectors and matrices
     """
     if not param_is_empty(param):
         if name.isupper():
-            osqp_utils.write_mat(f, param, '%scanon_%s%s' % (prefix, name, suffix))
+            write_mat_def(f, param, '%scanon_%s%s' % (prefix, name, suffix))
         elif name == 'd':
-            f.write('c_float %scanon_d%s = %.20f;\n' % (prefix, suffix, param[0]))
+            f.write('cpg_float %scanon_d%s = %.20f;\n' % (prefix, suffix, param[0]))
         else:
-            osqp_utils.write_vec(f, param, '%scanon_%s%s' % (prefix, name, suffix), 'c_float')
+            write_vec_def(f, param, '%scanon_%s%s' % (prefix, name, suffix), 'cpg_float')
         f.write('\n')
 
 
 def write_param_prot(f, param, name, prefix, suffix):
     """
-    Use osqp.codegen.utils for writing vectors and matrices
+    Write vectors and matrices
     """
     if not param_is_empty(param):
         if name.isupper():
-            osqp_utils.write_mat_extern(f, param, '%scanon_%s%s' % (prefix, name, suffix))
+            write_mat_prot(f, param, '%scanon_%s%s' % (prefix, name, suffix))
         elif name == 'd':
-            f.write('extern c_float %scanon_d%s;\n' % (prefix, suffix))
+            f.write('extern cpg_float %scanon_d%s;\n' % (prefix, suffix))
         else:
-            osqp_utils.write_vec_extern(f, param, '%scanon_%s%s' % (prefix, name, suffix), 'c_float')
-
-
-def write_dense_mat_def(f, mat, name):
-    """
-    Write dense matrix to file
-    """
-
-    f.write('c_float %s[%d] = {\n' % (name, mat.size))
-
-    # represent matrix as vector (Fortran style)
-    for j in range(mat.shape[1]):
-        for i in range(mat.shape[0]):
-            f.write('(c_float)%.20f,\n' % mat[i, j])
-
-    f.write('};\n')
-
-
-def write_dense_mat_prot(f, mat, name):
-    """
-    Write dense matrix to file
-    """
-
-    f.write("extern c_float cpg_%s[%d];\n" % (name, mat.size))
+            write_vec_prot(f, param, '%scanon_%s%s' % (prefix, name, suffix), 'cpg_float')
 
 
 def write_struct_def(f, fields, casts, values, name, typ):
@@ -306,20 +353,20 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
                 user_casts.append('')
                 user_values.append('%.20f' % value)
             else:
-                osqp_utils.write_vec(f, value, configuration.prefix + 'cpg_' + name, 'c_float')
+                write_vec_def(f, value, configuration.prefix + 'cpg_' + name, 'cpg_float')
                 f.write('\n')
-                user_casts.append('(c_float *) ')
+                user_casts.append('(cpg_float *) ')
                 user_values.append('&' + configuration.prefix + 'cpg_' + name)
         f.write('// Struct containing all user-defined parameters\n')
         write_struct_def(f, names, user_casts, user_values, '%sCPG_Params' % configuration.prefix, 'CPG_Params_t')
         f.write('\n')
     else:
         f.write('\n// Vector containing flattened user-defined parameters\n')
-        osqp_utils.write_vec(f, parameter_info.flat_usp, '%scpg_params_vec' % configuration.prefix, 'c_float')
+        write_vec_def(f, parameter_info.flat_usp, '%scpg_params_vec' % configuration.prefix, 'cpg_float')
         f.write('\n// Sparse mappings from user-defined to canonical parameters\n')
         for p_id, mapping in parameter_canon.p_id_to_mapping.items():
             if parameter_canon.p_id_to_changes[p_id]:
-                osqp_utils.write_mat(f, csc_to_dict(mapping), '%scanon_%s_map' % (configuration.prefix, p_id))
+                write_mat_def(f, csc_to_dict(mapping), '%scanon_%s_map' % (configuration.prefix, p_id))
                 f.write('\n')
 
     p_ids = list(parameter_canon.p.keys())
@@ -336,7 +383,7 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
             if p_id.isupper():
                 canon_casts.append('')
             else:
-                canon_casts.append('(c_float *) ')
+                canon_casts.append('(cpg_float *) ')
 
     f.write('// Struct containing canonical parameters\n')
 
@@ -382,9 +429,9 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
         if is_mathematical_scalar(value):
             prim_cast.append('')
         else:
-            prim_cast.append('(c_float *) ')
+            prim_cast.append('(cpg_float *) ')
             if variable_info.name_to_sym[name] or not solver_interface.sol_statically_allocated:
-                osqp_utils.write_vec(f, value.flatten(order='F'), configuration.prefix + name, 'c_float')
+                write_vec_def(f, value.flatten(order='F'), configuration.prefix + name, 'cpg_float')
                 f.write('\n')
 
     f.write('// Struct containing primal solution\n')
@@ -412,9 +459,9 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
             if is_mathematical_scalar(value):
                 dual_cast.append('')
             else:
-                dual_cast.append('(c_float *) ')
+                dual_cast.append('(cpg_float *) ')
                 if not solver_interface.sol_statically_allocated:
-                    osqp_utils.write_vec(f, value.flatten(order='F'), configuration.prefix + name, 'c_float')
+                    write_vec_def(f, value.flatten(order='F'), configuration.prefix + name, 'cpg_float')
                     f.write('\n')
 
         f.write('// Struct containing dual solution\n')
@@ -458,7 +505,7 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
 
         f.write('\n// SCS matrix A\n')
         scs_A_fiels = ['x', 'i', 'p', 'm', 'n']
-        scs_A_casts = ['(c_float *) ', '(c_int *) ', '(c_int *) ', '', '']
+        scs_A_casts = ['(cpg_float *) ', '(cpg_int *) ', '(cpg_int *) ', '', '']
         scs_A_values = ['&%scanon_A_x' % configuration.prefix, '&%scanon_A_i' % configuration.prefix,
                         '&%scanon_A_p' % configuration.prefix, str(solver_interface.canon_constants['m']),
                         str(solver_interface.canon_constants['n'])]
@@ -466,7 +513,7 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
 
         f.write('\n// Struct containing SCS data\n')
         scs_d_fiels = ['m', 'n', 'A', 'P', 'b', 'c']
-        scs_d_casts = ['', '', '', '', '(c_float *) ', '(c_float *) ']
+        scs_d_casts = ['', '', '', '', '(cpg_float *) ', '(cpg_float *) ']
         scs_d_values = [str(solver_interface.canon_constants['m']), str(solver_interface.canon_constants['n']), '&%sScs_A'
                         % configuration.prefix, 'SCS_NULL', '&%scanon_b' % configuration.prefix, '&%scanon_c'
                         % configuration.prefix]
@@ -474,15 +521,15 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
 
         if solver_interface.canon_constants['qsize'] > 0:
             f.write('\n// SCS array of SOC dimensions\n')
-            osqp_utils.write_vec(f, solver_interface.canon_constants['q'], '%sscs_q' % configuration.prefix, 'c_int')
+            write_vec_def(f, solver_interface.canon_constants['q'], '%sscs_q' % configuration.prefix, 'cpg_int')
             k_field_q_str = '&%sscs_q' % configuration.prefix
         else:
             k_field_q_str = 'SCS_NULL'
 
         f.write('\n// Struct containing SCS cone data\n')
         scs_k_fields = ['z', 'l', 'bu', 'bl', 'bsize', 'q', 'qsize', 's', 'ssize', 'ep', 'ed', 'p', 'psize']
-        scs_k_casts = ['', '', '(c_float *) ', '(c_float *) ', '', '(c_int *) ', '', '(c_int *) ', '', '', '',
-                       '(c_float *) ', '']
+        scs_k_casts = ['', '', '(cpg_float *) ', '(cpg_float *) ', '', '(cpg_int *) ', '', '(cpg_int *) ', '', '', '',
+                       '(cpg_float *) ', '']
         scs_k_values = [str(solver_interface.canon_constants['z']), str(solver_interface.canon_constants['l']), 'SCS_NULL', 'SCS_NULL', '0',
                         k_field_q_str, str(solver_interface.canon_constants['qsize']), 'SCS_NULL', '0', '0', '0', 'SCS_NULL', '0']
         write_struct_def(f, scs_k_fields, scs_k_casts, scs_k_values, '%sScs_K' % configuration.prefix, 'ScsCone')
@@ -495,13 +542,13 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
                          % configuration.prefix, 'ScsSettings')
 
         f.write('\n// SCS solution\n')
-        osqp_utils.write_vec(f, np.zeros(solver_interface.canon_constants['n']), '%sscs_x' % configuration.prefix, 'c_float')
-        osqp_utils.write_vec(f, np.zeros(solver_interface.canon_constants['m']), '%sscs_y' % configuration.prefix, 'c_float')
-        osqp_utils.write_vec(f, np.zeros(solver_interface.canon_constants['m']), '%sscs_s' % configuration.prefix, 'c_float')
+        write_vec_def(f, np.zeros(solver_interface.canon_constants['n']), '%sscs_x' % configuration.prefix, 'cpg_float')
+        write_vec_def(f, np.zeros(solver_interface.canon_constants['m']), '%sscs_y' % configuration.prefix, 'cpg_float')
+        write_vec_def(f, np.zeros(solver_interface.canon_constants['m']), '%sscs_s' % configuration.prefix, 'cpg_float')
 
         f.write('\n// Struct containing SCS solution\n')
         scs_sol_fields = ['x', 'y', 's']
-        scs_sol_casts = ['(c_float *) ', '(c_float *) ', '(c_float *) ']
+        scs_sol_casts = ['(cpg_float *) ', '(cpg_float *) ', '(cpg_float *) ']
         scs_sol_values = ['&%sscs_x' % configuration.prefix, '&%sscs_y' % configuration.prefix, '&%sscs_s'
                           % configuration.prefix]
         write_struct_def(f, scs_sol_fields, scs_sol_casts, scs_sol_values, '%sScs_Sol'
@@ -530,11 +577,11 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
         f.write('};\n')
         if solver_interface.canon_constants['n_cones'] > 0:
             f.write('\n// ECOS array of SOC dimensions\n')
-            osqp_utils.write_vec(f, solver_interface.canon_constants['q'], '%secos_q' % configuration.prefix, 'c_int')
+            write_vec_def(f, solver_interface.canon_constants['q'], '%secos_q' % configuration.prefix, 'cpg_int')
         f.write('\n// ECOS workspace\n')
         f.write('pwork* %secos_workspace = 0;\n' % configuration.prefix)
         f.write('\n// ECOS exit flag\n')
-        f.write('c_int %secos_flag = -99;\n' % configuration.prefix)
+        f.write('cpg_int %secos_flag = -99;\n' % configuration.prefix)
 
 
 def write_workspace_prot(f, configuration, variable_info, dual_variable_info, parameter_info, parameter_canon, solver_interface):
@@ -550,25 +597,20 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
     f.write('\n#ifndef CPG_TYPES_H\n')
     f.write('# define CPG_TYPES_H\n\n')
 
-    if configuration.solver_name == 'SCS':
-        f.write('typedef scs_float c_float;\n')
-        f.write('typedef scs_int c_int;\n\n')
-    elif configuration.solver_name == 'ECOS':
-        f.write('typedef double c_float;\n')
-        f.write('typedef int c_int;\n\n')
+    f.write('typedef %s cpg_float;\n' % solver_interface.numeric_types['float'])
+    f.write('typedef %s cpg_int;\n\n' % solver_interface.numeric_types['int'])
 
     # struct definitions
-    if configuration.solver_name in ['SCS', 'ECOS']:
-        f.write('// Compressed sparse column (csc) matrix\n')
-        f.write('typedef struct {\n')
-        f.write('  c_int      nzmax;\n')
-        f.write('  c_int      n;\n')
-        f.write('  c_int      m;\n')
-        f.write('  c_int      *p;\n')
-        f.write('  c_int      *i;\n')
-        f.write('  c_float    *x;\n')
-        f.write('  c_int      nz;\n')
-        f.write('} csc;\n\n')
+    f.write('// Compressed sparse column matrix\n')
+    f.write('typedef struct {\n')
+    f.write('  cpg_int      nzmax;\n')
+    f.write('  cpg_int      n;\n')
+    f.write('  cpg_int      m;\n')
+    f.write('  cpg_int      *p;\n')
+    f.write('  cpg_int      *i;\n')
+    f.write('  cpg_float    *x;\n')
+    f.write('  cpg_int      nz;\n')
+    f.write('} cpg_csc;\n\n')
 
     if configuration.unroll:
         f.write('// User-defined parameters\n')
@@ -579,20 +621,20 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
                 s = ''
             else:
                 s = '*'
-            f.write('  c_float    %s   // Your parameter %s\n' % ((s+name+';').ljust(9), name))
+            f.write('  cpg_float    %s   // Your parameter %s\n' % ((s+name+';').ljust(9), name))
         f.write('} CPG_Params_t;\n\n')
 
     f.write('// Canonical parameters\n')
     f.write('typedef struct {\n')
     for p_id in parameter_canon.p.keys():
         if p_id.isupper():
-            f.write('  csc        *%s   // Canonical parameter %s\n' % ((p_id+';').ljust(8), p_id))
+            f.write('  cpg_csc        *%s   // Canonical parameter %s\n' % ((p_id+';').ljust(8), p_id))
         else:
             if p_id == 'd':
                 s = ''
             else:
                 s = '*'
-            f.write('  c_float    %s   // Canonical parameter %s\n' % ((s+p_id+';').ljust(9), p_id))
+            f.write('  cpg_float    %s   // Canonical parameter %s\n' % ((s+p_id+';').ljust(9), p_id))
     f.write('} Canon_Params_t;\n\n')
 
     f.write('// Flags indicating outdated canonical parameters\n')
@@ -608,7 +650,7 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
             s = ''
         else:
             s = '*'
-        f.write('  c_float    %s   // Your variable %s\n' % ((s + name + ';').ljust(9), name))
+        f.write('  cpg_float    %s   // Your variable %s\n' % ((s + name + ';').ljust(9), name))
     f.write('} CPG_Prim_t;\n\n')
 
     if len(dual_variable_info.name_to_init) > 0:
@@ -619,17 +661,17 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
                 s = ''
             else:
                 s = '*'
-            f.write('  c_float    %s   // Your dual variable for constraint %s\n' % ((s + name + ';').ljust(9), name))
+            f.write('  cpg_float    %s   // Your dual variable for constraint %s\n' % ((s + name + ';').ljust(9), name))
         f.write('} CPG_Dual_t;\n\n')
 
     f.write('// Solver information\n')
     f.write('typedef struct {\n')
-    f.write('  c_float    obj_val;    // Objective function value\n')
-    f.write('  c_int      iter;       // Number of iterations\n')
+    f.write('  cpg_float    obj_val;    // Objective function value\n')
+    f.write('  cpg_int      iter;       // Number of iterations\n')
     f.write('  %sstatus;     // Solver status\n' %
-                ('c_int      ' if solver_interface.status_is_int else 'char       *'))
-    f.write('  c_float    pri_res;    // Primal residual\n')
-    f.write('  c_float    dua_res;    // Dual residual\n')
+                ('cpg_int      ' if solver_interface.status_is_int else 'char       *'))
+    f.write('  cpg_float    pri_res;    // Primal residual\n')
+    f.write('  cpg_float    dua_res;    // Dual residual\n')
     f.write('} CPG_Info_t;\n\n')
 
     f.write('// Solution and solver information\n')
@@ -653,16 +695,16 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
         f.write('\n// User-defined parameters\n')
         for name, value in parameter_info.writable.items():
             if not is_mathematical_scalar(value):
-                osqp_utils.write_vec_extern(f, value, configuration.prefix+'cpg_'+name, 'c_float')
+                write_vec_prot(f, value, configuration.prefix+'cpg_'+name, 'cpg_float')
         f.write('\n// Struct containing all user-defined parameters\n')
         write_struct_prot(f, '%sCPG_Params' % configuration.prefix, 'CPG_Params_t')
     else:
         f.write('\n// Vector containing flattened user-defined parameters\n')
-        osqp_utils.write_vec_extern(f, parameter_info.flat_usp, '%scpg_params_vec' % configuration.prefix, 'c_float')
+        write_vec_prot(f, parameter_info.flat_usp, '%scpg_params_vec' % configuration.prefix, 'cpg_float')
         f.write('\n// Sparse mappings from user-defined to canonical parameters\n')
         for p_id, mapping in parameter_canon.p_id_to_mapping.items():
             if parameter_canon.p_id_to_changes[p_id]:
-                osqp_utils.write_mat_extern(f, csc_to_dict(mapping), '%scanon_%s_map' % (configuration.prefix, p_id))
+                write_mat_prot(f, csc_to_dict(mapping), '%scanon_%s_map' % (configuration.prefix, p_id))
 
     f.write('\n// Canonical parameters\n')
     for p_id, p in parameter_canon.p.items():
@@ -684,14 +726,14 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
         for name, value in variable_info.name_to_init.items():
             if variable_info.name_to_sym[name] or not solver_interface.sol_statically_allocated:
                 if not is_mathematical_scalar(value):
-                    osqp_utils.write_vec_extern(f, value.flatten(order='F'), configuration.prefix+'cpg_'+name,
-                                                'c_float')
+                    write_vec_prot(f, value.flatten(order='F'), configuration.prefix+'cpg_'+name,
+                                                'cpg_float')
 
     if not solver_interface.sol_statically_allocated:
         f.write('\n// Dual variables associated with user-defined constraints\n')
         for name, value in dual_variable_info.name_to_init.items():
             if not is_mathematical_scalar(value):
-                osqp_utils.write_vec_extern(f, value.flatten(order='F'), configuration.prefix+'cpg_'+name, 'c_float')
+                write_vec_prot(f, value.flatten(order='F'), configuration.prefix+'cpg_'+name, 'cpg_float')
 
     f.write('\n// Struct containing primal solution\n')
     write_struct_prot(f, '%sCPG_Prim' % configuration.prefix, 'CPG_Prim_t')
@@ -713,18 +755,18 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
         write_struct_prot(f, '%sScs_D' % configuration.prefix, 'ScsData')
         if solver_interface.canon_constants['qsize'] > 0:
             f.write('\n// SCS array of SOC dimensions\n')
-            osqp_utils.write_vec_extern(f, solver_interface.canon_constants['q'], '%sscs_q' % configuration.prefix, 'c_int')
+            write_vec_prot(f, solver_interface.canon_constants['q'], '%sscs_q' % configuration.prefix, 'cpg_int')
         f.write('\n// Struct containing SCS cone data\n')
         write_struct_prot(f, '%sScs_K' % configuration.prefix, 'ScsCone')
         f.write('\n// Struct containing SCS settings\n')
         write_struct_prot(f, '%sScs_Stgs' % configuration.prefix, 'ScsSettings')
         f.write('\n// SCS solution\n')
-        osqp_utils.write_vec_extern(f, np.zeros(solver_interface.canon_constants['n']), '%sscs_x' % configuration.prefix,
-                                    'c_float')
-        osqp_utils.write_vec_extern(f, np.zeros(solver_interface.canon_constants['m']), '%sscs_y' % configuration.prefix,
-                                    'c_float')
-        osqp_utils.write_vec_extern(f, np.zeros(solver_interface.canon_constants['m']), '%sscs_s' % configuration.prefix,
-                                    'c_float')
+        write_vec_prot(f, np.zeros(solver_interface.canon_constants['n']), '%sscs_x' % configuration.prefix,
+                                    'cpg_float')
+        write_vec_prot(f, np.zeros(solver_interface.canon_constants['m']), '%sscs_y' % configuration.prefix,
+                                    'cpg_float')
+        write_vec_prot(f, np.zeros(solver_interface.canon_constants['m']), '%sscs_s' % configuration.prefix,
+                                    'cpg_float')
         f.write('\n// Struct containing SCS solution\n')
         write_struct_prot(f, '%sScs_Sol' % configuration.prefix, 'ScsSolution')
         f.write('\n// Struct containing SCS information\n')
@@ -737,11 +779,11 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
         write_struct_prot(f, '%sCanon_Settings' % configuration.prefix, 'Canon_Settings_t')
         if solver_interface.canon_constants['n_cones'] > 0:
             f.write('\n// ECOS array of SOC dimensions\n')
-            osqp_utils.write_vec_extern(f, solver_interface.canon_constants['q'], '%secos_q' % configuration.prefix, 'c_int')
+            write_vec_prot(f, solver_interface.canon_constants['q'], '%secos_q' % configuration.prefix, 'cpg_int')
         f.write('\n// ECOS workspace\n')
         f.write('extern pwork* %secos_workspace;\n' % configuration.prefix)
         f.write('\n// ECOS exit flag\n')
-        f.write('extern c_int %secos_flag;\n' % configuration.prefix)
+        f.write('extern cpg_int %secos_flag;\n' % configuration.prefix)
 
 
 def write_solve_def(f, configuration, variable_info, dual_variable_info, parameter_info, parameter_canon, solver_interface):
@@ -754,20 +796,20 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
     f.write('#include "cpg_workspace.h"\n\n')
 
     if not configuration.unroll:
-        f.write('static c_int i;\n')
-        f.write('static c_int j;\n')
+        f.write('static cpg_int i;\n')
+        f.write('static cpg_int j;\n')
 
     if configuration.unroll and solver_interface.inmemory_preconditioning:
-        f.write('static c_int i;\n')
+        f.write('static cpg_int i;\n')
 
     f.write('\n// Update user-defined parameters\n')
     if configuration.unroll:
         for user_p_name, Canon_outdated_names in parameter_canon.user_p_name_to_canon_outdated.items():
             if parameter_info.name_to_size_usp[user_p_name] == 1:
-                f.write('void %scpg_update_%s(c_float val){\n' % (configuration.prefix, user_p_name))
+                f.write('void %scpg_update_%s(cpg_float val){\n' % (configuration.prefix, user_p_name))
                 f.write('  %sCPG_Params.%s = val;\n' % (configuration.prefix, user_p_name))
             else:
-                f.write('void %scpg_update_%s(c_int idx, c_float val){\n' % (configuration.prefix, user_p_name))
+                f.write('void %scpg_update_%s(cpg_int idx, cpg_float val){\n' % (configuration.prefix, user_p_name))
                 f.write('  %sCPG_Params.%s[idx] = val;\n' % (configuration.prefix, user_p_name))
             for Canon_outdated_name in Canon_outdated_names:
                 f.write('  %sCanon_Outdated.%s = 1;\n' % (configuration.prefix, Canon_outdated_name))
@@ -776,10 +818,10 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
         for base_col, name in parameter_info.col_to_name_usp.items():
             Canon_outdated_names = parameter_canon.user_p_name_to_canon_outdated[name]
             if parameter_info.name_to_size_usp[name] == 1:
-                f.write('void %scpg_update_%s(c_float val){\n' % (configuration.prefix, name))
+                f.write('void %scpg_update_%s(cpg_float val){\n' % (configuration.prefix, name))
                 f.write('  %scpg_params_vec[%d] = val;\n' % (configuration.prefix, base_col))
             else:
-                f.write('void %scpg_update_%s(c_int idx, c_float val){\n' % (configuration.prefix, name))
+                f.write('void %scpg_update_%s(cpg_int idx, cpg_float val){\n' % (configuration.prefix, name))
                 f.write('  %scpg_params_vec[idx+%d] = val;\n' % (configuration.prefix, base_col))
             for Canon_outdated_name in Canon_outdated_names:
                 f.write('  %sCanon_Outdated.%s = 1;\n' % (configuration.prefix, Canon_outdated_name))
@@ -1033,9 +1075,9 @@ def write_solve_prot(f, configuration, variable_info, dual_variable_info, parame
     f.write('\n// Update user-defined parameter values\n')
     for name, size in parameter_info.name_to_size_usp.items():
         if size == 1:
-            f.write('extern void %scpg_update_%s(c_float val);\n' % (configuration.prefix, name))
+            f.write('extern void %scpg_update_%s(cpg_float val);\n' % (configuration.prefix, name))
         else:
-            f.write('extern void %scpg_update_%s(c_int idx, c_float val);\n' % (configuration.prefix, name))
+            f.write('extern void %scpg_update_%s(cpg_int idx, cpg_float val);\n' % (configuration.prefix, name))
 
     f.write('\n// Map user-defined to canonical parameters\n')
     for p_id, changes in parameter_canon.p_id_to_changes.items():
@@ -1071,7 +1113,7 @@ def write_example_def(f, configuration, variable_info, dual_variable_info, param
     f.write('#include <stdio.h>\n')
     f.write('#include "cpg_workspace.h"\n')
     f.write('#include "cpg_solve.h"\n\n')
-    f.write('static c_int i;\n\n')
+    f.write('static cpg_int i;\n\n')
 
     f.write('int main(int argc, char *argv[]){\n\n')
 
@@ -1534,7 +1576,7 @@ def replace_html_data(text, configuration, variable_info, dual_variable_info, pa
             s = ''
         else:
             s = '*'
-        CPGPRIMTYPEDEF += ('  c_float    %s   // Your variable %s\n' % ((s + name + ';').ljust(9), name))
+        CPGPRIMTYPEDEF += ('  cpg_float    %s   // Your variable %s\n' % ((s + name + ';').ljust(9), name))
     CPGPRIMTYPEDEF += '} CPG_Prim_t;\n'
     text = text.replace('$CPGPRIMTYPEDEF', CPGPRIMTYPEDEF)
 
@@ -1547,7 +1589,7 @@ def replace_html_data(text, configuration, variable_info, dual_variable_info, pa
                 s = ''
             else:
                 s = '*'
-            CPGDUALTYPEDEF += ('  c_float    %s   // Your dual variable for constraint %s\n'
+            CPGDUALTYPEDEF += ('  cpg_float    %s   // Your dual variable for constraint %s\n'
                                % ((s + name + ';').ljust(9), name))
         CPGDUALTYPEDEF += '} CPG_Dual_t;\n\n'
     else:
@@ -1557,11 +1599,11 @@ def replace_html_data(text, configuration, variable_info, dual_variable_info, pa
     # type definition of CPG_Info_t
     CPGINFOTYPEDEF = '// Struct type with canonical solver information\n'
     CPGINFOTYPEDEF += 'typedef struct {\n'
-    CPGINFOTYPEDEF += '  c_float    obj_val;    // Objective function value\n'
-    CPGINFOTYPEDEF += '  c_int      iter;       // Number of iterations\n'
-    CPGINFOTYPEDEF += ('  %sstatus;     // Solver status\n' % ('c_int      ' if solver_interface.status_is_int else 'char       *'))
-    CPGINFOTYPEDEF += '  c_float    pri_res;    // Primal residual\n'
-    CPGINFOTYPEDEF += '  c_float    dua_res;    // Dual residual\n'
+    CPGINFOTYPEDEF += '  cpg_float    obj_val;    // Objective function value\n'
+    CPGINFOTYPEDEF += '  cpg_int      iter;       // Number of iterations\n'
+    CPGINFOTYPEDEF += ('  %sstatus;     // Solver status\n' % ('cpg_int      ' if solver_interface.status_is_int else 'char       *'))
+    CPGINFOTYPEDEF += '  cpg_float    pri_res;    // Primal residual\n'
+    CPGINFOTYPEDEF += '  cpg_float    dua_res;    // Dual residual\n'
     CPGINFOTYPEDEF += '} CPG_Info_t;\n'
     text = text.replace('$CPGINFOTYPEDEF', CPGINFOTYPEDEF)
 
@@ -1579,9 +1621,9 @@ def replace_html_data(text, configuration, variable_info, dual_variable_info, pa
     CPGUPDATEDECLARATIONS = '\n// Update user-defined parameter values\n'
     for name, size in parameter_info.name_to_size_usp.items():
         if size == 1:
-            CPGUPDATEDECLARATIONS += 'void %scpg_update_%s(c_float value);\n' % (configuration.prefix, name)
+            CPGUPDATEDECLARATIONS += 'void %scpg_update_%s(cpg_float value);\n' % (configuration.prefix, name)
         else:
-            CPGUPDATEDECLARATIONS += 'void %scpg_update_%s(c_int idx, c_float value);\n' % (configuration.prefix, name)
+            CPGUPDATEDECLARATIONS += 'void %scpg_update_%s(cpg_int idx, cpg_float value);\n' % (configuration.prefix, name)
     text = text.replace('$CPGUPDATEDECLARATIONS', CPGUPDATEDECLARATIONS)
 
     # solve declarations
