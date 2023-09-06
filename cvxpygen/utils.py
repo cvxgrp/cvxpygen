@@ -255,10 +255,10 @@ def write_ecos_setup_update(f, canon_constants, prefix):
     if p == 0:
         Ax_str = Ap_str = Ai_str = b_str = '0'
     else:
-        Ax_str = '%sCanon_Params_ECOS.A->x' % prefix
-        Ap_str = '%sCanon_Params_ECOS.A->p' % prefix
-        Ai_str = '%sCanon_Params_ECOS.A->i' % prefix
-        b_str = '%sCanon_Params_ECOS.b' % prefix
+        Ax_str = '%sCanon_Params_conditioning.A->x' % prefix
+        Ap_str = '%sCanon_Params_conditioning.A->p' % prefix
+        Ai_str = '%sCanon_Params_conditioning.A->i' % prefix
+        b_str = '%sCanon_Params_conditioning.b' % prefix
 
     if n_cones == 0:
         ecos_q_str = '0'
@@ -267,24 +267,24 @@ def write_ecos_setup_update(f, canon_constants, prefix):
 
     f.write('  if (!initialized) {\n')
     f.write('    %secos_workspace = ECOS_setup(%d, %d, %d, %d, %d, %s, %d, '
-            '%sCanon_Params_ECOS.G->x, %sCanon_Params_ECOS.G->p, %sCanon_Params_ECOS.G->i, '
-            '%s, %s, %s, %sCanon_Params_ECOS.c, %sCanon_Params_ECOS.h, %s);\n' %
+            '%sCanon_Params_conditioning.G->x, %sCanon_Params_conditioning.G->p, %sCanon_Params_conditioning.G->i, '
+            '%s, %s, %s, %sCanon_Params_conditioning.c, %sCanon_Params_conditioning.h, %s);\n' %
             (prefix, n, m, p, ell, n_cones, ecos_q_str, e, prefix, prefix, prefix, Ax_str, Ap_str, Ai_str,
              prefix, prefix, b_str))
     f.write('    initialized = 1;\n')
     f.write('  } else {\n')
     f.write('    if (%sCanon_Outdated.G || %sCanon_Outdated.A || %sCanon_Outdated.b) {\n' % (prefix, prefix, prefix))
-    f.write('      ECOS_updateData(%secos_workspace, %sCanon_Params_ECOS.G->x, %s, %sCanon_Params_ECOS.c, '
-            '%sCanon_Params_ECOS.h, %s);\n' % (prefix, prefix, Ax_str, prefix, prefix, b_str))
+    f.write('      ECOS_updateData(%secos_workspace, %sCanon_Params_conditioning.G->x, %s, %sCanon_Params_conditioning.c, '
+            '%sCanon_Params_conditioning.h, %s);\n' % (prefix, prefix, Ax_str, prefix, prefix, b_str))
     f.write('    } else {\n')
     f.write('      if (%sCanon_Outdated.h) {\n' % prefix)
     f.write('        for (i=0; i<%d; i++){\n' % m)
-    f.write('          ecos_updateDataEntry_h(%secos_workspace, i, %sCanon_Params_ECOS.h[i]);\n' % (prefix, prefix))
+    f.write('          ecos_updateDataEntry_h(%secos_workspace, i, %sCanon_Params_conditioning.h[i]);\n' % (prefix, prefix))
     f.write('        }\n')
     f.write('      }\n')
     f.write('      if (%sCanon_Outdated.c) {\n' % prefix)
     f.write('        for (i=0; i<%d; i++){\n' % n)
-    f.write('          ecos_updateDataEntry_c(%secos_workspace, i, %sCanon_Params_ECOS.c[i]);\n' % (prefix, prefix))
+    f.write('          ecos_updateDataEntry_c(%secos_workspace, i, %sCanon_Params_conditioning.c[i]);\n' % (prefix, prefix))
     f.write('        }\n')
     f.write('      }\n')
     f.write('    }\n')
@@ -332,8 +332,8 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
             canon_casts.append('')
         else:
             write_param_def(f, replace_inf(p), p_id, configuration.prefix, '')
-            if configuration.solver_name == 'ECOS':
-                write_param_def(f, replace_inf(p), p_id, configuration.prefix, '_ECOS')
+            if solver_interface.inmemory_preconditioning:
+                write_param_def(f, replace_inf(p), p_id, configuration.prefix, '_conditioning')
             if p_id.isupper():
                 canon_casts.append('')
             else:
@@ -342,7 +342,7 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
     f.write('// Struct containing canonical parameters\n')
 
     struct_values = []
-    struct_values_ECOS = []
+    struct_values_conditioning = []
     for i, p_id in enumerate(p_ids):
         p = parameter_canon.p[p_id]
         if type(p) == dict:
@@ -351,21 +351,21 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
             length = len(p)
         if length == 0:
             struct_values.append('0')
-            if configuration.solver_name == 'ECOS':
-                struct_values_ECOS.append('0')
+            if solver_interface.inmemory_preconditioning:
+                struct_values_conditioning.append('0')
         elif p_id=='d':
             struct_values.append('%.20f' % p)
-            if configuration.solver_name == 'ECOS':
-                struct_values_ECOS.append('%.20f' % p)
+            if solver_interface.inmemory_preconditioning:
+                struct_values_conditioning.append('%.20f' % p)
         else:
             struct_values.append('&%scanon_%s' % (configuration.prefix, p_id))
-            if configuration.solver_name == 'ECOS':
-                struct_values_ECOS.append('&%scanon_%s_ECOS' % (configuration.prefix, p_id))
+            if solver_interface.inmemory_preconditioning:
+                struct_values_conditioning.append('&%scanon_%s_conditioning' % (configuration.prefix, p_id))
 
     write_struct_def(f, p_ids, canon_casts, struct_values, '%sCanon_Params' % configuration.prefix, 'Canon_Params_t')
     f.write('\n')
-    if configuration.solver_name == 'ECOS':
-        write_struct_def(f, p_ids, canon_casts, struct_values_ECOS, '%sCanon_Params_ECOS' % configuration.prefix,
+    if solver_interface.inmemory_preconditioning:
+        write_struct_def(f, p_ids, canon_casts, struct_values_conditioning, '%sCanon_Params_conditioning' % configuration.prefix,
                          'Canon_Params_t')
         f.write('\n')
 
@@ -676,13 +676,13 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
     for p_id, p in parameter_canon.p.items():
         if p_id != 'd':
             write_param_prot(f, p, p_id, configuration.prefix, '')
-            if configuration.solver_name == 'ECOS':
-                write_param_prot(f, p, p_id, configuration.prefix, '_ECOS')
+            if solver_interface.inmemory_preconditioning:
+                write_param_prot(f, p, p_id, configuration.prefix, '_conditioning')
 
     f.write('\n// Struct containing canonical parameters\n')
     write_struct_prot(f, '%sCanon_Params' % configuration.prefix, 'Canon_Params_t')
-    if configuration.solver_name == 'ECOS':
-        write_struct_prot(f, '%sCanon_Params_ECOS' % configuration.prefix, 'Canon_Params_t')
+    if solver_interface.inmemory_preconditioning:
+        write_struct_prot(f, '%sCanon_Params_conditioning' % configuration.prefix, 'Canon_Params_t')
 
     f.write('\n// Struct containing flags for outdated canonical parameters\n')
     f.write('extern Canon_Outdated_t %sCanon_Outdated;\n' % configuration.prefix)
@@ -955,6 +955,21 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
                 f.write('    %scpg_canonicalize_%s();\n' % (configuration.prefix, p_id))
                 f.write('  }\n')
 
+    if solver_interface.inmemory_preconditioning:
+        for p_id, size in parameter_canon.p_id_to_size.items():
+                if size == 1:
+                    f.write('  %sCanon_Params_conditioning.%s = %sCanon_Params.%s;\n'
+                            % (configuration.prefix, p_id, configuration.prefix, p_id))
+                elif size > 1:
+                    f.write('  for (i=0; i<%d; i++){\n' % size)
+                    if p_id.isupper():
+                        f.write('    %sCanon_Params_conditioning.%s->x[i] = %sCanon_Params.%s->x[i];\n'
+                                % (configuration.prefix, p_id, configuration.prefix, p_id))
+                    else:
+                        f.write('    %sCanon_Params_conditioning.%s[i] = %sCanon_Params.%s[i];\n'
+                                % (configuration.prefix, p_id, configuration.prefix, p_id))
+                    f.write('  }\n')
+
     if configuration.solver_name == 'OSQP':
         f.write('  // Solve with OSQP\n')
         f.write('  osqp_solve(&workspace);\n')
@@ -977,19 +992,6 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
         f.write('  scs_solve(%sScs_Work, &%sScs_Sol, &%sScs_Info, (initialized && %sScs_Stgs.warm_start));\n' %
                 (configuration.prefix, configuration.prefix, configuration.prefix, configuration.prefix))
     elif configuration.solver_name == 'ECOS':
-        for p_id, size in parameter_canon.p_id_to_size.items():
-            if size == 1:
-                f.write('  %sCanon_Params_ECOS.%s = %sCanon_Params.%s;\n'
-                        % (configuration.prefix, p_id, configuration.prefix, p_id))
-            elif size > 1:
-                f.write('  for (i=0; i<%d; i++){\n' % size)
-                if p_id.isupper():
-                    f.write('    %sCanon_Params_ECOS.%s->x[i] = %sCanon_Params.%s->x[i];\n'
-                            % (configuration.prefix, p_id, configuration.prefix, p_id))
-                else:
-                    f.write('    %sCanon_Params_ECOS.%s[i] = %sCanon_Params.%s[i];\n'
-                            % (configuration.prefix, p_id, configuration.prefix, p_id))
-                f.write('  }\n')
         f.write('  // Initialize / update ECOS workspace and settings\n')
         write_ecos_setup_update(f, solver_interface.canon_constants, configuration.prefix)
         for name in solver_interface.settings_names_to_type.keys():

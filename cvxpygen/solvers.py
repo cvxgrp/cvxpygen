@@ -157,6 +157,9 @@ class OSQPInterface(SolverInterface):
     # header files
     header_files = ['osqp.h', 'types.h', 'workspace.h']
 
+    # preconditioning of problem data happening in-memory
+    inmemory_preconditioning = False
+
     # solver settings
     settings_names = ['rho', 'max_iter', 'eps_abs', 'eps_rel', 'eps_prim_inf', 'eps_dual_inf',
                       'alpha', 'scaled_termination', 'check_termination', 'warm_start',
@@ -267,6 +270,9 @@ class SCSInterface(SolverInterface):
     # header files
     header_files = ['scs.h']
 
+    # preconditioning of problem data happening in-memory
+    inmemory_preconditioning = False
+
     # solver settings
     settings_names = ['normalize', 'scale', 'adaptive_scale', 'rho_x', 'max_iters', 'eps_abs',
                       'eps_rel',
@@ -369,6 +375,9 @@ class ECOSInterface(SolverInterface):
 
     # header files
     header_files = ['ecos.h']
+
+    # preconditioning of problem data happening in-memory
+    inmemory_preconditioning = True
 
     # solver settings
     settings_names = ['feastol', 'abstol', 'reltol', 'feastol_inacc', 'abstol_inacc',
