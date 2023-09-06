@@ -154,8 +154,10 @@ class OSQPInterface(SolverInterface):
     canon_p_ids_constr_vec = ['l', 'u']
     sign_constr_vec = -1
 
-    # header files
+    # header and source files
     header_files = ['osqp.h', 'types.h', 'workspace.h']
+    cmake_headers = ['${osqp_headers}']
+    cmake_sources = ['${osqp_src}']
 
     # preconditioning of problem data happening in-memory
     inmemory_preconditioning = False
@@ -296,6 +298,18 @@ class SCSInterface(SolverInterface):
 
     # header files
     header_files = ['scs.h']
+    cmake_headers = [
+        '${${PROJECT_NAME}_HDR}',
+        '${DIRSRC}/private.h',
+        '${${PROJECT_NAME}_LDL_EXTERNAL_HDR}',
+        '${${PROJECT_NAME}_AMD_EXTERNAL_HDR}',
+        ]
+    cmake_sources = [
+        '${${PROJECT_NAME}_SRC}',
+        '${DIRSRC}/private.c',
+        '${EXTERNAL}/qdldl/qdldl.c',
+        '${${PROJECT_NAME}_AMD_EXTERNAL_SRC}'
+        ]
 
     # preconditioning of problem data happening in-memory
     inmemory_preconditioning = False
@@ -429,6 +443,8 @@ class ECOSInterface(SolverInterface):
 
     # header files
     header_files = ['ecos.h']
+    cmake_headers = ['${ecos_headers}']
+    cmake_sources = ['${ecos_sources}']
 
     # preconditioning of problem data happening in-memory
     inmemory_preconditioning = True

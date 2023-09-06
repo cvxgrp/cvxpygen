@@ -1138,30 +1138,19 @@ def replace_cmake_data(cmake_data, configuration):
     return cmake_data.replace('cpg_src', configuration.prefix + 'cpg_src')
 
 
-def write_canon_cmake(f, configuration):
+def write_canon_cmake(f, configuration, solver_interface):
     """
     Pass sources to parent scope in {OSQP/ECOS}_code/CMakeLists.txt
     """
 
-    if configuration.solver_name == 'OSQP':
-        f.write('\nset(solver_head "${osqp_headers}" PARENT_SCOPE)')
-        f.write('\nset(solver_src "${osqp_src}" PARENT_SCOPE)')
-    elif configuration.solver_name == 'SCS':
-        f.write('\nset(solver_head')
-        f.write('\n  ${${PROJECT_NAME}_HDR}')
-        f.write('\n  ${DIRSRC}/private.h')
-        f.write('\n  ${${PROJECT_NAME}_LDL_EXTERNAL_HDR}')
-        f.write('\n  ${${PROJECT_NAME}_AMD_EXTERNAL_HDR})')
-        f.write('\nset(solver_src')
-        f.write('\n  ${${PROJECT_NAME}_SRC}')
-        f.write('\n  ${DIRSRC}/private.c')
-        f.write('\n  ${EXTERNAL}/qdldl/qdldl.c')
-        f.write('\n  ${${PROJECT_NAME}_AMD_EXTERNAL_SRC})')
-        f.write('\n\nset(solver_head "${solver_head}" PARENT_SCOPE)')
-        f.write('\nset(solver_src "${solver_src}" PARENT_SCOPE)')
-    elif configuration.solver_name == 'ECOS':
-        f.write('\nset(solver_head "${ecos_headers}" PARENT_SCOPE)')
-        f.write('\nset(solver_src "${ecos_sources}" PARENT_SCOPE)')
+    f.write('\nset(solver_head')
+    for h in solver_interface.cmake_headers:
+        f.write('\n  ' + h)
+    f.write('\n  PARENT_SCOPE)')
+    f.write('\n\nset(solver_src')
+    for s in solver_interface.cmake_sources:
+        f.write('\n  ' + s)
+    f.write('\n  PARENT_SCOPE)')
 
 
 def write_module_def(f, configuration, variable_info, dual_variable_info, parameter_info, solver_interface):

@@ -327,7 +327,7 @@ def write_c_code(problem: cp.Problem, configuration: dict, variable_info: dict, 
         f.write(cmake_data)
     # adapt solver CMakeLists.txt
     with open(os.path.join(configuration.code_dir, 'c', 'solver_code', 'CMakeLists.txt'), 'a') as f:
-        utils.write_canon_cmake(f, configuration)
+        utils.write_canon_cmake(f, configuration, solver_interface)
     # binding module prototypes
     with open(os.path.join(configuration.code_dir, 'cpp', 'include', 'cpg_module.hpp'), 'w') as f:
         utils.write_module_prot(f, configuration, parameter_info, variable_info, dual_variable_info, solver_interface)
