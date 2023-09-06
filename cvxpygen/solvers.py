@@ -7,7 +7,7 @@ from platform import system
 
 import numpy as np
 
-from cvxpygen import utils
+from cvxpygen.utils import replace_in_file, write_struct_prot, write_struct_def, write_vec_prot, write_vec_def
 from cvxpygen.mappings import PrimalVariableInfo, DualVariableInfo, ConstraintInfo, AffineMap, \
     ParameterCanon, ResultPointerInfo
 
@@ -147,6 +147,14 @@ class SolverInterface(ABC):
                       parameter_canon: ParameterCanon) -> None:
         pass
 
+    @staticmethod
+    def declare_workspace(self, f, prefix) -> None:
+        pass
+
+    @staticmethod
+    def define_workspace(self, f, prefix) -> None:
+        pass
+
 
 class OSQPInterface(SolverInterface):
     solver_name = 'OSQP'
@@ -238,21 +246,21 @@ class OSQPInterface(SolverInterface):
 
         # modify for extra settings
         if 'verbose' in self.enable_settings:
-            utils.replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'),
+            replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'),
                 [('message(STATUS "Disabling printing for embedded")', 'message(STATUS "Not disabling printing for embedded by user request")'),
                  ('set(PRINTING OFF)', '')])
-            utils.replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'include', 'constants.h'),
+            replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'include', 'constants.h'),
                 [('# ifdef __cplusplus\n}', '#  define VERBOSE (1)\n\n# ifdef __cplusplus\n}')])
-            utils.replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'include', 'types.h'),
+            replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'include', 'types.h'),
                 [('} OSQPInfo;', '  c_int status_polish;\n} OSQPInfo;'),
                  ('} OSQPSettings;', '  c_int polish;\n  c_int verbose;\n} OSQPSettings;'),
                  ('# ifndef EMBEDDED\n  c_int nthreads; ///< number of threads active\n# endif // ifndef EMBEDDED', '  c_int nthreads;')])
-            utils.replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'include', 'osqp.h'),
+            replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'include', 'osqp.h'),
                 [('# ifdef __cplusplus\n}', 'c_int osqp_update_verbose(OSQPWorkspace *work, c_int verbose_new);\n\n# ifdef __cplusplus\n}')])
-            utils.replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'src', 'osqp', 'util.c'),
+            replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'src', 'osqp', 'util.c'),
                 [('// Print Settings', '/* Print Settings'),
                  ('LINSYS_SOLVER_NAME[settings->linsys_solver]);', 'LINSYS_SOLVER_NAME[settings->linsys_solver]);*/')])
-            utils.replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'src', 'osqp', 'osqp.c'),
+            replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'src', 'osqp', 'osqp.c'),
                 [('void osqp_set_default_settings(OSQPSettings *settings) {', 'void osqp_set_default_settings(OSQPSettings *settings) {\n  settings->verbose = VERBOSE;'),
                  ('c_int osqp_update_verbose', '#endif // EMBEDDED\n\nc_int osqp_update_verbose'),
                  ('verbose = verbose_new;\n\n  return 0;\n}\n\n#endif // EMBEDDED', 'verbose = verbose_new;\n\n  return 0;\n}')])
@@ -434,6 +442,90 @@ class SCSInterface(SolverInterface):
         with open(os.path.join(code_dir, 'setup.py'), 'w') as f:
             f.write(setup_text)
 
+    def declare_workspace(self, f, prefix) -> None:
+        f.write('\n// SCS matrix A\n')
+        write_struct_prot(f, '%sscs_A' % prefix, 'ScsMatrix')
+        f.write('\n// Struct containing SCS data\n')
+        write_struct_prot(f, '%sScs_D' % prefix, 'ScsData')
+        if self.canon_constants['qsize'] > 0:
+            f.write('\n// SCS array of SOC dimensions\n')
+            write_vec_prot(f, self.canon_constants['q'], '%sscs_q' % prefix, 'cpg_int')
+        f.write('\n// Struct containing SCS cone data\n')
+        write_struct_prot(f, '%sScs_K' % prefix, 'ScsCone')
+        f.write('\n// Struct containing SCS settings\n')
+        write_struct_prot(f, prefix + 'Canon_Settings', 'ScsSettings')
+        f.write('\n// SCS solution\n')
+        write_vec_prot(f, np.zeros(self.canon_constants['n']), '%sscs_x' % prefix, 'cpg_float')
+        write_vec_prot(f, np.zeros(self.canon_constants['m']), '%sscs_y' % prefix, 'cpg_float')
+        write_vec_prot(f, np.zeros(self.canon_constants['m']), '%sscs_s' % prefix, 'cpg_float')
+        f.write('\n// Struct containing SCS solution\n')
+        write_struct_prot(f, '%sScs_Sol' % prefix, 'ScsSolution')
+        f.write('\n// Struct containing SCS information\n')
+        write_struct_prot(f, '%sScs_Info' % prefix, 'ScsInfo')
+        f.write('\n// Pointer to struct containing SCS workspace\n')
+        write_struct_prot(f, '%sScs_Work' % prefix, 'ScsWork*')
+
+    def define_workspace(self, f, prefix) -> None:
+        f.write('\n// SCS matrix A\n')
+        scs_A_fields = ['x', 'i', 'p', 'm', 'n']
+        scs_A_casts = ['(cpg_float *) ', '(cpg_int *) ', '(cpg_int *) ', '', '']
+        scs_A_values = ['&%scanon_A_x' % prefix, '&%scanon_A_i' % prefix,
+                        '&%scanon_A_p' % prefix, str(self.canon_constants['m']),
+                        str(self.canon_constants['n'])]
+        write_struct_def(f, scs_A_fields, scs_A_casts, scs_A_values, '%sScs_A' % prefix, 'ScsMatrix')
+
+        f.write('\n// Struct containing SCS data\n')
+        scs_d_fields = ['m', 'n', 'A', 'P', 'b', 'c']
+        scs_d_casts = ['', '', '', '', '(cpg_float *) ', '(cpg_float *) ']
+        scs_d_values = [str(self.canon_constants['m']), str(self.canon_constants['n']),
+                        '&%sScs_A' % prefix, 'SCS_NULL', '&%scanon_b' % prefix, '&%scanon_c' % prefix]
+        write_struct_def(f, scs_d_fields, scs_d_casts, scs_d_values, '%sScs_D' % prefix, 'ScsData')
+
+        if self.canon_constants['qsize'] > 0:
+            f.write('\n// SCS array of SOC dimensions\n')
+            write_vec_def(f, self.canon_constants['q'], '%sscs_q' % prefix, 'cpg_int')
+            k_field_q_str = '&%sscs_q' % prefix
+        else:
+            k_field_q_str = 'SCS_NULL'
+
+        f.write('\n// Struct containing SCS cone data\n')
+        scs_k_fields = ['z', 'l', 'bu', 'bl', 'bsize', 'q', 'qsize', 's', 'ssize', 'ep', 'ed', 'p', 'psize']
+        scs_k_casts = ['', '', '(cpg_float *) ', '(cpg_float *) ', '', '(cpg_int *) ', '', '(cpg_int *) ', '', '', '',
+                       '(cpg_float *) ', '']
+        scs_k_values = [str(self.canon_constants['z']), str(self.canon_constants['l']), 'SCS_NULL', 'SCS_NULL', '0',
+                        k_field_q_str, str(self.canon_constants['qsize']), 'SCS_NULL', '0', '0', '0', 'SCS_NULL', '0']
+        write_struct_def(f, scs_k_fields, scs_k_casts, scs_k_values, '%sScs_K' % prefix, 'ScsCone')
+
+        f.write('\n// Struct containing SCS settings\n')
+        scs_stgs_fields = list(self.stgs_names_to_default.keys())
+        scs_stgs_casts = ['']*len(scs_stgs_fields)
+        scs_stgs_values = list(self.stgs_names_to_default.values())
+        write_struct_def(f, scs_stgs_fields, scs_stgs_casts, scs_stgs_values, prefix + 'Canon_Settings', 'ScsSettings')
+
+        f.write('\n// SCS solution\n')
+        write_vec_def(f, np.zeros(self.canon_constants['n']), '%sscs_x' % prefix, 'cpg_float')
+        write_vec_def(f, np.zeros(self.canon_constants['m']), '%sscs_y' % prefix, 'cpg_float')
+        write_vec_def(f, np.zeros(self.canon_constants['m']), '%sscs_s' % prefix, 'cpg_float')
+
+        f.write('\n// Struct containing SCS solution\n')
+        scs_sol_fields = ['x', 'y', 's']
+        scs_sol_casts = ['(cpg_float *) ', '(cpg_float *) ', '(cpg_float *) ']
+        scs_sol_values = ['&%sscs_x' % prefix, '&%sscs_y' % prefix, '&%sscs_s' % prefix]
+        write_struct_def(f, scs_sol_fields, scs_sol_casts, scs_sol_values, '%sScs_Sol' % prefix, 'ScsSolution')
+
+        f.write('\n// Struct containing SCS information\n')
+        scs_info_fields = ['iter', 'status', 'status_val', 'scale_updates', 'pobj', 'dobj', 'res_pri', 'res_dual',
+                           'gap', 'res_infeas', 'res_unbdd_a', 'res_unbdd_p', 'comp_slack', 'setup_time', 'solve_time',
+                           'scale', 'rejected_accel_steps', 'accepted_accel_steps', 'lin_sys_time', 'cone_time',
+                           'accel_time']
+        scs_info_casts = ['']*len(scs_info_fields)
+        scs_info_values = ['0', '"unknown"', '0', '0', '0', '0', '99', '99', '99', '99', '99', '99', '99', '0', '0',
+                           '1', '0', '0', '0', '0', '0']
+        write_struct_def(f, scs_info_fields, scs_info_casts, scs_info_values, '%sScs_Info' % prefix, 'ScsInfo')
+
+        f.write('\n// Pointer to struct containing SCS workspace\n')
+        f.write('ScsWork* %sScs_Work = 0;\n' % prefix)
+
 
 class ECOSInterface(SolverInterface):
     solver_name = 'ECOS'
@@ -574,3 +666,28 @@ class ECOSInterface(SolverInterface):
         setup_text = setup_text.replace("license='Apache 2.0'", "license='GPL 3.0'")
         with open(os.path.join(code_dir, 'setup.py'), 'w') as f:
             f.write(setup_text)
+
+    def declare_workspace(self, f, prefix) -> None:
+        f.write('\n// Struct containing solver settings\n')
+        write_struct_prot(f, prefix + 'Canon_Settings', 'Canon_Settings_t')
+        if self.canon_constants['n_cones'] > 0:
+            f.write('\n// ECOS array of SOC dimensions\n')
+            write_vec_prot(f, self.canon_constants['q'], '%secos_q' % prefix, 'cpg_int')
+        f.write('\n// ECOS workspace\n')
+        f.write('extern pwork* %secos_workspace;\n' % prefix)
+        f.write('\n// ECOS exit flag\n')
+        f.write('extern cpg_int %secos_flag;\n' % prefix)
+
+    def define_workspace(self, f, prefix) -> None:
+        f.write('\n// Struct containing solver settings\n')
+        f.write('Canon_Settings_t %sCanon_Settings = {\n' % prefix)
+        for name, default in self.stgs_names_to_default.items():
+            f.write('.%s = %s,\n' % (name, default))
+        f.write('};\n')
+        if self.canon_constants['n_cones'] > 0:
+            f.write('\n// ECOS array of SOC dimensions\n')
+            write_vec_def(f, self.canon_constants['q'], '%secos_q' % prefix, 'cpg_int')
+        f.write('\n// ECOS workspace\n')
+        f.write('pwork* %secos_workspace = 0;\n' % prefix)
+        f.write('\n// ECOS exit flag\n')
+        f.write('cpg_int %secos_flag = -99;\n' % prefix)

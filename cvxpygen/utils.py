@@ -498,86 +498,8 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
     write_struct_def(f, CPG_Result_fields, result_cast, CPG_Result_values, '%sCPG_Result' % configuration.prefix,
                      'CPG_Result_t')
 
-    if configuration.solver_name == 'SCS':
-
-        f.write('\n// SCS matrix A\n')
-        scs_A_fiels = ['x', 'i', 'p', 'm', 'n']
-        scs_A_casts = ['(cpg_float *) ', '(cpg_int *) ', '(cpg_int *) ', '', '']
-        scs_A_values = ['&%scanon_A_x' % configuration.prefix, '&%scanon_A_i' % configuration.prefix,
-                        '&%scanon_A_p' % configuration.prefix, str(solver_interface.canon_constants['m']),
-                        str(solver_interface.canon_constants['n'])]
-        write_struct_def(f, scs_A_fiels, scs_A_casts, scs_A_values, '%sScs_A' % configuration.prefix, 'ScsMatrix')
-
-        f.write('\n// Struct containing SCS data\n')
-        scs_d_fiels = ['m', 'n', 'A', 'P', 'b', 'c']
-        scs_d_casts = ['', '', '', '', '(cpg_float *) ', '(cpg_float *) ']
-        scs_d_values = [str(solver_interface.canon_constants['m']), str(solver_interface.canon_constants['n']), '&%sScs_A'
-                        % configuration.prefix, 'SCS_NULL', '&%scanon_b' % configuration.prefix, '&%scanon_c'
-                        % configuration.prefix]
-        write_struct_def(f, scs_d_fiels, scs_d_casts, scs_d_values, '%sScs_D' % configuration.prefix, 'ScsData')
-
-        if solver_interface.canon_constants['qsize'] > 0:
-            f.write('\n// SCS array of SOC dimensions\n')
-            write_vec_def(f, solver_interface.canon_constants['q'], '%sscs_q' % configuration.prefix, 'cpg_int')
-            k_field_q_str = '&%sscs_q' % configuration.prefix
-        else:
-            k_field_q_str = 'SCS_NULL'
-
-        f.write('\n// Struct containing SCS cone data\n')
-        scs_k_fields = ['z', 'l', 'bu', 'bl', 'bsize', 'q', 'qsize', 's', 'ssize', 'ep', 'ed', 'p', 'psize']
-        scs_k_casts = ['', '', '(cpg_float *) ', '(cpg_float *) ', '', '(cpg_int *) ', '', '(cpg_int *) ', '', '', '',
-                       '(cpg_float *) ', '']
-        scs_k_values = [str(solver_interface.canon_constants['z']), str(solver_interface.canon_constants['l']), 'SCS_NULL', 'SCS_NULL', '0',
-                        k_field_q_str, str(solver_interface.canon_constants['qsize']), 'SCS_NULL', '0', '0', '0', 'SCS_NULL', '0']
-        write_struct_def(f, scs_k_fields, scs_k_casts, scs_k_values, '%sScs_K' % configuration.prefix, 'ScsCone')
-
-        f.write('\n// Struct containing SCS settings\n')
-        scs_stgs_fields = list(solver_interface.stgs_names_to_default.keys())
-        scs_stgs_casts = ['']*len(scs_stgs_fields)
-        scs_stgs_values = list(solver_interface.stgs_names_to_default.values())
-        write_struct_def(f, scs_stgs_fields, scs_stgs_casts, scs_stgs_values, configuration.prefix + 'Canon_Settings', 'ScsSettings')
-
-        f.write('\n// SCS solution\n')
-        write_vec_def(f, np.zeros(solver_interface.canon_constants['n']), '%sscs_x' % configuration.prefix, 'cpg_float')
-        write_vec_def(f, np.zeros(solver_interface.canon_constants['m']), '%sscs_y' % configuration.prefix, 'cpg_float')
-        write_vec_def(f, np.zeros(solver_interface.canon_constants['m']), '%sscs_s' % configuration.prefix, 'cpg_float')
-
-        f.write('\n// Struct containing SCS solution\n')
-        scs_sol_fields = ['x', 'y', 's']
-        scs_sol_casts = ['(cpg_float *) ', '(cpg_float *) ', '(cpg_float *) ']
-        scs_sol_values = ['&%sscs_x' % configuration.prefix, '&%sscs_y' % configuration.prefix, '&%sscs_s'
-                          % configuration.prefix]
-        write_struct_def(f, scs_sol_fields, scs_sol_casts, scs_sol_values, '%sScs_Sol'
-                         % configuration.prefix, 'ScsSolution')
-
-        f.write('\n// Struct containing SCS information\n')
-        scs_info_fields = ['iter', 'status', 'status_val', 'scale_updates', 'pobj', 'dobj', 'res_pri', 'res_dual',
-                           'gap', 'res_infeas', 'res_unbdd_a', 'res_unbdd_p', 'comp_slack', 'setup_time', 'solve_time',
-                           'scale', 'rejected_accel_steps', 'accepted_accel_steps', 'lin_sys_time', 'cone_time',
-                           'accel_time']
-        scs_info_casts = ['']*len(scs_info_fields)
-        scs_info_values = ['0', '"unknown"', '0', '0', '0', '0', '99', '99', '99', '99', '99', '99', '99', '0', '0',
-                           '1', '0', '0', '0', '0', '0']
-        write_struct_def(f, scs_info_fields, scs_info_casts, scs_info_values, '%sScs_Info'
-                         % configuration.prefix, 'ScsInfo')
-
-        f.write('\n// Pointer to struct containing SCS workspace\n')
-        f.write('ScsWork* %sScs_Work = 0;\n' % configuration.prefix)
-
-    if configuration.solver_name == 'ECOS':
-
-        f.write('\n// Struct containing solver settings\n')
-        f.write('Canon_Settings_t %sCanon_Settings = {\n' % configuration.prefix)
-        for name, default in solver_interface.stgs_names_to_default.items():
-            f.write('.%s = %s,\n' % (name, default))
-        f.write('};\n')
-        if solver_interface.canon_constants['n_cones'] > 0:
-            f.write('\n// ECOS array of SOC dimensions\n')
-            write_vec_def(f, solver_interface.canon_constants['q'], '%secos_q' % configuration.prefix, 'cpg_int')
-        f.write('\n// ECOS workspace\n')
-        f.write('pwork* %secos_workspace = 0;\n' % configuration.prefix)
-        f.write('\n// ECOS exit flag\n')
-        f.write('cpg_int %secos_flag = -99;\n' % configuration.prefix)
+    if not solver_interface.ws_allocated_in_solver_code:
+        solver_interface.define_workspace(f, configuration.prefix)
 
 
 def write_workspace_prot(f, configuration, variable_info, dual_variable_info, parameter_info, parameter_canon, solver_interface):
@@ -678,12 +600,11 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
     f.write('  CPG_Info_t *info;      // Solver info\n')
     f.write('} CPG_Result_t;\n\n')
 
-    if configuration.solver_name == 'ECOS':
-        f.write('// Solver settings\n')
-        f.write('typedef struct {\n')
-        for name, typ in solver_interface.stgs_names_to_type.items():
-            f.write('  %s%s;\n' % (typ.ljust(11), name))
-        f.write('} Canon_Settings_t;\n\n')
+    f.write('// Solver settings\n')
+    f.write('typedef struct {\n')
+    for name, typ in solver_interface.stgs_names_to_type.items():
+        f.write('  %s%s;\n' % (typ.ljust(11), name))
+    f.write('} Canon_Settings_t;\n\n')
 
     f.write('#endif // ifndef CPG_TYPES_H\n')
 
@@ -744,42 +665,8 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
     f.write('\n// Struct containing solution and info\n')
     write_struct_prot(f, '%sCPG_Result' % configuration.prefix, 'CPG_Result_t')
 
-    if configuration.solver_name == 'SCS':
-        f.write('\n// SCS matrix A\n')
-        write_struct_prot(f, '%sscs_A' % configuration.prefix, 'ScsMatrix')
-        f.write('\n// Struct containing SCS data\n')
-        write_struct_prot(f, '%sScs_D' % configuration.prefix, 'ScsData')
-        if solver_interface.canon_constants['qsize'] > 0:
-            f.write('\n// SCS array of SOC dimensions\n')
-            write_vec_prot(f, solver_interface.canon_constants['q'], '%sscs_q' % configuration.prefix, 'cpg_int')
-        f.write('\n// Struct containing SCS cone data\n')
-        write_struct_prot(f, '%sScs_K' % configuration.prefix, 'ScsCone')
-        f.write('\n// Struct containing SCS settings\n')
-        write_struct_prot(f, configuration.prefix + 'Canon_Settings', 'ScsSettings')
-        f.write('\n// SCS solution\n')
-        write_vec_prot(f, np.zeros(solver_interface.canon_constants['n']), '%sscs_x' % configuration.prefix,
-                                    'cpg_float')
-        write_vec_prot(f, np.zeros(solver_interface.canon_constants['m']), '%sscs_y' % configuration.prefix,
-                                    'cpg_float')
-        write_vec_prot(f, np.zeros(solver_interface.canon_constants['m']), '%sscs_s' % configuration.prefix,
-                                    'cpg_float')
-        f.write('\n// Struct containing SCS solution\n')
-        write_struct_prot(f, '%sScs_Sol' % configuration.prefix, 'ScsSolution')
-        f.write('\n// Struct containing SCS information\n')
-        write_struct_prot(f, '%sScs_Info' % configuration.prefix, 'ScsInfo')
-        f.write('\n// Pointer to struct containing SCS workspace\n')
-        write_struct_prot(f, '%sScs_Work' % configuration.prefix, 'ScsWork*')
-
-    if configuration.solver_name == 'ECOS':
-        f.write('\n// Struct containing solver settings\n')
-        write_struct_prot(f, configuration.prefix + 'Canon_Settings', 'Canon_Settings_t')
-        if solver_interface.canon_constants['n_cones'] > 0:
-            f.write('\n// ECOS array of SOC dimensions\n')
-            write_vec_prot(f, solver_interface.canon_constants['q'], '%secos_q' % configuration.prefix, 'cpg_int')
-        f.write('\n// ECOS workspace\n')
-        f.write('extern pwork* %secos_workspace;\n' % configuration.prefix)
-        f.write('\n// ECOS exit flag\n')
-        f.write('extern cpg_int %secos_flag;\n' % configuration.prefix)
+    if not solver_interface.ws_allocated_in_solver_code:
+        solver_interface.declare_workspace(f, configuration.prefix)
 
 
 def write_solve_def(f, configuration, variable_info, dual_variable_info, parameter_info, parameter_canon, solver_interface):
@@ -1386,6 +1273,8 @@ def write_method(f, configuration, variable_info, dual_variable_info, parameter_
     f.write('from cvxpy.problems.problem import SolverStats\n')
     f.write('from %s import cpg_module\n\n\n' % configuration.code_dir.replace('/', '.').replace('\\', '.'))
 
+    f.write('standard_settings_names = {"max_iters": "maxit"}\n\n\n')
+
     f.write('def cpg_solve(prob, updated_params=None, **kwargs):\n\n')
     f.write('    # set flags for updated parameters\n')
     f.write('    upd = cpg_module.%scpg_updated()\n' % configuration.prefix)
@@ -1403,11 +1292,8 @@ def write_method(f, configuration, variable_info, dual_variable_info, parameter_
     f.write('    # set solver settings\n')
     f.write('    cpg_module.set_solver_default_settings()\n')
     f.write('    for key, value in kwargs.items():\n')
-    if configuration.solver_name == 'ECOS':
-        f.write('        if key == "max_iters":\n')
-        f.write('            key = "maxit"\n')
     f.write('        try:\n')
-    f.write('            eval(\'cpg_module.set_solver_%s(value)\' % key)\n')
+    f.write('            eval(\'cpg_module.set_solver_%s(value)\' % standard_settings_names.get(key, key))\n')
     f.write('        except AttributeError:\n')
     f.write('            raise(AttributeError(\'Solver setting "%s" not available.\' % key))\n\n')
 
