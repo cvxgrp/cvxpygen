@@ -437,12 +437,7 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
 
     f.write('\n// Struct containing solver info\n')
     CPG_Info_fields = ['obj_val', 'iter', 'status', 'pri_res', 'dua_res']
-    if configuration.solver_name in ['OSQP', 'SCS']:
-        CPG_Info_values = ['0', '0', '"unknown"', '0', '0']
-    elif configuration.solver_name == 'ECOS':
-        CPG_Info_values = ['0', '0', '0', '0', '0']
-    else:
-        raise ValueError("Problem class cannot be addressed by the OSQP or ECOS solver!")
+    CPG_Info_values = ['0', '0', ('0' if solver_interface.status_is_int else '"unknown"'), '0', '0']
     info_cast = ['', '', '', '', '']
     write_struct_def(f, CPG_Info_fields, info_cast, CPG_Info_values, '%sCPG_Info' % configuration.prefix, 'CPG_Info_t')
 
@@ -631,10 +626,8 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
     f.write('typedef struct {\n')
     f.write('  c_float    obj_val;    // Objective function value\n')
     f.write('  c_int      iter;       // Number of iterations\n')
-    if configuration.solver_name in ['OSQP', 'SCS']:
-        f.write('  char       *status;    // Solver status\n')
-    elif configuration.solver_name == 'ECOS':
-        f.write('  c_int      status;     // Solver status\n')
+    f.write('  %sstatus;     // Solver status\n' %
+                ('c_int      ' if solver_interface.status_is_int else 'char       *'))
     f.write('  c_float    pri_res;    // Primal residual\n')
     f.write('  c_float    dua_res;    // Dual residual\n')
     f.write('} CPG_Info_t;\n\n')
@@ -1302,7 +1295,7 @@ def write_module_def(f, configuration, variable_info, dual_variable_info, parame
     f.write('\n}\n')
 
 
-def write_module_prot(f, configuration, parameter_info, variable_info, dual_variable_info):
+def write_module_prot(f, configuration, parameter_info, variable_info, dual_variable_info, solver_interface):
     """
     Write c++ file for pbind11 wrapper
     """
@@ -1352,10 +1345,7 @@ def write_module_prot(f, configuration, parameter_info, variable_info, dual_vari
     f.write('struct %sCPG_Info_cpp_t {\n' % configuration.prefix)
     f.write('    double obj_val;\n')
     f.write('    int iter;\n')
-    if configuration.solver_name in ['OSQP', 'SCS']:
-        f.write('    char* status;\n')
-    elif configuration.solver_name == 'ECOS':
-        f.write('    int status;\n')
+    f.write('    %s status;\n' % ('int' if solver_interface.status_is_int else 'char*'))
     f.write('    double pri_res;\n')
     f.write('    double dua_res;\n')
     f.write('    double time;\n')
@@ -1387,7 +1377,7 @@ def replace_setup_data(text):
     return text.replace('%DATE', now.strftime("on %B %d, %Y at %H:%M:%S"))
 
 
-def write_method(f, configuration, variable_info, dual_variable_info, parameter_info):
+def write_method(f, configuration, variable_info, dual_variable_info, parameter_info, solver_interface):
     """
     Write function to be registered as custom CVXPY solve method
     """
@@ -1399,21 +1389,6 @@ def write_method(f, configuration, variable_info, dual_variable_info, parameter_
     f.write('from cvxpy.reductions import Solution\n')
     f.write('from cvxpy.problems.problem import SolverStats\n')
     f.write('from %s import cpg_module\n\n\n' % configuration.code_dir.replace('/', '.').replace('\\', '.'))
-
-    if configuration.solver_name == 'ECOS':
-        indent = ' ' * 24
-        f.write('status_int_to_string = {0: "Optimal solution found", \n' +
-                indent + '1: "Certificate of primal infeasibility found", \n' +
-                indent + '2: "Certificate of dual infeasibility found", \n' +
-                indent + '10: "Optimal solution found subject to reduced tolerances", \n' +
-                indent + '11: "Certificate of primal infeasibility found subject to reduced tolerances", \n' +
-                indent + '12: "Certificate of dual infeasibility found subject to reduced tolerances", \n' +
-                indent + '-1: "Maximum number of iterations reached", \n' +
-                indent + '-2: "Numerical problems (unreliable search direction)", \n' +
-                indent + '-3: "Numerical problems (slacks or multipliers outside cone)", \n' +
-                indent + '-4: "Interrupted by signal or CTRL-C", \n' +
-                indent + '-7: "Unknown problem in solver", \n' +
-                indent + '-99: "Unknown problem before solving"}\n\n\n')
 
     f.write('def cpg_solve(prob, updated_params=None, **kwargs):\n\n')
     f.write('    # set flags for updated parameters\n')
@@ -1497,10 +1472,8 @@ def write_method(f, configuration, variable_info, dual_variable_info, parameter_
             f.write('    prob.constraints[%d].save_dual_value(np.array(res.cpg_dual.%s))\n' % (i, name))
 
     f.write('\n    # store additional solver information in problem object\n')
-    if configuration.solver_name in ['OSQP', 'SCS']:
-        f.write('    prob._status = res.cpg_info.status\n')
-    elif configuration.solver_name == 'ECOS':
-        f.write('    prob._status = status_int_to_string[res.cpg_info.status]\n')
+    f.write('    prob._status = %sres.cpg_info.status\n' %
+                (('"%%d (for description visit %s)" %% ' % solver_interface.docu) if solver_interface.status_is_int else ''))
     f.write('    if abs(res.cpg_info.obj_val) == 1e30:\n')
     f.write('        prob._value = np.sign(res.cpg_info.obj_val)*np.inf\n')
     f.write('    else:\n')
@@ -1548,12 +1521,7 @@ def replace_html_data(text, configuration, variable_info, dual_variable_info, pa
 
     # solver name and docu
     text = text.replace('$CPGSOLVERNAME', configuration.solver_name)
-    if configuration.solver_name == 'OSQP':
-        text = text.replace('$CPGSOLVERDOCUURL', 'https://osqp.org/docs/codegen/python.html')
-    elif configuration.solver_name == 'SCS':
-        text = text.replace('$CPGSOLVERDOCUURL', 'https://www.cvxgrp.org/scs/api/c.html')
-    elif configuration.solver_name == 'ECOS':
-        text = text.replace('$CPGSOLVERDOCUURL', 'https://github.com/embotech/ecos/wiki/Usage-from-C')
+    text = text.replace('$CPGSOLVERDOCUURL', solver_interface.docu)
 
     # CMake prefix
     text = text.replace('$CPGCMAKELISTS', configuration.prefix+'cpg')
@@ -1591,10 +1559,7 @@ def replace_html_data(text, configuration, variable_info, dual_variable_info, pa
     CPGINFOTYPEDEF += 'typedef struct {\n'
     CPGINFOTYPEDEF += '  c_float    obj_val;    // Objective function value\n'
     CPGINFOTYPEDEF += '  c_int      iter;       // Number of iterations\n'
-    if configuration.solver_name in ['OSQP', 'SCS']:
-        CPGINFOTYPEDEF += '  char       *status;    // Solver status\n'
-    elif configuration.solver_name == 'ECOS':
-        CPGINFOTYPEDEF += '  c_int      status;     // Solver status\n'
+    CPGINFOTYPEDEF += ('  %sstatus;     // Solver status\n' % ('c_int      ' if solver_interface.status_is_int else 'char       *'))
     CPGINFOTYPEDEF += '  c_float    pri_res;    // Primal residual\n'
     CPGINFOTYPEDEF += '  c_float    dua_res;    // Dual residual\n'
     CPGINFOTYPEDEF += '} CPG_Info_t;\n'

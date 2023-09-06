@@ -163,6 +163,9 @@ class OSQPInterface(SolverInterface):
     # solution vectors statically allocated
     sol_statically_allocated = True
 
+    # solver status as integer vs. string
+    status_is_int = False
+
     # solver settings
     settings_names = ['rho', 'max_iter', 'eps_abs', 'eps_rel', 'eps_prim_inf', 'eps_dual_inf',
                       'alpha', 'scaled_termination', 'check_termination', 'warm_start',
@@ -172,6 +175,9 @@ class OSQPInterface(SolverInterface):
     settings_enabled = [True, True, True, True, True, True, True, True, True, True,
                         False, False, False, False]
     settings_defaults = []
+
+    # docu
+    docu = 'https://osqp.org/docs/codegen/python.html'
 
     def __init__(self, data, p_prob, enable_settings):
         n_var = data['n_var']
@@ -279,6 +285,9 @@ class SCSInterface(SolverInterface):
     # solution vectors statically allocated
     sol_statically_allocated = True
 
+    # solver status as integer vs. string
+    status_is_int = False
+
     # solver settings
     settings_names = ['normalize', 'scale', 'adaptive_scale', 'rho_x', 'max_iters', 'eps_abs',
                       'eps_rel',
@@ -293,6 +302,9 @@ class SCSInterface(SolverInterface):
     settings_defaults = ['1', '0.1', '1', '1e-6', '1e5', '1e-4', '1e-4', '1e-7', '1.5', '0', '0',
                          '0', '0', '1',
                          'SCS_NULL', 'SCS_NULL']
+
+    # docu
+    docu = 'https://www.cvxgrp.org/scs/api/c.html'
 
     def __init__(self, data, p_prob, enable_settings):
         n_var = p_prob.x.size
@@ -388,12 +400,18 @@ class ECOSInterface(SolverInterface):
     # solution vectors statically allocated
     sol_statically_allocated = False
 
+    # solver status as integer vs. string
+    status_is_int = True
+
     # solver settings
     settings_names = ['feastol', 'abstol', 'reltol', 'feastol_inacc', 'abstol_inacc',
                       'reltol_inacc', 'maxit']
     settings_types = ['c_float', 'c_float', 'c_float', 'c_float', 'c_float', 'c_float', 'c_int']
     settings_enabled = [True, True, True, True, True, True, True]
     settings_defaults = ['1e-8', '1e-8', '1e-8', '1e-4', '5e-5', '5e-5', '100']
+
+    # docu
+    docu = 'https://github.com/embotech/ecos/wiki/Usage-from-C'
 
     def __init__(self, data, p_prob, enable_settings):
         n_var = p_prob.x.size

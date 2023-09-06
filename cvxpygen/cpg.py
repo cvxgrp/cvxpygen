@@ -330,7 +330,7 @@ def write_c_code(problem: cp.Problem, configuration: dict, variable_info: dict, 
         utils.write_canon_cmake(f, configuration)
     # binding module prototypes
     with open(os.path.join(configuration.code_dir, 'cpp', 'include', 'cpg_module.hpp'), 'w') as f:
-        utils.write_module_prot(f, configuration, parameter_info, variable_info, dual_variable_info)
+        utils.write_module_prot(f, configuration, parameter_info, variable_info, dual_variable_info, solver_interface)
     # binding module definition
     with open(os.path.join(configuration.code_dir, 'cpp', 'src', 'cpg_module.cpp'), 'w') as f:
         utils.write_module_def(f, configuration, variable_info, dual_variable_info, parameter_info, solver_interface)
@@ -342,7 +342,7 @@ def write_c_code(problem: cp.Problem, configuration: dict, variable_info: dict, 
         f.write(setup_data)
     # custom CVXPY solve method
     with open(os.path.join(configuration.code_dir, 'cpg_solver.py'), 'w') as f:
-        utils.write_method(f, configuration, variable_info, dual_variable_info, parameter_info)
+        utils.write_method(f, configuration, variable_info, dual_variable_info, parameter_info, solver_interface)
     # serialize problem formulation
     with open(os.path.join(configuration.code_dir, 'problem.pickle'), 'wb') as f:
         pickle.dump(cp.Problem(problem.objective, problem.constraints), f)
