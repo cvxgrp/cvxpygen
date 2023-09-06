@@ -60,17 +60,17 @@ class SolverInterface(ABC):
 
     @property
     @abstractmethod
-    def settings_names(self):
+    def stgs_names(self):
         pass
 
     @property
     @abstractmethod
-    def settings_types(self):
+    def stgs_types(self):
         pass
 
     @property
     @abstractmethod
-    def settings_defaults(self):
+    def stgs_defaults(self):
         pass
 
     @staticmethod
@@ -82,10 +82,10 @@ class SolverInterface(ABC):
         return any([s == 1 for s in dual_variable_info.sizes])
 
     def configure_settings(self) -> None:
-        for i, s in enumerate(self.settings_names):
+        for i, s in enumerate(self.stgs_names):
             if s in self.enable_settings:
-                self.settings_enabled[i] = True
-        for s in set(self.enable_settings)-set(self.settings_names):
+                self.stgs_enabled[i] = True
+        for s in set(self.enable_settings)-set(self.stgs_names):
             warnings.warn('Cannot enable setting %s for solver %s' % (s, self.solver_name))
 
     def get_affine_map(self, p_id, param_prob, constraint_info: ConstraintInfo) -> AffineMap:
@@ -125,17 +125,17 @@ class SolverInterface(ABC):
         return affine_map
 
     @property
-    def settings_names_enabled(self):
-        return [name for name, enabled in zip(self.settings_names, self.settings_enabled) if enabled]
+    def stgs_names_enabled(self):
+        return [name for name, enabled in zip(self.stgs_names, self.stgs_enabled) if enabled]
 
     @property
-    def settings_names_to_type(self):
-        return {name: typ for name, typ, enabled in zip(self.settings_names, self.settings_types, self.settings_enabled)
+    def stgs_names_to_type(self):
+        return {name: typ for name, typ, enabled in zip(self.stgs_names, self.stgs_types, self.stgs_enabled)
                 if enabled}
 
     @property
-    def settings_names_to_default(self):
-        return {name: typ for name, typ, enabled in zip(self.settings_names, self.settings_defaults, self.settings_enabled)
+    def stgs_names_to_default(self):
+        return {name: typ for name, typ, enabled in zip(self.stgs_names, self.stgs_defaults, self.stgs_enabled)
                 if enabled}
 
     @staticmethod
@@ -170,14 +170,17 @@ class OSQPInterface(SolverInterface):
     numeric_types = {'float': 'c_float', 'int': 'c_int'}
 
     # solver settings
-    settings_names = ['rho', 'max_iter', 'eps_abs', 'eps_rel', 'eps_prim_inf', 'eps_dual_inf',
+    stgs_statically_allocated = True
+    stgs_set_function = {'name': 'osqp_update_%s', 'ptr_name': 'workspace'}
+    stgs_reset_function = {'name': 'osqp_set_default_settings', 'ptr_name': 'settings'}
+    stgs_names = ['rho', 'max_iter', 'eps_abs', 'eps_rel', 'eps_prim_inf', 'eps_dual_inf',
                       'alpha', 'scaled_termination', 'check_termination', 'warm_start',
                       'verbose', 'polish', 'polish_refine_iter', 'delta']
-    settings_types = ['cpg_float', 'cpg_int', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float',
+    stgs_types = ['cpg_float', 'cpg_int', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float',
                       'cpg_int', 'cpg_int', 'cpg_int', 'cpg_int', 'cpg_int', 'cpg_int', 'cpg_float']
-    settings_enabled = [True, True, True, True, True, True, True, True, True, True,
+    stgs_enabled = [True, True, True, True, True, True, True, True, True, True,
                         False, False, False, False]
-    settings_defaults = []
+    stgs_defaults = []
 
     # docu
     docu = 'https://osqp.org/docs/codegen/python.html'
@@ -295,17 +298,20 @@ class SCSInterface(SolverInterface):
     numeric_types = {'float': 'scs_float', 'int': 'scs_int'}
 
     # solver settings
-    settings_names = ['normalize', 'scale', 'adaptive_scale', 'rho_x', 'max_iters', 'eps_abs',
+    stgs_statically_allocated = False
+    stgs_set_function = None
+    stgs_reset_function = {'name': 'scs_set_default_settings', 'ptr_name': None} # set 'ptr_name' to None if stgs not statically allocated in solver code
+    stgs_names = ['normalize', 'scale', 'adaptive_scale', 'rho_x', 'max_iters', 'eps_abs',
                       'eps_rel',
                       'eps_infeas', 'alpha', 'time_limit_secs', 'verbose', 'warm_start',
                       'acceleration_lookback',
                       'acceleration_interval', 'write_data_filename', 'log_csv_filename']
-    settings_types = ['cpg_int', 'cpg_float', 'cpg_int', 'cpg_float', 'cpg_int', 'cpg_float', 'cpg_float',
+    stgs_types = ['cpg_int', 'cpg_float', 'cpg_int', 'cpg_float', 'cpg_int', 'cpg_float', 'cpg_float',
                       'cpg_float', 'cpg_float',
                       'cpg_float', 'cpg_int', 'cpg_int', 'cpg_int', 'cpg_int', 'const char*', 'const char*']
-    settings_enabled = [True, True, True, True, True, True, True, True, True, True, True, True,
+    stgs_enabled = [True, True, True, True, True, True, True, True, True, True, True, True,
                         True, True, True, True]
-    settings_defaults = ['1', '0.1', '1', '1e-6', '1e5', '1e-4', '1e-4', '1e-7', '1.5', '0', '0',
+    stgs_defaults = ['1', '0.1', '1', '1e-6', '1e5', '1e-4', '1e-4', '1e-7', '1.5', '0', '0',
                          '0', '0', '1',
                          'SCS_NULL', 'SCS_NULL']
 
@@ -413,11 +419,14 @@ class ECOSInterface(SolverInterface):
     numeric_types = {'float': 'double', 'int': 'int'}
 
     # solver settings
-    settings_names = ['feastol', 'abstol', 'reltol', 'feastol_inacc', 'abstol_inacc',
+    stgs_statically_allocated = False
+    stgs_set_function = None
+    stgs_reset_function = None
+    stgs_names = ['feastol', 'abstol', 'reltol', 'feastol_inacc', 'abstol_inacc',
                       'reltol_inacc', 'maxit']
-    settings_types = ['cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_int']
-    settings_enabled = [True, True, True, True, True, True, True]
-    settings_defaults = ['1e-8', '1e-8', '1e-8', '1e-4', '5e-5', '5e-5', '100']
+    stgs_types = ['cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_int']
+    stgs_enabled = [True, True, True, True, True, True, True]
+    stgs_defaults = ['1e-8', '1e-8', '1e-8', '1e-4', '5e-5', '5e-5', '100']
 
     # docu
     docu = 'https://github.com/embotech/ecos/wiki/Usage-from-C'

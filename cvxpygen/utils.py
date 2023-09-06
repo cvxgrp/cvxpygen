@@ -535,11 +535,10 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
         write_struct_def(f, scs_k_fields, scs_k_casts, scs_k_values, '%sScs_K' % configuration.prefix, 'ScsCone')
 
         f.write('\n// Struct containing SCS settings\n')
-        scs_stgs_fields = list(solver_interface.settings_names_to_default.keys())
+        scs_stgs_fields = list(solver_interface.stgs_names_to_default.keys())
         scs_stgs_casts = ['']*len(scs_stgs_fields)
-        scs_stgs_values = list(solver_interface.settings_names_to_default.values())
-        write_struct_def(f, scs_stgs_fields, scs_stgs_casts, scs_stgs_values, '%sScs_Stgs'
-                         % configuration.prefix, 'ScsSettings')
+        scs_stgs_values = list(solver_interface.stgs_names_to_default.values())
+        write_struct_def(f, scs_stgs_fields, scs_stgs_casts, scs_stgs_values, configuration.prefix + 'Canon_Settings', 'ScsSettings')
 
         f.write('\n// SCS solution\n')
         write_vec_def(f, np.zeros(solver_interface.canon_constants['n']), '%sscs_x' % configuration.prefix, 'cpg_float')
@@ -572,7 +571,7 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
 
         f.write('\n// Struct containing solver settings\n')
         f.write('Canon_Settings_t %sCanon_Settings = {\n' % configuration.prefix)
-        for name, default in solver_interface.settings_names_to_default.items():
+        for name, default in solver_interface.stgs_names_to_default.items():
             f.write('.%s = %s,\n' % (name, default))
         f.write('};\n')
         if solver_interface.canon_constants['n_cones'] > 0:
@@ -685,7 +684,7 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
     if configuration.solver_name == 'ECOS':
         f.write('// Solver settings\n')
         f.write('typedef struct {\n')
-        for name, typ in solver_interface.settings_names_to_type.items():
+        for name, typ in solver_interface.stgs_names_to_type.items():
             f.write('  %s%s;\n' % (typ.ljust(11), name))
         f.write('} Canon_Settings_t;\n\n')
 
@@ -759,7 +758,7 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
         f.write('\n// Struct containing SCS cone data\n')
         write_struct_prot(f, '%sScs_K' % configuration.prefix, 'ScsCone')
         f.write('\n// Struct containing SCS settings\n')
-        write_struct_prot(f, '%sScs_Stgs' % configuration.prefix, 'ScsSettings')
+        write_struct_prot(f, configuration.prefix + 'Canon_Settings', 'ScsSettings')
         f.write('\n// SCS solution\n')
         write_vec_prot(f, np.zeros(solver_interface.canon_constants['n']), '%sscs_x' % configuration.prefix,
                                     'cpg_float')
@@ -776,7 +775,7 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
 
     if configuration.solver_name == 'ECOS':
         f.write('\n// Struct containing solver settings\n')
-        write_struct_prot(f, '%sCanon_Settings' % configuration.prefix, 'Canon_Settings_t')
+        write_struct_prot(f, configuration.prefix + 'Canon_Settings', 'Canon_Settings_t')
         if solver_interface.canon_constants['n_cones'] > 0:
             f.write('\n// ECOS array of SOC dimensions\n')
             write_vec_prot(f, solver_interface.canon_constants['q'], '%secos_q' % configuration.prefix, 'cpg_int')
@@ -1007,7 +1006,7 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
     elif configuration.solver_name == 'SCS':
         f.write('  // Solve with SCS\n')
         f.write('  if (!%sScs_Work || %sCanon_Outdated.A) {\n' % (configuration.prefix, configuration.prefix))
-        f.write('    %sScs_Work = scs_init(&%sScs_D, &%sScs_K, &%sScs_Stgs);\n' %
+        f.write('    %sScs_Work = scs_init(&%sScs_D, &%sScs_K, &%sCanon_Settings);\n' %
                 (configuration.prefix, configuration.prefix, configuration.prefix, configuration.prefix))
         f.write('  } else if (%sCanon_Outdated.b && %sCanon_Outdated.c) {\n' % (configuration.prefix, configuration.prefix))
         f.write('    scs_update(%sScs_Work, %sCanon_Params.b, %sCanon_Params.c);\n' %
@@ -1019,12 +1018,12 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
         f.write('    scs_update(%sScs_Work, SCS_NULL, %sCanon_Params.c);\n' %
                 (configuration.prefix, configuration.prefix))
         f.write('  }\n')
-        f.write('  scs_solve(%sScs_Work, &%sScs_Sol, &%sScs_Info, (%sScs_Work && %sScs_Stgs.warm_start));\n' %
+        f.write('  scs_solve(%sScs_Work, &%sScs_Sol, &%sScs_Info, (%sScs_Work && %sCanon_Settings.warm_start));\n' %
                 (configuration.prefix, configuration.prefix, configuration.prefix, configuration.prefix, configuration.prefix))
     elif configuration.solver_name == 'ECOS':
         f.write('  // Initialize / update ECOS workspace and settings\n')
         write_ecos_setup_update(f, solver_interface.canon_constants, configuration.prefix)
-        for name in solver_interface.settings_names_to_type.keys():
+        for name in solver_interface.stgs_names_to_type.keys():
             f.write('  %secos_workspace->stgs->%s = %sCanon_Settings.%s;\n'
                     % (configuration.prefix, name, configuration.prefix, name))
         f.write('  // Solve with ECOS\n')
@@ -1045,21 +1044,21 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
 
     f.write('// Update solver settings\n')
     f.write('void %scpg_set_solver_default_settings(){\n' % configuration.prefix)
-    if configuration.solver_name == 'OSQP':
-        f.write('  osqp_set_default_settings(&settings);\n')
-    elif configuration.solver_name == 'SCS':
-        f.write('  scs_set_default_settings(&%sScs_Stgs);\n' % configuration.prefix)
-    elif configuration.solver_name == 'ECOS':
-        for name, value in solver_interface.settings_names_to_default.items():
+    if solver_interface.stgs_reset_function is not None:
+        f.write('  %s(&%s);\n' % (
+            solver_interface.stgs_reset_function['name'],
+            solver_interface.stgs_reset_function['ptr_name'] if solver_interface.stgs_reset_function['ptr_name'] is not None else configuration.prefix + 'Canon_Settings'))
+    else:
+        for name, value in solver_interface.stgs_names_to_default.items():
             f.write('  %sCanon_Settings.%s = %s;\n' % (configuration.prefix, name, value))
     f.write('}\n')
-    for name, typ in solver_interface.settings_names_to_type.items():
+    for name, typ in solver_interface.stgs_names_to_type.items():
         f.write('\nvoid %scpg_set_solver_%s(%s %s_new){\n' % (configuration.prefix, name, typ, name))
-        if configuration.solver_name == 'OSQP':
-            f.write('  osqp_update_%s(&workspace, %s_new);\n' % (name, name))
-        elif configuration.solver_name == 'SCS':
-            f.write('  %sScs_Stgs.%s = %s_new;\n' % (configuration.prefix, name, name))
-        elif configuration.solver_name == 'ECOS':
+        if solver_interface.stgs_set_function is not None:
+            f.write('  %s(&%s, %%s_new);\n' % (
+                solver_interface.stgs_set_function['name'],
+                solver_interface.stgs_set_function['ptr_name']) % (name, name))
+        else:
             f.write('  %sCanon_Settings.%s = %s_new;\n' % (configuration.prefix, name, name))
         f.write('}\n')
 
@@ -1100,7 +1099,7 @@ def write_solve_prot(f, configuration, variable_info, dual_variable_info, parame
 
     f.write('\n// Update solver settings\n')
     f.write('extern void %scpg_set_solver_default_settings();\n' % configuration.prefix)
-    for name, typ in solver_interface.settings_names_to_type.items():
+    for name, typ in solver_interface.stgs_names_to_type.items():
         f.write('extern void %scpg_set_solver_%s(%s %s_new);\n' % (configuration.prefix, name, typ, name))
 
 
@@ -1113,7 +1112,7 @@ def write_example_def(f, configuration, variable_info, dual_variable_info, param
     f.write('#include <stdio.h>\n')
     f.write('#include "cpg_workspace.h"\n')
     f.write('#include "cpg_solve.h"\n\n')
-    f.write('static cpg_int i;\n\n')
+    f.write('static int i;\n\n')
 
     f.write('int main(int argc, char *argv[]){\n\n')
 
@@ -1131,11 +1130,6 @@ def write_example_def(f, configuration, variable_info, dual_variable_info, param
     f.write('  printf("obj = %%f\\n", %sCPG_Result.info->obj_val);\n\n' % configuration.prefix)
 
     f.write('  // Print primal solution\n')
-
-    if configuration.solver_name == 'OSQP':
-        int_format_str = 'lld'
-    else:
-        int_format_str = 'd'
 
     for name, var in variable_info.name_to_init.items():
         if is_mathematical_scalar(var):
@@ -1331,7 +1325,7 @@ def write_module_def(f, configuration, variable_info, dual_variable_info, parame
     f.write('    m.def("solve", &%ssolve_cpp);\n\n' % configuration.prefix)
 
     f.write('    m.def("set_solver_default_settings", &%scpg_set_solver_default_settings);\n' % configuration.prefix)
-    for name in solver_interface.settings_names_to_type.keys():
+    for name in solver_interface.stgs_names_to_type.keys():
         f.write('    m.def("set_solver_%s", &%scpg_set_solver_%s);\n' % (name, configuration.prefix, name))
 
     f.write('\n}\n')
@@ -1640,6 +1634,6 @@ def replace_html_data(text, configuration, variable_info, dual_variable_info, pa
     text = text.replace('$CPGSETTINGSDECLARATIONS', CPGSETTINGSDECLARATIONS)
 
     # settings list
-    CPGSETTINGSLIST = ', '.join([('<code>%s</code>' % s) for s in solver_interface.settings_names_enabled])
+    CPGSETTINGSLIST = ', '.join([('<code>%s</code>' % s) for s in solver_interface.stgs_names_enabled])
 
     return text.replace('$CPGSETTINGSLIST', CPGSETTINGSLIST)
