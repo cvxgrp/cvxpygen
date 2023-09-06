@@ -377,14 +377,14 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
     f.write('};\n\n')
 
     prim_cast = []
-    if any(variable_info.name_to_sym) or configuration.solver_name == 'ECOS':
+    if any(variable_info.name_to_sym) or not solver_interface.sol_statically_allocated:
         f.write('// User-defined variables\n')
     for name, value in variable_info.name_to_init.items():
         if is_mathematical_scalar(value):
             prim_cast.append('')
         else:
             prim_cast.append('(c_float *) ')
-            if variable_info.name_to_sym[name] or configuration.solver_name == 'ECOS':
+            if variable_info.name_to_sym[name] or not solver_interface.sol_statically_allocated:
                 osqp_utils.write_vec(f, value.flatten(order='F'), configuration.prefix + name, 'c_float')
                 f.write('\n')
 
@@ -396,7 +396,7 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
         if is_mathematical_scalar(var):
             CPG_Prim_values.append('0')
         else:
-            if variable_info.name_to_sym[name] or configuration.solver_name == 'ECOS':
+            if variable_info.name_to_sym[name] or not solver_interface.sol_statically_allocated:
                 CPG_Prim_values.append('&' + configuration.prefix + name)
             else:
                 if configuration.solver_name == 'OSQP':
@@ -407,14 +407,14 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
 
     if len(dual_variable_info.name_to_init) > 0:
         dual_cast = []
-        if configuration.solver_name == 'ECOS':
+        if not solver_interface.sol_statically_allocated:
             f.write('\n// Dual variables associated with user-defined constraints\n')
         for name, value in dual_variable_info.name_to_init.items():
             if is_mathematical_scalar(value):
                 dual_cast.append('')
             else:
                 dual_cast.append('(c_float *) ')
-                if configuration.solver_name == 'ECOS':
+                if not solver_interface.sol_statically_allocated:
                     osqp_utils.write_vec(f, value.flatten(order='F'), configuration.prefix + name, 'c_float')
                     f.write('\n')
 
@@ -687,15 +687,15 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
     f.write('\n// Struct containing flags for outdated canonical parameters\n')
     f.write('extern Canon_Outdated_t %sCanon_Outdated;\n' % configuration.prefix)
 
-    if any(variable_info.name_to_sym.values()) or configuration.solver_name == 'ECOS':
+    if any(variable_info.name_to_sym.values()) or not solver_interface.sol_statically_allocated:
         f.write('\n// User-defined variables\n')
         for name, value in variable_info.name_to_init.items():
-            if variable_info.name_to_sym[name] or configuration.solver_name == 'ECOS':
+            if variable_info.name_to_sym[name] or not solver_interface.sol_statically_allocated:
                 if not is_mathematical_scalar(value):
                     osqp_utils.write_vec_extern(f, value.flatten(order='F'), configuration.prefix+'cpg_'+name,
                                                 'c_float')
 
-    if configuration.solver_name == 'ECOS':
+    if not solver_interface.sol_statically_allocated:
         f.write('\n// Dual variables associated with user-defined constraints\n')
         for name, value in dual_variable_info.name_to_init.items():
             if not is_mathematical_scalar(value):
@@ -833,7 +833,7 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
         for var_name, indices in variable_info.name_to_indices.items():
             if len(indices) == 1:
                 f.write('  %sCPG_Prim.%s = %s[%d];\n' % (configuration.prefix, var_name, prim_str, indices))
-            elif variable_info.name_to_sym[var_name] or configuration.solver_name == 'ECOS':
+            elif variable_info.name_to_sym[var_name] or not solver_interface.sol_statically_allocated:
                 for i, idx in enumerate(indices):
                     f.write('  %sCPG_Prim.%s[%d] = %s[%d];\n' % (configuration.prefix, var_name, i, prim_str, idx))
         f.write('}\n\n')
@@ -844,7 +844,7 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
         for var_name, (vector, indices) in dual_variable_info.name_to_indices.items():
             if len(indices) == 1:
                 f.write('  %sCPG_Dual.%s = %s%s[%d];\n' % (configuration.prefix, var_name, dual_str, vector, indices))
-            elif configuration.solver_name == 'ECOS':
+            elif not solver_interface.sol_statically_allocated:
                 for i, idx in enumerate(indices):
                     f.write('  %sCPG_Dual.%s[%d] = %s%s[%d];\n'
                             % (configuration.prefix, var_name, i, dual_str, vector, idx))

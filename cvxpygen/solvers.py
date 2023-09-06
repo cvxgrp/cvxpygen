@@ -160,6 +160,9 @@ class OSQPInterface(SolverInterface):
     # preconditioning of problem data happening in-memory
     inmemory_preconditioning = False
 
+    # solution vectors statically allocated
+    sol_statically_allocated = True
+
     # solver settings
     settings_names = ['rho', 'max_iter', 'eps_abs', 'eps_rel', 'eps_prim_inf', 'eps_dual_inf',
                       'alpha', 'scaled_termination', 'check_termination', 'warm_start',
@@ -273,6 +276,9 @@ class SCSInterface(SolverInterface):
     # preconditioning of problem data happening in-memory
     inmemory_preconditioning = False
 
+    # solution vectors statically allocated
+    sol_statically_allocated = True
+
     # solver settings
     settings_names = ['normalize', 'scale', 'adaptive_scale', 'rho_x', 'max_iters', 'eps_abs',
                       'eps_rel',
@@ -378,6 +384,9 @@ class ECOSInterface(SolverInterface):
 
     # preconditioning of problem data happening in-memory
     inmemory_preconditioning = True
+
+    # solution vectors statically allocated
+    sol_statically_allocated = False
 
     # solver settings
     settings_names = ['feastol', 'abstol', 'reltol', 'feastol_inacc', 'abstol_inacc',
