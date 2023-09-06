@@ -265,13 +265,12 @@ def write_ecos_setup_update(f, canon_constants, prefix):
     else:
         ecos_q_str = '(int *) &%secos_q' % prefix
 
-    f.write('  if (!initialized) {\n')
+    f.write('  if (!%secos_workspace) {\n' % prefix)
     f.write('    %secos_workspace = ECOS_setup(%d, %d, %d, %d, %d, %s, %d, '
             '%sCanon_Params_conditioning.G->x, %sCanon_Params_conditioning.G->p, %sCanon_Params_conditioning.G->i, '
             '%s, %s, %s, %sCanon_Params_conditioning.c, %sCanon_Params_conditioning.h, %s);\n' %
             (prefix, n, m, p, ell, n_cones, ecos_q_str, e, prefix, prefix, prefix, Ax_str, Ap_str, Ai_str,
              prefix, prefix, b_str))
-    f.write('    initialized = 1;\n')
     f.write('  } else {\n')
     f.write('    if (%sCanon_Outdated.G || %sCanon_Outdated.A || %sCanon_Outdated.b) {\n' % (prefix, prefix, prefix))
     f.write('      ECOS_updateData(%secos_workspace, %sCanon_Params_conditioning.G->x, %s, %sCanon_Params_conditioning.c, '
@@ -765,11 +764,8 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
         f.write('static c_int i;\n')
         f.write('static c_int j;\n')
 
-    if configuration.unroll and configuration.solver_name == 'ECOS':
+    if configuration.unroll and solver_interface.inmemory_preconditioning:
         f.write('static c_int i;\n')
-
-    if configuration.solver_name in ['SCS', 'ECOS']:
-        f.write('static c_int initialized = 0;\n')
 
     f.write('\n// Update user-defined parameters\n')
     if configuration.unroll:
@@ -975,10 +971,9 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
         f.write('  osqp_solve(&workspace);\n')
     elif configuration.solver_name == 'SCS':
         f.write('  // Solve with SCS\n')
-        f.write('  if (initialized == 0 || %sCanon_Outdated.A) {\n' % configuration.prefix)
+        f.write('  if (!%sScs_Work || %sCanon_Outdated.A) {\n' % (configuration.prefix, configuration.prefix))
         f.write('    %sScs_Work = scs_init(&%sScs_D, &%sScs_K, &%sScs_Stgs);\n' %
                 (configuration.prefix, configuration.prefix, configuration.prefix, configuration.prefix))
-        f.write('    initialized = 1;\n')
         f.write('  } else if (%sCanon_Outdated.b && %sCanon_Outdated.c) {\n' % (configuration.prefix, configuration.prefix))
         f.write('    scs_update(%sScs_Work, %sCanon_Params.b, %sCanon_Params.c);\n' %
                 (configuration.prefix, configuration.prefix, configuration.prefix))
@@ -989,8 +984,8 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
         f.write('    scs_update(%sScs_Work, SCS_NULL, %sCanon_Params.c);\n' %
                 (configuration.prefix, configuration.prefix))
         f.write('  }\n')
-        f.write('  scs_solve(%sScs_Work, &%sScs_Sol, &%sScs_Info, (initialized && %sScs_Stgs.warm_start));\n' %
-                (configuration.prefix, configuration.prefix, configuration.prefix, configuration.prefix))
+        f.write('  scs_solve(%sScs_Work, &%sScs_Sol, &%sScs_Info, (%sScs_Work && %sScs_Stgs.warm_start));\n' %
+                (configuration.prefix, configuration.prefix, configuration.prefix, configuration.prefix, configuration.prefix))
     elif configuration.solver_name == 'ECOS':
         f.write('  // Initialize / update ECOS workspace and settings\n')
         write_ecos_setup_update(f, solver_interface.canon_constants, configuration.prefix)
