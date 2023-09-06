@@ -76,3 +76,14 @@ class ConstraintInfo:
     n_data_constr_mat: int
     mapping_rows_eq: np.ndarray
     mapping_rows_ineq: np.ndarray
+
+
+@dataclass
+class ResultPointerInfo:
+    objective_value: str
+    iterations: str
+    status: str
+    primal_residual: str
+    dual_residual: str
+    primal_solution: str
+    dual_solution: str

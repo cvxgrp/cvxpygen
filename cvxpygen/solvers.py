@@ -9,7 +9,7 @@ import numpy as np
 
 from cvxpygen import utils
 from cvxpygen.mappings import PrimalVariableInfo, DualVariableInfo, ConstraintInfo, AffineMap, \
-    ParameterCanon
+    ParameterCanon, ResultPointerInfo
 
 
 def get_interface_class(solver_name: str) -> "SolverInterface":
@@ -160,6 +160,18 @@ class OSQPInterface(SolverInterface):
     # preconditioning of problem data happening in-memory
     inmemory_preconditioning = False
 
+    # workspace
+    ws_allocated_in_solver_code = True
+    result_ptrs = ResultPointerInfo(
+        objective_value = 'workspace.info->obj_val',
+        iterations = 'workspace.info->iter',
+        status = 'workspace.info->status',
+        primal_residual = 'workspace.info->pri_res',
+        dual_residual = 'workspace.info->dua_res',
+        primal_solution = 'xsolution', #'workspace.solution->x',
+        dual_solution = '%ssolution' #'workspace.solution->%s'
+    )
+
     # solution vectors statically allocated
     sol_statically_allocated = True
 
@@ -288,6 +300,18 @@ class SCSInterface(SolverInterface):
     # preconditioning of problem data happening in-memory
     inmemory_preconditioning = False
 
+    # workspace
+    ws_allocated_in_solver_code = False
+    result_ptrs = ResultPointerInfo(
+        objective_value = 'Scs_Info.pobj',
+        iterations = 'Scs_Info.iter',
+        status = 'Scs_Info.status',
+        primal_residual = 'Scs_Info.res_pri',
+        dual_residual = 'Scs_Info.res_dual',
+        primal_solution = 'scs_x',
+        dual_solution = 'scs_%s'
+    )
+
     # solution vectors statically allocated
     sol_statically_allocated = True
 
@@ -408,6 +432,18 @@ class ECOSInterface(SolverInterface):
 
     # preconditioning of problem data happening in-memory
     inmemory_preconditioning = True
+
+    # workspace
+    ws_allocated_in_solver_code = False
+    result_ptrs = ResultPointerInfo(
+        objective_value = 'ecos_workspace->info->pcost',
+        iterations = 'ecos_workspace->info->iter',
+        status = 'ecos_flag',
+        primal_residual = 'ecos_workspace->info->pres',
+        dual_residual = 'ecos_workspace->info->dres',
+        primal_solution = 'ecos_workspace->x',
+        dual_solution = 'ecos_workspace->%s'
+    )
 
     # solution vectors statically allocated
     sol_statically_allocated = False

@@ -434,6 +434,8 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
                 write_vec_def(f, value.flatten(order='F'), configuration.prefix + name, 'cpg_float')
                 f.write('\n')
 
+    result_prefix = configuration.prefix if not solver_interface.ws_allocated_in_solver_code else ''
+
     f.write('// Struct containing primal solution\n')
     CPG_Prim_fields = list(variable_info.name_to_init.keys())
     CPG_Prim_values = []
@@ -445,10 +447,7 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
             if variable_info.name_to_sym[name] or not solver_interface.sol_statically_allocated:
                 CPG_Prim_values.append('&' + configuration.prefix + name)
             else:
-                if configuration.solver_name == 'OSQP':
-                    CPG_Prim_values.append('&xsolution + %d' % offset)
-                elif configuration.solver_name == 'SCS':
-                    CPG_Prim_values.append('&%sscs_x + %d' % (configuration.prefix, offset))
+                CPG_Prim_values.append('&%s%s + %d' % (result_prefix, solver_interface.result_ptrs.primal_solution, offset))
     write_struct_def(f, CPG_Prim_fields, prim_cast, CPG_Prim_values, '%sCPG_Prim' % configuration.prefix, 'CPG_Prim_t')
 
     if len(dual_variable_info.name_to_init) > 0:
@@ -473,12 +472,10 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
             if is_mathematical_scalar(var):
                 CPG_Dual_values.append('0')
             else:
-                if configuration.solver_name == 'OSQP':
-                    CPG_Dual_values.append('&%ssolution + %d' % (vec, offset))
-                elif configuration.solver_name == 'SCS':
-                    CPG_Dual_values.append('&%sscs_%s + %d' % (configuration.prefix, vec, offset))
-                else:
+                if not solver_interface.sol_statically_allocated:
                     CPG_Dual_values.append('&' + configuration.prefix + name)
+                else:
+                    CPG_Dual_values.append('&%s%s + %d' % (result_prefix, solver_interface.result_ptrs.dual_solution, offset) % vec)
         write_struct_def(f, CPG_Dual_fields, dual_cast, CPG_Dual_values, '%sCPG_Dual' % configuration.prefix,
                          'CPG_Dual_t')
 
@@ -842,20 +839,9 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
                 write_canonicalize(f, p_id, s, mapping, configuration.prefix)
             f.write('}\n\n')
 
-    if configuration.solver_name == 'OSQP':
-        obj_str = 'workspace.info->obj_val'
-        prim_str = 'workspace.solution->x'
-        dual_str = 'workspace.solution->'
-    elif configuration.solver_name == 'SCS':
-        obj_str = '%sScs_Info.pobj' % configuration.prefix
-        prim_str = '%sscs_x' % configuration.prefix
-        dual_str = '%sscs_' % configuration.prefix
-    elif configuration.solver_name == 'ECOS':
-        obj_str = '%secos_workspace->info->pcost' % configuration.prefix
-        prim_str = '%secos_workspace->x' % configuration.prefix
-        dual_str = '%secos_workspace->' % configuration.prefix
-    else:
-        raise ValueError("Only OSQP and ECOS are supported!")
+    result_prefix = configuration.prefix if not solver_interface.ws_allocated_in_solver_code else ''
+    prim_str = result_prefix + solver_interface.result_ptrs.primal_solution
+    dual_str = result_prefix + solver_interface.result_ptrs.dual_solution
 
     if solver_interface.ret_prim_func_exists(variable_info):
         f.write('// Retrieve primal solution in terms of user-defined variables\n')
@@ -871,42 +857,27 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
     if solver_interface.ret_dual_func_exists(dual_variable_info):
         f.write('// Retrieve dual solution in terms of user-defined constraints\n')
         f.write('void %scpg_retrieve_dual(){\n' % configuration.prefix)
-        for var_name, (vector, indices) in dual_variable_info.name_to_indices.items():
+        for var_name, (canonical_var_name, indices) in dual_variable_info.name_to_indices.items():
             if len(indices) == 1:
-                f.write('  %sCPG_Dual.%s = %s%s[%d];\n' % (configuration.prefix, var_name, dual_str, vector, indices))
+                f.write('  %sCPG_Dual.%s = %s[%d];\n' % (configuration.prefix, var_name, dual_str, indices) % canonical_var_name)
             elif not solver_interface.sol_statically_allocated:
                 for i, idx in enumerate(indices):
-                    f.write('  %sCPG_Dual.%s[%d] = %s%s[%d];\n'
-                            % (configuration.prefix, var_name, i, dual_str, vector, idx))
+                    f.write('  %sCPG_Dual.%s[%d] = %s[%d];\n'
+                            % (configuration.prefix, var_name, i, dual_str, idx) % canonical_var_name)
         f.write('}\n\n')
 
     f.write('// Retrieve solver info\n')
     f.write('void %scpg_retrieve_info(){\n' % configuration.prefix)
-    if parameter_canon.nonzero_d:
-        d_str = ' + %sCanon_Params.d' % configuration.prefix
-    else:
-        d_str = ''
-    if parameter_canon.is_maximization:
-        f.write('  %sCPG_Info.obj_val = -(%s%s);\n' % (configuration.prefix, obj_str, d_str))
-    else:
-        f.write('  %sCPG_Info.obj_val = %s%s;\n' % (configuration.prefix, obj_str, d_str))
-    if configuration.solver_name == 'OSQP':
-        f.write('  %sCPG_Info.iter = workspace.info->iter;\n' % configuration.prefix)
-        f.write('  %sCPG_Info.status = workspace.info->status;\n' % configuration.prefix)
-        f.write('  %sCPG_Info.pri_res = workspace.info->pri_res;\n' % configuration.prefix)
-        f.write('  %sCPG_Info.dua_res = workspace.info->dua_res;\n' % configuration.prefix)
-    elif configuration.solver_name == 'SCS':
-        f.write('  %sCPG_Info.iter = %sScs_Info.iter;\n' % (configuration.prefix, configuration.prefix))
-        f.write('  %sCPG_Info.status = %sScs_Info.status;\n' % (configuration.prefix, configuration.prefix))
-        f.write('  %sCPG_Info.pri_res = %sScs_Info.res_pri;\n' % (configuration.prefix, configuration.prefix))
-        f.write('  %sCPG_Info.dua_res = %sScs_Info.res_dual;\n' % (configuration.prefix, configuration.prefix))
-    elif configuration.solver_name == 'ECOS':
-        f.write('  %sCPG_Info.iter = %secos_workspace->info->iter;\n' % (configuration.prefix, configuration.prefix))
-        f.write('  %sCPG_Info.status = %secos_flag;\n' % (configuration.prefix, configuration.prefix))
-        f.write('  %sCPG_Info.pri_res = %secos_workspace->info->pres;\n'
-                % (configuration.prefix, configuration.prefix))
-        f.write('  %sCPG_Info.dua_res = %secos_workspace->info->dres;\n'
-                % (configuration.prefix, configuration.prefix))
+    f.write('  %sCPG_Info.obj_val = %s(%s%s%s);\n' % (
+        configuration.prefix,
+        '-' if parameter_canon.is_maximization else '',
+        result_prefix,
+        solver_interface.result_ptrs.objective_value,
+        ' + %sCanon_Params.d' % configuration.prefix if parameter_canon.nonzero_d else ''))
+    f.write('  %sCPG_Info.iter = %s%s;\n' % (configuration.prefix, result_prefix, solver_interface.result_ptrs.iterations))
+    f.write('  %sCPG_Info.status = %s%s;\n' % (configuration.prefix, result_prefix, solver_interface.result_ptrs.status))
+    f.write('  %sCPG_Info.pri_res = %s%s;\n' % (configuration.prefix, result_prefix, solver_interface.result_ptrs.primal_residual))
+    f.write('  %sCPG_Info.dua_res = %s%s;\n' % (configuration.prefix, result_prefix, solver_interface.result_ptrs.dual_residual))
     f.write('}\n\n')
 
     f.write('// Solve via canonicalization, canonical solve, retrieval\n')
@@ -1136,8 +1107,8 @@ def write_example_def(f, configuration, variable_info, dual_variable_info, param
             f.write('  printf("%s = %%f\\n", %sCPG_Result.prim->%s);\n' % (name, configuration.prefix, name))
         else:
             f.write('  for(i=0; i<%d; i++) {\n' % var.size)
-            f.write('    printf("%s[%%%s] = %%f\\n", i, %sCPG_Result.prim->%s[i]);\n'
-                    % (name, int_format_str, configuration.prefix, name))
+            f.write('    printf("%s[%%d] = %%f\\n", i, %sCPG_Result.prim->%s[i]);\n'
+                    % (name, configuration.prefix, name))
             f.write('  }\n')
 
     if len(dual_variable_info.name_to_init) > 0:
@@ -1147,8 +1118,8 @@ def write_example_def(f, configuration, variable_info, dual_variable_info, param
             f.write('  printf("%s = %%f\\n", %sCPG_Result.dual->%s);\n' % (name, configuration.prefix, name))
         else:
             f.write('  for(i=0; i<%d; i++) {\n' % var.size)
-            f.write('    printf("%s[%%%s] = %%f\\n", i, %sCPG_Result.dual->%s[i]);\n'
-                    % (name, int_format_str, configuration.prefix, name))
+            f.write('    printf("%s[%%d] = %%f\\n", i, %sCPG_Result.dual->%s[i]);\n'
+                    % (name, configuration.prefix, name))
             f.write('  }\n')
 
     f.write('\n  return 0;\n\n')
