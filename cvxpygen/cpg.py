@@ -58,6 +58,9 @@ def generate_code(problem, code_dir='CPG_code', solver=None, enable_settings=[],
     solver_name = solving_chain.solver.name()
     interface_class = get_interface_class(solver_name)
 
+    # configuration
+    configuration = get_configuration(code_dir, solver, unroll, prefix)
+
     # for cone problems, check if all cones are supported
     if hasattr(param_prob, 'cone_dims'):
         cone_dims = param_prob.cone_dims
@@ -91,9 +94,6 @@ def generate_code(problem, code_dir='CPG_code', solver=None, enable_settings=[],
     parameter_canon.user_p_name_to_canon_outdated = {
         user_p_name: [solver_interface.canon_p_ids[j] for j in np.nonzero(adjacency[:, i])[0]]
         for i, user_p_name in enumerate(parameter_info.names)}
-
-    # configuration
-    configuration = get_configuration(code_dir, solver, unroll, prefix)
 
     write_c_code(problem, configuration, variable_info, dual_variable_info, parameter_info,
                  parameter_canon, solver_interface)

@@ -79,7 +79,7 @@ class ConstraintInfo:
 
 
 @dataclass
-class ResultPointerInfo:
+class WorkspacePointerInfo:
     objective_value: str
     iterations: str
     status: str
@@ -87,3 +87,19 @@ class ResultPointerInfo:
     dual_residual: str
     primal_solution: str
     dual_solution: str
+    settings: str = None
+
+
+@dataclass
+class UpdatePendingLogic:
+    parameters_outdated: list[str]
+    operator: str = None
+    functions_if_false: list[str] = None
+    extra_condition: str = None
+    extra_condition_operator: str = None
+
+
+@dataclass
+class ParameterUpdateLogic:
+    update_pending_logic: UpdatePendingLogic
+    function_call: str

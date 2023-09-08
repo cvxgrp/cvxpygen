@@ -9,7 +9,7 @@ import numpy as np
 
 from cvxpygen.utils import replace_in_file, write_struct_prot, write_struct_def, write_vec_prot, write_vec_def
 from cvxpygen.mappings import PrimalVariableInfo, DualVariableInfo, ConstraintInfo, AffineMap, \
-    ParameterCanon, ResultPointerInfo
+    ParameterCanon, WorkspacePointerInfo, UpdatePendingLogic, ParameterUpdateLogic
 
 
 def get_interface_class(solver_name: str) -> "SolverInterface":
@@ -147,11 +147,9 @@ class SolverInterface(ABC):
                       parameter_canon: ParameterCanon) -> None:
         pass
 
-    @staticmethod
     def declare_workspace(self, f, prefix) -> None:
         pass
 
-    @staticmethod
     def define_workspace(self, f, prefix) -> None:
         pass
 
@@ -161,6 +159,37 @@ class OSQPInterface(SolverInterface):
     canon_p_ids = ['P', 'q', 'd', 'A', 'l', 'u']
     canon_p_ids_constr_vec = ['l', 'u']
     sign_constr_vec = -1
+    parameter_update_structure = {
+        'PA': ParameterUpdateLogic(
+            update_pending_logic = UpdatePendingLogic(['P', 'A'], '&&', ['P', 'A']),
+            function_call = 'osqp_update_P_A(&workspace, {prefix}Canon_Params.P->x, 0, 0, {prefix}Canon_Params.A->x, 0, 0)',
+        ),
+        'P': ParameterUpdateLogic(
+            update_pending_logic = UpdatePendingLogic(['P']),
+            function_call = 'osqp_update_P(&workspace, {prefix}Canon_Params.P->x, 0, 0)'
+        ),
+        'A': ParameterUpdateLogic(
+            update_pending_logic = UpdatePendingLogic(['A']),
+            function_call = 'osqp_update_A(&workspace, {prefix}Canon_Params.A->x, 0, 0)'
+        ),
+        'q': ParameterUpdateLogic(
+            update_pending_logic = UpdatePendingLogic(['q']),
+            function_call = 'osqp_update_lin_cost(&workspace, {prefix}Canon_Params.q)'
+        ),
+        'lu': ParameterUpdateLogic(
+            update_pending_logic = UpdatePendingLogic(['l', 'u'], '&&', ['l', 'u']),
+            function_call = 'osqp_update_bounds(&workspace, {prefix}Canon_Params.l, {prefix}Canon_Params.u)',
+        ),
+        'l': ParameterUpdateLogic(
+            update_pending_logic = UpdatePendingLogic(['l']),
+            function_call = 'osqp_update_lower_bound(&workspace, {prefix}Canon_Params.l)'
+        ),
+        'u': ParameterUpdateLogic(
+            update_pending_logic = UpdatePendingLogic(['u']),
+            function_call = 'osqp_update_upper_bound(&workspace, {prefix}Canon_Params.u)'
+        )
+    }
+    solve_function_call = 'osqp_solve(&workspace)'
 
     # header and source files
     header_files = ['osqp.h', 'types.h', 'workspace.h']
@@ -171,15 +200,16 @@ class OSQPInterface(SolverInterface):
     inmemory_preconditioning = False
 
     # workspace
-    ws_allocated_in_solver_code = True
-    result_ptrs = ResultPointerInfo(
+    ws_statically_allocated_in_solver_code = True
+    ws_dynamically_allocated_in_solver_code = False
+    ws_ptrs = WorkspacePointerInfo(
         objective_value = 'workspace.info->obj_val',
         iterations = 'workspace.info->iter',
         status = 'workspace.info->status',
         primal_residual = 'workspace.info->pri_res',
         dual_residual = 'workspace.info->dua_res',
-        primal_solution = 'xsolution', #'workspace.solution->x',
-        dual_solution = '%ssolution' #'workspace.solution->%s'
+        primal_solution = 'xsolution',
+        dual_solution = '%ssolution'
     )
 
     # solution vectors statically allocated
@@ -303,6 +333,27 @@ class SCSInterface(SolverInterface):
     canon_p_ids = ['c', 'd', 'A', 'b']
     canon_p_ids_constr_vec = ['b']
     sign_constr_vec = 1
+    parameter_update_structure = {
+        'init': ParameterUpdateLogic(
+            update_pending_logic = UpdatePendingLogic(
+                ['A'], extra_condition = '!{prefix}Scs_Work', extra_condition_operator = '||', functions_if_false = ['bc']
+                ),
+            function_call = '{prefix}Scs_Work = scs_init(&{prefix}Scs_D, &{prefix}Scs_K, &{prefix}Canon_Settings)',
+        ),
+        'bc': ParameterUpdateLogic(
+            update_pending_logic = UpdatePendingLogic(['b', 'c'], '&&', ['b', 'c']),
+            function_call = 'scs_update({prefix}Scs_Work, {prefix}Canon_Params.b, {prefix}Canon_Params.c)'
+        ),
+        'b': ParameterUpdateLogic(
+            update_pending_logic = UpdatePendingLogic(['b']),
+            function_call = 'scs_update({prefix}Scs_Work, {prefix}Canon_Params.b, SCS_NULL)'
+        ),
+        'c': ParameterUpdateLogic(
+            update_pending_logic = UpdatePendingLogic(['c']),
+            function_call = 'scs_update({prefix}Scs_Work, SCS_NULL, {prefix}Canon_Params.c)'
+        )
+    }
+    solve_function_call = 'scs_solve({prefix}Scs_Work, &{prefix}Scs_Sol, &{prefix}Scs_Info, ({prefix}Scs_Work && {prefix}Canon_Settings.warm_start))'
 
     # header files
     header_files = ['scs.h']
@@ -323,8 +374,9 @@ class SCSInterface(SolverInterface):
     inmemory_preconditioning = False
 
     # workspace
-    ws_allocated_in_solver_code = False
-    result_ptrs = ResultPointerInfo(
+    ws_statically_allocated_in_solver_code = False
+    ws_dynamically_allocated_in_solver_code = False
+    ws_ptrs = WorkspacePointerInfo(
         objective_value = 'Scs_Info.pobj',
         iterations = 'Scs_Info.iter',
         status = 'Scs_Info.status',
@@ -532,6 +584,7 @@ class ECOSInterface(SolverInterface):
     canon_p_ids = ['c', 'd', 'A', 'b', 'G', 'h']
     canon_p_ids_constr_vec = ['b', 'h']
     sign_constr_vec = 1
+    solve_function_call = '{prefix}ecos_flag = ECOS_solve({prefix}ecos_workspace)'
 
     # header files
     header_files = ['ecos.h']
@@ -542,15 +595,17 @@ class ECOSInterface(SolverInterface):
     inmemory_preconditioning = True
 
     # workspace
-    ws_allocated_in_solver_code = False
-    result_ptrs = ResultPointerInfo(
+    ws_statically_allocated_in_solver_code = False
+    ws_dynamically_allocated_in_solver_code = True
+    ws_ptrs = WorkspacePointerInfo(
         objective_value = 'ecos_workspace->info->pcost',
         iterations = 'ecos_workspace->info->iter',
         status = 'ecos_flag',
         primal_residual = 'ecos_workspace->info->pres',
         dual_residual = 'ecos_workspace->info->dres',
         primal_solution = 'ecos_workspace->x',
-        dual_solution = 'ecos_workspace->%s'
+        dual_solution = 'ecos_workspace->%s',
+        settings = 'ecos_workspace->stgs->%s'
     )
 
     # solution vectors statically allocated
@@ -589,6 +644,43 @@ class ECOSInterface(SolverInterface):
                            'n_cones': len(p_prob.cone_dims.soc),
                            'q': np.array(p_prob.cone_dims.soc),
                            'e': p_prob.cone_dims.exp}
+
+        self.parameter_update_structure = {
+            'init': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic([], extra_condition = '!{prefix}ecos_workspace', functions_if_false = ['AbcGh']),
+                function_call = '{prefix}ecos_workspace = ECOS_setup(%d, %d, %d, %d, %d, %s, %d, '
+                '{prefix}Canon_Params_conditioning.G->x, {prefix}Canon_Params_conditioning.G->p, {prefix}Canon_Params_conditioning.G->i, '
+                '%s, %s, %s, {prefix}Canon_Params_conditioning.c, {prefix}Canon_Params_conditioning.h, %s)' % (
+                    canon_constants['n'],
+                    canon_constants['m'],
+                    canon_constants['p'],
+                    canon_constants['l'],
+                    canon_constants['n_cones'],
+                    '0' if canon_constants['n_cones'] == 0 else '(int *) &{prefix}ecos_q',
+                    canon_constants['e'],
+                    '0' if canon_constants['p'] == 0 else '{prefix}Canon_Params_conditioning.A->x',
+                    '0' if canon_constants['p'] == 0 else '{prefix}Canon_Params_conditioning.A->p',
+                    '0' if canon_constants['p'] == 0 else '{prefix}Canon_Params_conditioning.A->i',
+                    '0' if canon_constants['p'] == 0 else '{prefix}Canon_Params_conditioning.b'
+                    ),
+            ),
+            'AbcGh': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['A', 'b', 'G'], '||', ['c', 'h']),
+                function_call = 'ECOS_updateData({prefix}ecos_workspace, {prefix}Canon_Params_conditioning.G->x, %s, '
+                    '{prefix}Canon_Params_conditioning.c, {prefix}Canon_Params_conditioning.h, %s)' % (
+                        '0' if canon_constants['p'] == 0 else '{prefix}Canon_Params_conditioning.A->x',
+                        '0' if canon_constants['p'] == 0 else '{prefix}Canon_Params_conditioning.b'
+                        )
+            ),
+            'c': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['c']),
+                function_call = 'for (i=0; i<%d; i++) {{ ecos_updateDataEntry_c({prefix}ecos_workspace, i, {prefix}Canon_Params_conditioning.c[i]); }}' % canon_constants['n']
+            ),
+            'h': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['h']),
+                function_call = 'for (i=0; i<%d; i++) {{ ecos_updateDataEntry_h({prefix}ecos_workspace, i, {prefix}Canon_Params_conditioning.h[i]); }}' % canon_constants['m']
+            )
+        }
 
         super().__init__(self.solver_name, n_var, n_eq, n_ineq, indices_obj, indptr_obj, shape_obj,
                          indices_constr, indptr_constr, shape_constr, canon_constants, enable_settings)

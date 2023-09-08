@@ -288,53 +288,118 @@ def write_struct_prot(f, name, typ):
     f.write("extern %s %s;\n" % (typ, name))
 
 
-def write_ecos_setup_update(f, canon_constants, prefix):
+def extend_functions_if_false(pus, functions_if_false):
     """
-    Write ECOS setup function to file
+    Recursively extends functions_if_false in the parameter update structure
     """
-    n = canon_constants['n']
-    m = canon_constants['m']
-    p = canon_constants['p']
-    ell = canon_constants['l']
-    n_cones = canon_constants['n_cones']
-    e = canon_constants['e']
 
-    if p == 0:
-        Ax_str = Ap_str = Ai_str = b_str = '0'
-    else:
-        Ax_str = '%sCanon_Params_conditioning.A->x' % prefix
-        Ap_str = '%sCanon_Params_conditioning.A->p' % prefix
-        Ai_str = '%sCanon_Params_conditioning.A->i' % prefix
-        b_str = '%sCanon_Params_conditioning.b' % prefix
+    if functions_if_false is None:
+        return []
 
-    if n_cones == 0:
-        ecos_q_str = '0'
-    else:
-        ecos_q_str = '(int *) &%secos_q' % prefix
+    extended_functions_if_false = []
 
-    f.write('  if (!%secos_workspace) {\n' % prefix)
-    f.write('    %secos_workspace = ECOS_setup(%d, %d, %d, %d, %d, %s, %d, '
-            '%sCanon_Params_conditioning.G->x, %sCanon_Params_conditioning.G->p, %sCanon_Params_conditioning.G->i, '
-            '%s, %s, %s, %sCanon_Params_conditioning.c, %sCanon_Params_conditioning.h, %s);\n' %
-            (prefix, n, m, p, ell, n_cones, ecos_q_str, e, prefix, prefix, prefix, Ax_str, Ap_str, Ai_str,
-             prefix, prefix, b_str))
-    f.write('  } else {\n')
-    f.write('    if (%sCanon_Outdated.G || %sCanon_Outdated.A || %sCanon_Outdated.b) {\n' % (prefix, prefix, prefix))
-    f.write('      ECOS_updateData(%secos_workspace, %sCanon_Params_conditioning.G->x, %s, %sCanon_Params_conditioning.c, '
-            '%sCanon_Params_conditioning.h, %s);\n' % (prefix, prefix, Ax_str, prefix, prefix, b_str))
-    f.write('    } else {\n')
-    f.write('      if (%sCanon_Outdated.h) {\n' % prefix)
-    f.write('        for (i=0; i<%d; i++){\n' % m)
-    f.write('          ecos_updateDataEntry_h(%secos_workspace, i, %sCanon_Params_conditioning.h[i]);\n' % (prefix, prefix))
-    f.write('        }\n')
-    f.write('      }\n')
-    f.write('      if (%sCanon_Outdated.c) {\n' % prefix)
-    f.write('        for (i=0; i<%d; i++){\n' % n)
-    f.write('          ecos_updateDataEntry_c(%secos_workspace, i, %sCanon_Params_conditioning.c[i]);\n' % (prefix, prefix))
-    f.write('        }\n')
-    f.write('      }\n')
-    f.write('    }\n')
-    f.write('  }\n')
+    for function in functions_if_false:
+        extended_functions_if_false.append(function)
+        extended_functions_if_false.extend(extend_functions_if_false(pus, pus[function].update_pending_logic.functions_if_false))
+
+    return extended_functions_if_false
+
+
+def analyze_pus(pus, p_id_to_changes):
+    '''
+    Analyze parameter update structure (pus) to return set of canonical update functions
+    that are to be written to code without logical inter-connections and functions that
+    are never called
+    '''
+    
+    functions = set(pus.keys())
+    functions_called = set(pus.keys())
+    functions_secondary = []
+    
+    for function, logic in pus.items():
+        
+        up_logic = logic.update_pending_logic
+        operator = up_logic.operator
+        functions_if_false = extend_functions_if_false(pus, up_logic.functions_if_false)
+            
+        if operator in ['&&', '&', 'and', 'AND']:
+            skip = False
+            for p in up_logic.parameters_outdated:
+                if not p_id_to_changes[p]:
+                    functions_called.remove(function)
+                    skip = True
+            if skip:
+                continue
+        elif operator in ['||', '|', 'or', 'OR']:
+            skip = True
+            for p in up_logic.parameters_outdated:
+                if p_id_to_changes[p]:
+                    skip = False
+            if skip:
+                functions_called.remove(function)
+                continue
+        elif operator is None:
+            if up_logic.extra_condition_operator is None and len(up_logic.parameters_outdated) == 1 and not p_id_to_changes[function]:
+                functions_called.remove(function)
+                continue
+        else:
+            raise ValueError('Operator "%s" not implemented.' % operator)
+        
+        if functions_if_false is None:
+            continue
+            
+        for f in functions_if_false:
+            if f not in functions:
+                raise ValueError('"%s" is not part of parameter update structure.' % f)
+        functions_secondary.extend(functions_if_false)
+                    
+    return functions_called-set(functions_secondary), functions-functions_called
+
+
+operator_map = {'&&': '&&', '&': '&&', 'and': '&&', 'AND': '&&',
+                '||': '||', '|': '||', 'or': '||', 'OR': '||'}
+
+
+def write_update_structure(f, configuration, pus, functions, functions_never_called, depth=0):
+    """
+    Recursively write logical parameter update structure to file
+    """
+
+    if functions is None:
+        return
+
+    write_else = depth > 0 and len(set(functions)-set(functions_never_called)) > 0
+
+    if write_else:
+        f.write(' else {\n')
+
+    for function in functions:
+
+        logic = pus[function]
+        up_logic = logic.update_pending_logic
+
+        if function not in functions_never_called:
+            f.write('%sif (%s%s%s) {\n' % (
+                '  '*(depth+1),
+                '%s ' % up_logic.extra_condition.format(prefix=configuration.prefix) if up_logic.extra_condition is not None else '',
+                '%s ' % operator_map.get(up_logic.extra_condition_operator, '||') if up_logic.extra_condition is not None and len(up_logic.parameters_outdated) > 0 else '',
+                (' %s ' % operator_map.get(up_logic.operator, '&&')).join([
+                    '%sCanon_Outdated.%s' % (configuration.prefix, p) for p in up_logic.parameters_outdated
+                    ])
+                ))
+            f.write('%s%s;\n' % ('  '*(depth+2), logic.function_call.format(prefix=configuration.prefix)))
+            f.write('%s}' % ('  '*(depth+1)))
+            new_depth = depth + 1
+        else:
+            new_depth = depth * 1
+
+        write_update_structure(f, configuration, pus, up_logic.functions_if_false, functions_never_called, new_depth)
+        
+        if function not in functions_never_called:
+            f.write('\n')
+
+    if write_else:
+        f.write('%s}' % ('  '*depth))
 
 
 def write_workspace_def(f, configuration, variable_info, dual_variable_info, parameter_info, parameter_canon, solver_interface):
@@ -434,7 +499,7 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
                 write_vec_def(f, value.flatten(order='F'), configuration.prefix + name, 'cpg_float')
                 f.write('\n')
 
-    result_prefix = configuration.prefix if not solver_interface.ws_allocated_in_solver_code else ''
+    result_prefix = configuration.prefix if not solver_interface.ws_statically_allocated_in_solver_code else ''
 
     f.write('// Struct containing primal solution\n')
     CPG_Prim_fields = list(variable_info.name_to_init.keys())
@@ -447,7 +512,7 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
             if variable_info.name_to_sym[name] or not solver_interface.sol_statically_allocated:
                 CPG_Prim_values.append('&' + configuration.prefix + name)
             else:
-                CPG_Prim_values.append('&%s%s + %d' % (result_prefix, solver_interface.result_ptrs.primal_solution, offset))
+                CPG_Prim_values.append('&%s%s + %d' % (result_prefix, solver_interface.ws_ptrs.primal_solution, offset))
     write_struct_def(f, CPG_Prim_fields, prim_cast, CPG_Prim_values, '%sCPG_Prim' % configuration.prefix, 'CPG_Prim_t')
 
     if len(dual_variable_info.name_to_init) > 0:
@@ -475,7 +540,7 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
                 if not solver_interface.sol_statically_allocated:
                     CPG_Dual_values.append('&' + configuration.prefix + name)
                 else:
-                    CPG_Dual_values.append('&%s%s + %d' % (result_prefix, solver_interface.result_ptrs.dual_solution, offset) % vec)
+                    CPG_Dual_values.append('&%s%s + %d' % (result_prefix, solver_interface.ws_ptrs.dual_solution, offset) % vec)
         write_struct_def(f, CPG_Dual_fields, dual_cast, CPG_Dual_values, '%sCPG_Dual' % configuration.prefix,
                          'CPG_Dual_t')
 
@@ -498,7 +563,7 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
     write_struct_def(f, CPG_Result_fields, result_cast, CPG_Result_values, '%sCPG_Result' % configuration.prefix,
                      'CPG_Result_t')
 
-    if not solver_interface.ws_allocated_in_solver_code:
+    if not solver_interface.ws_statically_allocated_in_solver_code:
         solver_interface.define_workspace(f, configuration.prefix)
 
 
@@ -665,7 +730,7 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
     f.write('\n// Struct containing solution and info\n')
     write_struct_prot(f, '%sCPG_Result' % configuration.prefix, 'CPG_Result_t')
 
-    if not solver_interface.ws_allocated_in_solver_code:
+    if not solver_interface.ws_statically_allocated_in_solver_code:
         solver_interface.declare_workspace(f, configuration.prefix)
 
 
@@ -726,9 +791,9 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
                 write_canonicalize(f, p_id, s, mapping, configuration.prefix)
             f.write('}\n\n')
 
-    result_prefix = configuration.prefix if not solver_interface.ws_allocated_in_solver_code else ''
-    prim_str = result_prefix + solver_interface.result_ptrs.primal_solution
-    dual_str = result_prefix + solver_interface.result_ptrs.dual_solution
+    result_prefix = configuration.prefix if not solver_interface.ws_statically_allocated_in_solver_code else ''
+    prim_str = result_prefix + solver_interface.ws_ptrs.primal_solution
+    dual_str = result_prefix + solver_interface.ws_ptrs.dual_solution
 
     if solver_interface.ret_prim_func_exists(variable_info):
         f.write('// Retrieve primal solution in terms of user-defined variables\n')
@@ -759,90 +824,24 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
         configuration.prefix,
         '-' if parameter_canon.is_maximization else '',
         result_prefix,
-        solver_interface.result_ptrs.objective_value,
+        solver_interface.ws_ptrs.objective_value,
         ' + %sCanon_Params.d' % configuration.prefix if parameter_canon.nonzero_d else ''))
-    f.write('  %sCPG_Info.iter = %s%s;\n' % (configuration.prefix, result_prefix, solver_interface.result_ptrs.iterations))
-    f.write('  %sCPG_Info.status = %s%s;\n' % (configuration.prefix, result_prefix, solver_interface.result_ptrs.status))
-    f.write('  %sCPG_Info.pri_res = %s%s;\n' % (configuration.prefix, result_prefix, solver_interface.result_ptrs.primal_residual))
-    f.write('  %sCPG_Info.dua_res = %s%s;\n' % (configuration.prefix, result_prefix, solver_interface.result_ptrs.dual_residual))
+    f.write('  %sCPG_Info.iter = %s%s;\n' % (configuration.prefix, result_prefix, solver_interface.ws_ptrs.iterations))
+    f.write('  %sCPG_Info.status = %s%s;\n' % (configuration.prefix, result_prefix, solver_interface.ws_ptrs.status))
+    f.write('  %sCPG_Info.pri_res = %s%s;\n' % (configuration.prefix, result_prefix, solver_interface.ws_ptrs.primal_residual))
+    f.write('  %sCPG_Info.dua_res = %s%s;\n' % (configuration.prefix, result_prefix, solver_interface.ws_ptrs.dual_residual))
     f.write('}\n\n')
 
     f.write('// Solve via canonicalization, canonical solve, retrieval\n')
     f.write('void %scpg_solve(){\n' % configuration.prefix)
     f.write('  // Canonicalize if necessary\n')
-    if configuration.solver_name == 'OSQP':
 
-        if parameter_canon.p_id_to_changes['P'] and parameter_canon.p_id_to_changes['A']:
-            f.write('  if (%sCanon_Outdated.P && %sCanon_Outdated.A) {\n'
-                    % (configuration.prefix, configuration.prefix))
-            f.write('    %scpg_canonicalize_P();\n' % configuration.prefix)
-            f.write('    %scpg_canonicalize_A();\n' % configuration.prefix)
-            f.write('    osqp_update_P_A(&workspace, %sCanon_Params.P->x, 0, 0, %sCanon_Params.A->x, 0, 0);\n'
-                    % (configuration.prefix, configuration.prefix))
-            f.write('  } else if (%sCanon_Outdated.P) {\n' % configuration.prefix)
-            f.write('    %scpg_canonicalize_P();\n' % configuration.prefix)
-            f.write('    osqp_update_P(&workspace, %sCanon_Params.P->x, 0, 0);\n' % configuration.prefix)
-            f.write('  } else if (%sCanon_Outdated.A) {\n' % configuration.prefix)
-            f.write('    %scpg_canonicalize_A();\n' % configuration.prefix)
-            f.write('    osqp_update_A(&workspace, %sCanon_Params.A->x, 0, 0);\n' % configuration.prefix)
+    for p_id, changes in parameter_canon.p_id_to_changes.items():
+        if changes:
+            f.write('  if (%sCanon_Outdated.%s) {\n' % (configuration.prefix, p_id))
+            f.write('    %scpg_canonicalize_%s();\n' % (configuration.prefix, p_id))
             f.write('  }\n')
-        else:
-            if parameter_canon.p_id_to_changes['P']:
-                f.write('  if (%sCanon_Outdated.P) {\n' % configuration.prefix)
-                f.write('    %scpg_canonicalize_P();\n' % configuration.prefix)
-                f.write('    osqp_update_P(&workspace, %sCanon_Params.P->x, 0, 0);\n' % configuration.prefix)
-                f.write('  }\n')
-            if parameter_canon.p_id_to_changes['A']:
-                f.write('  if (%sCanon_Outdated.A) {\n' % configuration.prefix)
-                f.write('    %scpg_canonicalize_A();\n' % configuration.prefix)
-                f.write('    osqp_update_A(&workspace, %sCanon_Params.A->x, 0, 0);\n' % configuration.prefix)
-                f.write('  }\n')
-
-        if parameter_canon.p_id_to_changes['q']:
-            f.write('  if (%sCanon_Outdated.q) {\n' % configuration.prefix)
-            f.write('    %scpg_canonicalize_q();\n' % configuration.prefix)
-            f.write('    osqp_update_lin_cost(&workspace, %sCanon_Params.q);\n' % configuration.prefix)
-            f.write('  }\n')
-
-        if parameter_canon.p_id_to_changes['d']:
-            f.write('  if (%sCanon_Outdated.d) {\n' % configuration.prefix)
-            f.write('    %scpg_canonicalize_d();\n' % configuration.prefix)
-            f.write('  }\n')
-
-        if parameter_canon.p_id_to_changes['l'] and parameter_canon.p_id_to_changes['u']:
-            f.write('  if (%sCanon_Outdated.l && %sCanon_Outdated.u) {\n'
-                    % (configuration.prefix, configuration.prefix))
-            f.write('    %scpg_canonicalize_l();\n' % configuration.prefix)
-            f.write('    %scpg_canonicalize_u();\n' % configuration.prefix)
-            f.write('    osqp_update_bounds(&workspace, %sCanon_Params.l, %sCanon_Params.u);\n'
-                    % (configuration.prefix, configuration.prefix))
-            f.write('  } else if (%sCanon_Outdated.l) {\n' % configuration.prefix)
-            f.write('    %scpg_canonicalize_l();\n' % configuration.prefix)
-            f.write('    osqp_update_lower_bound(&workspace, %sCanon_Params.l);\n' % configuration.prefix)
-            f.write('  } else if (%sCanon_Outdated.u) {\n' % configuration.prefix)
-            f.write('    %scpg_canonicalize_u();\n' % configuration.prefix)
-            f.write('    osqp_update_upper_bound(&workspace, %sCanon_Params.u);\n' % configuration.prefix)
-            f.write('  }\n')
-        else:
-            if parameter_canon.p_id_to_changes['l']:
-                f.write('  if (%sCanon_Outdated.l) {\n' % configuration.prefix)
-                f.write('    %scpg_canonicalize_l();\n' % configuration.prefix)
-                f.write('    osqp_update_lower_bound(&workspace, %sCanon_Params.l);\n' % configuration.prefix)
-                f.write('  }\n')
-            if parameter_canon.p_id_to_changes['u']:
-                f.write('  if (%sCanon_Outdated.u) {\n' % configuration.prefix)
-                f.write('    %scpg_canonicalize_u();\n' % configuration.prefix)
-                f.write('    osqp_update_upper_bound(&workspace, %sCanon_Params.u);\n' % configuration.prefix)
-                f.write('  }\n')
-
-    elif configuration.solver_name in ['SCS', 'ECOS']:
-
-        for p_id, changes in parameter_canon.p_id_to_changes.items():
-            if changes:
-                f.write('  if (%sCanon_Outdated.%s) {\n' % (configuration.prefix, p_id))
-                f.write('    %scpg_canonicalize_%s();\n' % (configuration.prefix, p_id))
-                f.write('  }\n')
-
+    
     if solver_interface.inmemory_preconditioning:
         for p_id, size in parameter_canon.p_id_to_size.items():
                 if size == 1:
@@ -858,34 +857,15 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
                                 % (configuration.prefix, p_id, configuration.prefix, p_id))
                     f.write('  }\n')
 
-    if configuration.solver_name == 'OSQP':
-        f.write('  // Solve with OSQP\n')
-        f.write('  osqp_solve(&workspace);\n')
-    elif configuration.solver_name == 'SCS':
-        f.write('  // Solve with SCS\n')
-        f.write('  if (!%sScs_Work || %sCanon_Outdated.A) {\n' % (configuration.prefix, configuration.prefix))
-        f.write('    %sScs_Work = scs_init(&%sScs_D, &%sScs_K, &%sCanon_Settings);\n' %
-                (configuration.prefix, configuration.prefix, configuration.prefix, configuration.prefix))
-        f.write('  } else if (%sCanon_Outdated.b && %sCanon_Outdated.c) {\n' % (configuration.prefix, configuration.prefix))
-        f.write('    scs_update(%sScs_Work, %sCanon_Params.b, %sCanon_Params.c);\n' %
-                (configuration.prefix, configuration.prefix, configuration.prefix))
-        f.write('  } else if (%sCanon_Outdated.b) {\n' % configuration.prefix)
-        f.write('    scs_update(%sScs_Work, %sCanon_Params.b, SCS_NULL);\n' %
-                (configuration.prefix, configuration.prefix))
-        f.write('  } else if (%sCanon_Outdated.c) {\n' % configuration.prefix)
-        f.write('    scs_update(%sScs_Work, SCS_NULL, %sCanon_Params.c);\n' %
-                (configuration.prefix, configuration.prefix))
-        f.write('  }\n')
-        f.write('  scs_solve(%sScs_Work, &%sScs_Sol, &%sScs_Info, (%sScs_Work && %sCanon_Settings.warm_start));\n' %
-                (configuration.prefix, configuration.prefix, configuration.prefix, configuration.prefix, configuration.prefix))
-    elif configuration.solver_name == 'ECOS':
-        f.write('  // Initialize / update ECOS workspace and settings\n')
-        write_ecos_setup_update(f, solver_interface.canon_constants, configuration.prefix)
+    pus = solver_interface.parameter_update_structure
+    write_update_structure(f, configuration, pus, *analyze_pus(pus, parameter_canon.p_id_to_changes))
+
+    if solver_interface.ws_dynamically_allocated_in_solver_code:
         for name in solver_interface.stgs_names_to_type.keys():
-            f.write('  %secos_workspace->stgs->%s = %sCanon_Settings.%s;\n'
-                    % (configuration.prefix, name, configuration.prefix, name))
-        f.write('  // Solve with ECOS\n')
-        f.write('  %secos_flag = ECOS_solve(%secos_workspace);\n' % (configuration.prefix, configuration.prefix))
+            f.write('  %s%s = %sCanon_Settings.%s;\n' % (configuration.prefix, solver_interface.ws_ptrs.settings, configuration.prefix, name) % name)
+
+    f.write('  // Solve with %s\n' % configuration.solver_name)
+    f.write('  %s;\n' % solver_interface.solve_function_call.format(prefix=configuration.prefix))
 
     f.write('  // Retrieve results\n')
     if solver_interface.ret_prim_func_exists(variable_info):
@@ -1027,7 +1007,7 @@ def replace_cmake_data(cmake_data, configuration):
 
 def write_canon_cmake(f, configuration, solver_interface):
     """
-    Pass sources to parent scope in {OSQP/ECOS}_code/CMakeLists.txt
+    Pass sources to parent scope in <solver_code>/CMakeLists.txt
     """
 
     f.write('\nset(solver_head')
