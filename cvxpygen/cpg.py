@@ -260,8 +260,8 @@ def get_dual_variable_info(inverse_data, solver_name) -> DualVariableInfo:
     d_offsets = [d_canon_offsets_dict[i] for i in dual_ids]
     d_sizes = [con_canon_dict[i].size for i in dual_ids]
     d_shapes = [con_canon_dict[i].shape for i in dual_ids]
-    d_names = ['d%d' % i for i in range(len(dual_ids))]
-    d_i_to_name = {i: 'd%d' % i for i in range(len(dual_ids))}
+    d_names = [f'd{i}' for i in range(len(dual_ids))]
+    d_i_to_name = {i: f'd{i}' for i in range(len(dual_ids))}
     d_name_to_shape = {n: d_shapes[i] for i, n in d_i_to_name.items()}
     d_name_to_indices = {n: (v, o + np.arange(np.prod(d_name_to_shape[n])))
                          for n, v, o in zip(d_names, d_vectors, d_offsets)}
@@ -438,17 +438,17 @@ def handle_sparsity(p_prob: cp.Problem) -> None:
     for p in p_prob.parameters:
         if p.attributes['sparsity'] is not None:
             if p.size == 1:
-                warnings.warn('Ignoring sparsity pattern for scalar parameter %s!' % p.name())
+                warnings.warn(f'Ignoring sparsity pattern for scalar parameter {p.name()}!')
                 p.attributes['sparsity'] = None
             elif max(p.shape) == p.size:
-                warnings.warn('Ignoring sparsity pattern for vector parameter %s!' % p.name())
+                warnings.warn(f'Ignoring sparsity pattern for vector parameter {p.name()}!')
                 p.attributes['sparsity'] = None
             else:
                 for coord in p.attributes['sparsity']:
                     if coord[0] < 0 or coord[1] < 0 or coord[0] >= p.shape[0] or coord[1] >= \
                             p.shape[1]:
-                        warnings.warn('Invalid sparsity pattern for parameter %s - out of range! '
-                                      'Ignoring sparsity pattern.' % p.name())
+                        warnings.warn(f'Invalid sparsity pattern for parameter {p.name()} - out of range! '
+                                      'Ignoring sparsity pattern.')
                         p.attributes['sparsity'] = None
                         break
                 p.attributes['sparsity'] = list(set(p.attributes['sparsity']))
@@ -459,7 +459,7 @@ def handle_sparsity(p_prob: cp.Problem) -> None:
                 for j in range(p.shape[1]):
                     if (i, j) not in p.attributes['sparsity'] and p.value[i, j] != 0:
                         warnings.warn(
-                            'Ignoring nonzero value outside of sparsity pattern for parameter %s!' % p.name())
+                            f'Ignoring nonzero value outside of sparsity pattern for parameter {p.name()}!')
                         p.value[i, j] = 0
 
 
