@@ -1,5 +1,6 @@
 *code/
 tests/*/
+.python-version
 *.so
 __pycache__
 .idea
