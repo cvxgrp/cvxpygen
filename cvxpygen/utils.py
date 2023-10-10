@@ -558,6 +558,13 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
         CPG_Result_values = [f'&{configuration.prefix}CPG_Prim', f'&{configuration.prefix}CPG_Info']
     write_struct_def(f, CPG_Result_fields, result_cast, CPG_Result_values, f'{configuration.prefix}CPG_Result', 'CPG_Result_t')
 
+    if solver_interface.stgs_reset_function is None:
+        f.write('\n// Struct containing solver settings\n')
+        f.write(f'Canon_Settings_t {configuration.prefix}Canon_Settings = {{\n')
+        for name, default in solver_interface.stgs_names_to_default.items():
+            f.write(f'.{name} = {default},\n')
+        f.write('};\n')
+
     if not solver_interface.ws_statically_allocated_in_solver_code:
         solver_interface.define_workspace(f, configuration.prefix)
 
@@ -569,7 +576,7 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
 
     write_description(f, 'c', 'Type definitions and variable declarations')
     for header_file in solver_interface.header_files:
-        f.write(f'#include "{header_file}"\n')
+        f.write(f'#include {header_file}\n')
 
     # definition safeguard
     f.write('\n#ifndef CPG_TYPES_H\n')
@@ -723,6 +730,10 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
     f.write('\n// Struct containing solution and info\n')
     write_struct_prot(f, f'{configuration.prefix}CPG_Result', 'CPG_Result_t')
 
+    if solver_interface.stgs_reset_function is None:
+        f.write('\n// Struct containing solver settings\n')
+        write_struct_prot(f, f'{configuration.prefix}Canon_Settings', 'Canon_Settings_t')
+
     if not solver_interface.ws_statically_allocated_in_solver_code:
         solver_interface.declare_workspace(f, configuration.prefix)
 
@@ -818,30 +829,29 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
 
     f.write('// Solve via canonicalization, canonical solve, retrieval\n')
     f.write(f'void {configuration.prefix}cpg_solve(){{\n')
-    f.write('// Canonicalize if necessary\n')
+    f.write('  // Canonicalize if necessary\n')
 
     for p_id, changes in parameter_canon.p_id_to_changes.items():
         if changes:
             f.write(f'  if ({configuration.prefix}Canon_Outdated.{p_id}) {{\n')
             f.write(f'    {configuration.prefix}cpg_canonicalize_{p_id}();\n')
             f.write('  }\n')
-
-    if solver_interface.inmemory_preconditioning:
-        for p_id, size in parameter_canon.p_id_to_size.items():
-            if size == 1:
-                f.write(f'  {configuration.prefix}Canon_Params_conditioning.{p_id} = {configuration.prefix}Canon_Params.{p_id};\n')
-            elif size > 1:
-                f.write(f'  for (i=0; i<{size}; i++){{\n')
-                if p_id.isupper():
-                    f.write(f'    {configuration.prefix}Canon_Params_conditioning.{p_id}->x[i] = {configuration.prefix}Canon_Params.{p_id}->x[i];\n')
-                else:
-                    f.write(f'    {configuration.prefix}Canon_Params_conditioning.{p_id}[i] = {configuration.prefix}Canon_Params.{p_id}[i];\n')
-                f.write('  }\n')
+            if solver_interface.inmemory_preconditioning:
+                size = parameter_canon.p_id_to_size[p_id]
+                if size == 1:
+                    f.write(f'  {configuration.prefix}Canon_Params_conditioning.{p_id} = {configuration.prefix}Canon_Params.{p_id};\n')
+                elif size > 1:
+                    f.write(f'  for (i=0; i<{size}; i++){{\n')
+                    if p_id.isupper():
+                        f.write(f'    {configuration.prefix}Canon_Params_conditioning.{p_id}->x[i] = {configuration.prefix}Canon_Params.{p_id}->x[i];\n')
+                    else:
+                        f.write(f'    {configuration.prefix}Canon_Params_conditioning.{p_id}[i] = {configuration.prefix}Canon_Params.{p_id}[i];\n')
+                    f.write('  }\n')
 
     pus = solver_interface.parameter_update_structure
     write_update_structure(f, configuration, pus, *analyze_pus(pus, parameter_canon.p_id_to_changes))
 
-    if solver_interface.ws_dynamically_allocated_in_solver_code:
+    if solver_interface.stgs_dynamically_allocated:
         for name in solver_interface.stgs_names_to_type.keys():
             f.write(f'  {configuration.prefix}{solver_interface.ws_ptrs.settings.format(setting_name=name)} = {configuration.prefix}Canon_Settings.{name};\n')
 
@@ -856,8 +866,9 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
     f.write(f'  {configuration.prefix}cpg_retrieve_info();\n')
 
     f.write('  // Reset flags for outdated canonical parameters\n')
-    for p_id in parameter_canon.p_id_to_size.keys():
-        f.write(f'  {configuration.prefix}Canon_Outdated.{p_id} = 0;\n')
+    for p_id, changes in parameter_canon.p_id_to_changes.items():
+        if changes:
+            f.write(f'  {configuration.prefix}Canon_Outdated.{p_id} = 0;\n')
 
     f.write('}\n\n')
 
@@ -985,14 +996,16 @@ def write_canon_cmake(f, configuration, solver_interface):
     Pass sources to parent scope in <solver_code>/CMakeLists.txt
     """
 
-    f.write('\nset(solver_head')
-    for h in solver_interface.cmake_headers:
-        f.write('\n  ' + h)
-    f.write('\n  PARENT_SCOPE)')
-    f.write('\n\nset(solver_src')
-    for s in solver_interface.cmake_sources:
-        f.write('\n  ' + s)
-    f.write('\n  PARENT_SCOPE)')
+    if len(solver_interface.cmake_headers) > 0:
+        f.write('\nset(solver_head')
+        for h in solver_interface.cmake_headers:
+            f.write('\n  ' + h)
+        f.write('\n  PARENT_SCOPE)')
+    if len(solver_interface.cmake_sources) > 0:
+        f.write('\n\nset(solver_src')
+        for s in solver_interface.cmake_sources:
+            f.write('\n  ' + s)
+        f.write('\n  PARENT_SCOPE)')
 
 
 def write_module_def(f, configuration, variable_info, dual_variable_info, parameter_info, solver_interface):

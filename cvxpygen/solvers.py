@@ -11,17 +11,24 @@ from cvxpygen.utils import replace_in_file, write_struct_prot, write_struct_def,
 from cvxpygen.mappings import PrimalVariableInfo, DualVariableInfo, ConstraintInfo, AffineMap, \
     ParameterCanon, WorkspacePointerInfo, UpdatePendingLogic, ParameterUpdateLogic
 
+from cvxpy.reductions.solvers.qp_solvers.osqp_qpif import OSQP
+from cvxpy.reductions.solvers.conic_solvers.scs_conif import SCS
+from cvxpy.reductions.solvers.conic_solvers.ecos_conif import ECOS
+from cvxpy.reductions.solvers.conic_solvers.clarabel_conif import CLARABEL
+
 
 def get_interface_class(solver_name: str) -> "SolverInterface":
     mapping = {
-        'OSQP': OSQPInterface,
-        'SCS': SCSInterface,
-        'ECOS': ECOSInterface,
+        'OSQP': (OSQPInterface, OSQP),
+        'SCS': (SCSInterface, SCS),
+        'ECOS': (ECOSInterface, ECOS),
+        'CLARABEL': (ClarabelInterface, CLARABEL),
+        'Clarabel': (ClarabelInterface, CLARABEL)
     }
     interface = mapping.get(solver_name, None)
     if interface is None:
         raise ValueError(f'Unsupported solver: {solver_name}.')
-    return interface
+    return interface[0], interface[1]
 
 
 class SolverInterface(ABC):
@@ -51,11 +58,6 @@ class SolverInterface(ABC):
     @property
     @abstractmethod
     def canon_p_ids_constr_vec(self):
-        pass
-
-    @property
-    @abstractmethod
-    def sign_constr_vec(self):
         pass
 
     @property
@@ -123,6 +125,16 @@ class SolverInterface(ABC):
             affine_map.mapping = -param_prob.reduced_A.reduced_mat[affine_map.mapping_rows]
 
         return affine_map
+    
+    def augment_vector_parameter(self, p_id, vector_parameter):
+        return vector_parameter
+    
+    def get_problem_data_index(self, reduced_mat):
+        if reduced_mat.problem_data_index is None:
+            return None, None, None
+        else:
+            indices, indptr, shape = reduced_mat.problem_data_index
+            return indices, indptr, shape
 
     @property
     def stgs_names_enabled(self):
@@ -156,9 +168,10 @@ class SolverInterface(ABC):
 
 class OSQPInterface(SolverInterface):
     solver_name = 'OSQP'
+    solver_type = 'quadratic'
     canon_p_ids = ['P', 'q', 'd', 'A', 'l', 'u']
+    canon_p_signs = [1, 1, 1, 1, -1, -1]
     canon_p_ids_constr_vec = ['l', 'u']
-    sign_constr_vec = -1
     parameter_update_structure = {
         'PA': ParameterUpdateLogic(
             update_pending_logic = UpdatePendingLogic(['P', 'A'], '&&', ['P', 'A']),
@@ -192,7 +205,7 @@ class OSQPInterface(SolverInterface):
     solve_function_call = 'osqp_solve(&workspace)'
 
     # header and source files
-    header_files = ['osqp.h', 'types.h', 'workspace.h']
+    header_files = ['"osqp.h"', '"types.h"', '"workspace.h"']
     cmake_headers = ['${osqp_headers}']
     cmake_sources = ['${osqp_src}']
 
@@ -201,7 +214,6 @@ class OSQPInterface(SolverInterface):
 
     # workspace
     ws_statically_allocated_in_solver_code = True
-    ws_dynamically_allocated_in_solver_code = False
     ws_ptrs = WorkspacePointerInfo(
         objective_value = 'workspace.info->obj_val',
         iterations = 'workspace.info->iter',
@@ -222,7 +234,7 @@ class OSQPInterface(SolverInterface):
     numeric_types = {'float': 'c_float', 'int': 'c_int'}
 
     # solver settings
-    stgs_statically_allocated = True
+    stgs_dynamically_allocated = False
     stgs_set_function = {'name': 'osqp_update_{setting_name}', 'ptr_name': 'workspace'}
     stgs_reset_function = {'name': 'osqp_set_default_settings', 'ptr_name': 'settings'}
     stgs_names = ['rho', 'max_iter', 'eps_abs', 'eps_rel', 'eps_prim_inf', 'eps_dual_inf',
@@ -234,6 +246,10 @@ class OSQPInterface(SolverInterface):
                         False, False, False, False]
     stgs_defaults = []
 
+    # dual variables split into two vectors
+    dual_var_split = False
+    dual_var_names = ['y']
+
     # docu
     docu = 'https://osqp.org/docs/codegen/python.html'
 
@@ -242,8 +258,8 @@ class OSQPInterface(SolverInterface):
         n_eq = data['n_eq']
         n_ineq = data['n_ineq']
 
-        indices_obj, indptr_obj, shape_obj = p_prob.reduced_P.problem_data_index
-        indices_constr, indptr_constr, shape_constr = p_prob.reduced_A.problem_data_index
+        indices_obj, indptr_obj, shape_obj = self.get_problem_data_index(p_prob.reduced_P)
+        indices_constr, indptr_constr, shape_constr = self.get_problem_data_index(p_prob.reduced_A)
 
         canon_constants = {}
 
@@ -326,13 +342,20 @@ class OSQPInterface(SolverInterface):
             raise ValueError(f'Unknown OSQP parameter name {p_id}.')
 
         return affine_map
+    
+    def augment_vector_parameter(self, p_id, vector_parameter):
+        if p_id == 'l':
+            return np.concatenate((vector_parameter, -np.inf * np.ones(self.n_ineq)), axis=0)
+        else:
+            return vector_parameter
 
 
 class SCSInterface(SolverInterface):
     solver_name = 'SCS'
+    solver_type = 'conic'
     canon_p_ids = ['c', 'd', 'A', 'b']
+    canon_p_signs = [1, 1, 1, 1]
     canon_p_ids_constr_vec = ['b']
-    sign_constr_vec = 1
     parameter_update_structure = {
         'init': ParameterUpdateLogic(
             update_pending_logic = UpdatePendingLogic(
@@ -356,7 +379,7 @@ class SCSInterface(SolverInterface):
     solve_function_call = 'scs_solve({prefix}Scs_Work, &{prefix}Scs_Sol, &{prefix}Scs_Info, ({prefix}Scs_Work && {prefix}Canon_Settings.warm_start))'
 
     # header files
-    header_files = ['scs.h']
+    header_files = ['"scs.h"']
     cmake_headers = [
         '${${PROJECT_NAME}_HDR}',
         '${DIRSRC}/private.h',
@@ -375,7 +398,6 @@ class SCSInterface(SolverInterface):
 
     # workspace
     ws_statically_allocated_in_solver_code = False
-    ws_dynamically_allocated_in_solver_code = False
     ws_ptrs = WorkspacePointerInfo(
         objective_value = 'Scs_Info.pobj',
         iterations = 'Scs_Info.iter',
@@ -396,7 +418,7 @@ class SCSInterface(SolverInterface):
     numeric_types = {'float': 'scs_float', 'int': 'scs_int'}
 
     # solver settings
-    stgs_statically_allocated = False
+    stgs_dynamically_allocated = False
     stgs_set_function = None
     stgs_reset_function = {'name': 'scs_set_default_settings', 'ptr_name': None} # set 'ptr_name' to None if stgs not statically allocated in solver code
     stgs_names = ['normalize', 'scale', 'adaptive_scale', 'rho_x', 'max_iters', 'eps_abs',
@@ -412,6 +434,10 @@ class SCSInterface(SolverInterface):
     stgs_defaults = ['1', '0.1', '1', '1e-6', '1e5', '1e-4', '1e-4', '1e-7', '1.5', '0', '0',
                          '0', '0', '1',
                          'SCS_NULL', 'SCS_NULL']
+    
+    # dual variables split into two vectors
+    dual_var_split = False
+    dual_var_names = ['y']
 
     # docu
     docu = 'https://www.cvxgrp.org/scs/api/c.html'
@@ -421,9 +447,9 @@ class SCSInterface(SolverInterface):
         n_eq = data['A'].shape[0]
         n_ineq = 0
 
-        indices_obj, indptr_obj, shape_obj = None, None, None
+        indices_obj, indptr_obj, shape_obj = self.get_problem_data_index(p_prob.reduced_P)
 
-        indices_constr, indptr_constr, shape_constr = p_prob.reduced_A.problem_data_index
+        indices_constr, indptr_constr, shape_constr = self.get_problem_data_index(p_prob.reduced_A)
 
         canon_constants = {'n': n_var, 'm': n_eq, 'z': p_prob.cone_dims.zero,
                            'l': p_prob.cone_dims.nonneg,
@@ -582,13 +608,14 @@ class SCSInterface(SolverInterface):
 
 class ECOSInterface(SolverInterface):
     solver_name = 'ECOS'
+    solver_type = 'conic'
     canon_p_ids = ['c', 'd', 'A', 'b', 'G', 'h']
+    canon_p_signs = [1, 1, 1, 1, 1, 1]
     canon_p_ids_constr_vec = ['b', 'h']
-    sign_constr_vec = 1
     solve_function_call = '{prefix}ecos_flag = ECOS_solve({prefix}ecos_workspace)'
 
     # header files
-    header_files = ['ecos.h']
+    header_files = ['"ecos.h"']
     cmake_headers = ['${ecos_headers}']
     cmake_sources = ['${ecos_sources}']
 
@@ -597,7 +624,6 @@ class ECOSInterface(SolverInterface):
 
     # workspace
     ws_statically_allocated_in_solver_code = False
-    ws_dynamically_allocated_in_solver_code = True
     ws_ptrs = WorkspacePointerInfo(
         objective_value = 'ecos_workspace->info->pcost',
         iterations = 'ecos_workspace->info->iter',
@@ -619,7 +645,7 @@ class ECOSInterface(SolverInterface):
     numeric_types = {'float': 'double', 'int': 'int'}
 
     # solver settings
-    stgs_statically_allocated = False
+    stgs_dynamically_allocated = True
     stgs_set_function = None
     stgs_reset_function = None
     stgs_names = ['feastol', 'abstol', 'reltol', 'feastol_inacc', 'abstol_inacc',
@@ -627,6 +653,10 @@ class ECOSInterface(SolverInterface):
     stgs_types = ['cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_int']
     stgs_enabled = [True, True, True, True, True, True, True]
     stgs_defaults = ['1e-8', '1e-8', '1e-8', '1e-4', '5e-5', '5e-5', '100']
+
+    # dual variables split into y and z vectors
+    dual_var_split = True
+    dual_var_names = ['y', 'z']
 
     # docu
     docu = 'https://github.com/embotech/ecos/wiki/Usage-from-C'
@@ -636,9 +666,9 @@ class ECOSInterface(SolverInterface):
         n_eq = p_prob.cone_dims.zero
         n_ineq = data['G'].shape[0]
 
-        indices_obj, indptr_obj, shape_obj = None, None, None
+        indices_obj, indptr_obj, shape_obj = self.get_problem_data_index(p_prob.reduced_P)
 
-        indices_constr, indptr_constr, shape_constr = p_prob.reduced_A.problem_data_index
+        indices_constr, indptr_constr, shape_constr = self.get_problem_data_index(p_prob.reduced_A)
 
         canon_constants = {'n': n_var, 'm': n_ineq, 'p': n_eq,
                            'l': p_prob.cone_dims.nonneg,
@@ -751,8 +781,6 @@ class ECOSInterface(SolverInterface):
             f.write(setup_text)
 
     def declare_workspace(self, f, prefix) -> None:
-        f.write('\n// Struct containing solver settings\n')
-        write_struct_prot(f, f'{prefix}Canon_Settings', 'Canon_Settings_t')
         if self.canon_constants['n_cones'] > 0:
             f.write('\n// ECOS array of SOC dimensions\n')
             write_vec_prot(f, self.canon_constants['q'], f'{prefix}ecos_q', 'cpg_int')
@@ -762,11 +790,6 @@ class ECOSInterface(SolverInterface):
         f.write(f'extern cpg_int {prefix}ecos_flag;\n')
 
     def define_workspace(self, f, prefix) -> None:
-        f.write('\n// Struct containing solver settings\n')
-        f.write(f'Canon_Settings_t {prefix}Canon_Settings = {{\n')
-        for name, default in self.stgs_names_to_default.items():
-            f.write(f'.{name} = {default},\n')
-        f.write('};\n')
         if self.canon_constants['n_cones'] > 0:
             f.write('\n// ECOS array of SOC dimensions\n')
             write_vec_def(f, self.canon_constants['q'], f'{prefix}ecos_q', 'cpg_int')
@@ -775,3 +798,231 @@ class ECOSInterface(SolverInterface):
         f.write('\n// ECOS exit flag\n')
         f.write(f'cpg_int {prefix}ecos_flag = -99;\n')
 
+
+class ClarabelInterface(SolverInterface):
+    solver_name = 'Clarabel'
+    solver_type = 'conic'
+    canon_p_ids = ['P', 'q', 'd', 'A', 'b']
+    canon_p_signs = [1, 1, 1, -1, 1, 1]
+    canon_p_ids_constr_vec = ['b']
+
+    # header and source files
+    header_files = ['<Clarabel>']
+    cmake_headers = []
+    cmake_sources = []
+
+    # preconditioning of problem data happening in-memory
+    inmemory_preconditioning = True
+
+    # workspace
+    ws_statically_allocated_in_solver_code = False
+    ws_ptrs = WorkspacePointerInfo(
+        objective_value = 'solution.obj_val',
+        iterations = 'solution.iterations',
+        status = 'solution.status',
+        primal_residual = 'solution.r_prim',
+        dual_residual = 'solution.r_dual',
+        primal_solution = 'solution.x',
+        dual_solution = 'solution.{dual_var_name}',
+        settings = 'settings.{setting_name}'
+    )
+
+    # solution vectors statically allocated
+    sol_statically_allocated = False
+
+    # solver status as integer vs. string
+    status_is_int = True
+
+    # float and integer types
+    numeric_types = {'float': 'ClarabelFloat', 'int': 'uintptr_t'}
+    
+    # solver settings
+    stgs_dynamically_allocated = True
+    stgs_set_function = None
+    stgs_reset_function = None
+    # TODO: extend to all available settings
+    stgs_names = ['max_iter', 'time_limit', 'verbose', 'max_step_fraction',
+                  'equilibrate_enable', 'equilibrate_max_iter', 'equilibrate_min_scaling', 'equilibrate_max_scaling']
+    stgs_types = ['cpg_int', 'cpg_float', 'cpg_int', 'cpg_float',
+                  'cpg_int', 'cpg_int', 'cpg_float', 'cpg_float']
+    stgs_enabled = [True, True, True, True, True, True, True, True]
+    stgs_defaults = ['50', '1e6', '1', '0.99',
+                     '1', '10', '1e-4', '1e4']
+
+    # dual variables split into two vectors
+    dual_var_split = False
+    dual_var_names = ['z']
+
+    # docu
+    docu = 'https://oxfordcontrol.github.io/ClarabelDocs/'
+
+    def __init__(self, data, p_prob, enable_settings):
+        n_var = p_prob.x.size
+        n_eq = data['A'].shape[0]
+        n_ineq = 0
+
+        indices_obj, indptr_obj, shape_obj = self.get_problem_data_index(p_prob.reduced_P)
+        indices_constr, indptr_constr, shape_constr = self.get_problem_data_index(p_prob.reduced_A)
+
+        canon_constants = {'n': n_var, 'm': n_eq,
+                           'cone_dims_zero': p_prob.cone_dims.zero,
+                           'cone_dims_nonneg': p_prob.cone_dims.nonneg,
+                           'cone_dims_exp': p_prob.cone_dims.exp,
+                           'cone_dims_soc': np.array(p_prob.cone_dims.soc),
+                           'cone_dims_psd': np.array(p_prob.cone_dims.psd),
+                           'cone_dims_p3d': np.array(p_prob.cone_dims.p3d)}
+        
+        canon_constants['n_cone_types'] = int(p_prob.cone_dims.zero > 0) + \
+            int(p_prob.cone_dims.nonneg > 0) + \
+            int(p_prob.cone_dims.exp > 0) + \
+            len(p_prob.cone_dims.soc) + \
+            len(p_prob.cone_dims.psd) + \
+            len(p_prob.cone_dims.p3d)
+        
+        canon_constants['cd_to_t'] = {
+            'cone_dims_zero': 'ClarabelZeroConeT',
+            'cone_dims_nonneg': 'ClarabelNonnegativeConeT',
+            'cone_dims_exp': 'ClarabelExponentialConeT',
+            'cone_dims_soc': 'ClarabelSecondOrderConeT',
+            'cone_dims_psd': 'ClarabelPSDTriangleConeT',
+            'cone_dims_p3d': 'ClarabelPowerConeT'
+        }
+
+        # catch LP case (hack, until Clarabel permits passing a zero pointer as &P)
+        if indices_obj is None:
+            extra_condition = '1'
+            P_p = f'(cpg_int[]){{{{ {", ".join(["0"]*(n_var+1))} }}}}'
+            P_i = '0'
+            P_x = '0'
+        else:
+            extra_condition = '!{prefix}solver'
+            P_p = '{prefix}Canon_Params_conditioning.P->p'
+            P_i = '{prefix}Canon_Params_conditioning.P->i'
+            P_x = '{prefix}Canon_Params_conditioning.P->x'
+
+        self.parameter_update_structure = {
+            'init': ParameterUpdateLogic(
+                update_pending_logic=UpdatePendingLogic([], extra_condition=extra_condition, functions_if_false=[]),
+                function_call= \
+                    f'clarabel_CscMatrix_init(&{{prefix}}P, {canon_constants["n"]}, {canon_constants["n"]}, {P_p}, {P_i}, {P_x});\n'
+                    f'    clarabel_CscMatrix_init(&{{prefix}}A, {canon_constants["m"]}, {canon_constants["n"]}, {{prefix}}Canon_Params_conditioning.A->p, {{prefix}}Canon_Params_conditioning.A->i, {{prefix}}Canon_Params_conditioning.A->x);\n' \
+                    f'    {{prefix}}settings = clarabel_DefaultSettings_default()'
+            )
+        }
+
+        self.solve_function_call = \
+            f'{{prefix}}solver = clarabel_DefaultSolver_new(&{{prefix}}P, {{prefix}}Canon_Params_conditioning.q, &{{prefix}}A, {{prefix}}Canon_Params_conditioning.b, {canon_constants["n_cone_types"]}, {{prefix}}cones, &{{prefix}}settings);\n' \
+            f'  clarabel_DefaultSolver_solve({{prefix}}solver);\n' \
+            f'  {{prefix}}solution = clarabel_DefaultSolver_solution({{prefix}}solver)'
+
+        super().__init__(self.solver_name, n_var, n_eq, n_ineq, indices_obj, indptr_obj, shape_obj,
+                         indices_constr, indptr_constr, shape_constr, canon_constants, enable_settings)
+
+    @staticmethod
+    def ret_prim_func_exists(variable_info: PrimalVariableInfo) -> bool:
+        return True
+
+    @staticmethod
+    def ret_dual_func_exists(dual_variable_info: DualVariableInfo) -> bool:
+        return True
+
+    def generate_code(self, code_dir, solver_code_dir, cvxpygen_directory,
+                      parameter_canon: ParameterCanon) -> None:
+        
+        # copy sources
+        if os.path.isdir(solver_code_dir):
+            shutil.rmtree(solver_code_dir)
+        os.mkdir(solver_code_dir)
+        dirs_to_copy = ['rust_wrapper', 'include', 'Clarabel.rs']
+        for dtc in dirs_to_copy:
+            shutil.copytree(os.path.join(cvxpygen_directory, 'solvers', 'Clarabel.cpp', dtc),
+                            os.path.join(solver_code_dir, dtc))
+        files_to_copy = ['CMakeLists.txt', 'LICENSE.md']
+        for fl in files_to_copy:
+            shutil.copyfile(os.path.join(cvxpygen_directory, 'solvers', 'Clarabel.cpp', fl),
+                            os.path.join(solver_code_dir, fl))
+        shutil.copy(os.path.join(cvxpygen_directory, 'template', 'LICENSE'), code_dir)
+
+        # adjust top-level CMakeLists.txt
+        with open(os.path.join(code_dir, 'c', 'CMakeLists.txt'), 'a') as f:
+            f.write('\ntarget_link_libraries(cpg_example PRIVATE libclarabel_c_static)\n')
+            f.write('\ntarget_link_libraries(cpg PRIVATE libclarabel_c_static)\n')
+
+        # remove examples target from Clarabel.cpp/CMakeLists.txt
+        with open(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'), 'r') as f:
+            cmake_data = f.read()
+        with open(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'), 'w') as f:
+            f.write(cmake_data.replace('add_subdirectory(examples)', '# add_subdirectory(examples)'))
+
+        # adjust paths in Clarabel.cpp/rust_wrapper/CMakeLists.txt
+        with open(os.path.join(code_dir, 'c', 'solver_code', 'rust_wrapper', 'CMakeLists.txt'), 'r') as f:
+            cmake_data = f.read()
+        with open(os.path.join(code_dir, 'c', 'solver_code', 'rust_wrapper', 'CMakeLists.txt'), 'w') as f:
+            f.write(cmake_data.replace('${CMAKE_SOURCE_DIR}/', '${CMAKE_SOURCE_DIR}/solver_code/'))
+
+        # adjust Clarabel
+        with open(os.path.join(code_dir, 'c', 'solver_code', 'include', 'Clarabel'), 'r') as f:
+            clarabel_text = f.read()
+        with open(os.path.join(code_dir, 'c', 'solver_code', 'include', 'Clarabel'), 'w') as f:
+            f.write(clarabel_text.replace('cpp/', 'c/'))
+
+        # adjust setup.py
+        with open(os.path.join(code_dir, 'setup.py'), 'r') as f:
+            setup_text = f.read()
+        setup_text = setup_text.replace("extra_objects=[cpg_lib])",
+                                        "extra_objects=[cpg_lib, os.path.join(cpg_dir, 'solver_code', 'rust_wrapper', 'target', 'debug', 'libclarabel_c.a')])")
+        with open(os.path.join(code_dir, 'setup.py'), 'w') as f:
+            f.write(setup_text)
+
+    def get_affine_map(self, p_id, param_prob, constraint_info: ConstraintInfo) -> AffineMap:
+        affine_map = AffineMap()
+
+        if p_id == 'P':
+            if self.indices_obj is None: # problem is an LP
+                return None
+            affine_map.mapping = param_prob.reduced_P.reduced_mat
+            affine_map.indices = self.indices_obj
+            affine_map.shape = (self.n_var, self.n_var)
+        elif p_id == 'q':
+            affine_map.mapping = param_prob.c[:-1]
+        elif p_id == 'd':
+            affine_map.mapping = param_prob.c[-1]
+        elif p_id == 'A':
+            affine_map.mapping = param_prob.reduced_A.reduced_mat[:constraint_info.n_data_constr_mat]
+            affine_map.indices = self.indices_constr[:constraint_info.n_data_constr_mat]
+            affine_map.shape = (self.n_eq, self.n_var) # only equality constraints
+        elif p_id == 'b': # provide 'mapping_rows' instead of 'mapping' for vector parameters since mapping will be decompressed
+            affine_map.mapping_rows = constraint_info.mapping_rows_eq[
+                constraint_info.mapping_rows_eq >= constraint_info.n_data_constr_mat]
+            affine_map.indices = self.indices_constr[affine_map.mapping_rows]
+            affine_map.shape = (self.n_eq, 1) # only equality constraints
+        else:
+            raise ValueError(f'Unknown parameter name {p_id}.')
+
+        return affine_map
+    
+    def declare_workspace(self, f, prefix) -> None:
+        f.write('\n// Clarabel workspace\n')
+        f.write(f'extern ClarabelCscMatrix {prefix}P;\n')
+        f.write(f'extern ClarabelCscMatrix {prefix}A;\n')
+        f.write(f'extern ClarabelSupportedConeT {prefix}cones[{self.canon_constants["n_cone_types"]}];\n')
+        f.write(f'extern ClarabelDefaultSettings {prefix}settings;\n')
+        f.write(f'extern ClarabelDefaultSolver *{prefix}solver;\n')
+        f.write(f'extern ClarabelDefaultSolution {prefix}solution;\n')
+
+    def define_workspace(self, f, prefix) -> None:
+        f.write('\n// Clarabel workspace\n')
+        f.write(f'ClarabelCscMatrix {prefix}P;\n')
+        f.write(f'ClarabelCscMatrix {prefix}A;\n')
+        cone_str_list = []
+        for cd in ['cone_dims_zero', 'cone_dims_nonneg']:
+            if self.canon_constants[cd] > 0:
+                cone_str_list.append(f'{self.canon_constants["cd_to_t"][cd]}({self.canon_constants[cd]})')
+        cone_str_list.extend(['ClarabelExponentialConeT()'] * self.canon_constants['cone_dims_exp'])
+        for cd in ['cone_dims_soc', 'cone_dims_psd', 'cone_dims_p3d']:
+            for l in self.canon_constants[cd]:
+                cone_str_list.append(f'{self.canon_constants["cd_to_t"][cd]}({l})')
+        f.write(f'ClarabelSupportedConeT {prefix}cones[{self.canon_constants["n_cone_types"]}] = {{ {", ".join(cone_str_list)} }};\n')
+        f.write(f'ClarabelDefaultSettings {prefix}settings;\n')
+        f.write(f'ClarabelDefaultSolver *{prefix}solver = 0;\n')
+        f.write(f'ClarabelDefaultSolution {prefix}solution;\n')

@@ -96,11 +96,11 @@ def get_primal_vec(prob, name):
         return prob.var_dict['X'].value.flatten()
 
 
-N_RAND = 3
+N_RAND = 2
 
 name_solver_style_seed = [['network', 'resource'],
-                          ['ECOS'],
-                          ['unroll', 'loops'],
+                          ['ECOS', 'CLARABEL'],
+                          ['loops'],
                           list(np.arange(N_RAND))]
 
 

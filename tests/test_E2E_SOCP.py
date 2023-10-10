@@ -72,10 +72,10 @@ def get_primal_vec(prob, name):
         return prob.var_dict['u'].value
 
 
-N_RAND = 3
+N_RAND = 2
 
 name_solver_style_seed = [['ADP'],
-                          ['SCS', 'ECOS'],
+                          ['SCS', 'ECOS', 'CLARABEL'],
                           ['unroll', 'loops'],
                           list(np.arange(N_RAND))]
 

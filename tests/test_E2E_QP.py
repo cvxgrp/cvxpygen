@@ -172,11 +172,11 @@ def get_primal_vec(prob, name):
         return np.concatenate((prob.var_dict['w'].value, prob.var_dict['delta_w'].value, prob.var_dict['f'].value))
 
 
-N_RAND = 3
+N_RAND = 2
 
 name_solver_style_seed = [['actuator', 'MPC', 'portfolio'],
-                          ['OSQP', 'SCS'],
-                          ['unroll', 'loops'],
+                          ['OSQP', 'SCS', 'CLARABEL'],
+                          ['loops'],
                           list(np.arange(N_RAND))]
 
 name_to_prob = {'actuator': actuator_problem(),

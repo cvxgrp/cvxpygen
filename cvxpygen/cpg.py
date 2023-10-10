@@ -28,8 +28,6 @@ from subprocess import call
 from cvxpy.problems.objective import Maximize
 from cvxpy.cvxcore.python import canonInterface as cI
 from cvxpy.expressions.variable import upper_tri_to_full
-from cvxpy.reductions.solvers.conic_solvers.scs_conif import SCS
-from cvxpy.reductions.solvers.conic_solvers.ecos_conif import ECOS
 
 
 def generate_code(problem, code_dir='CPG_code', solver=None, enable_settings=[], unroll=False, prefix='', wrapper=True):
@@ -56,7 +54,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, enable_settings=[],
     param_prob = data['param_prob']
 
     solver_name = solving_chain.solver.name()
-    interface_class = get_interface_class(solver_name)
+    interface_class, cvxpy_interface_class = get_interface_class(solver_name)
 
     # configuration
     configuration = get_configuration(code_dir, solver, unroll, prefix)
@@ -69,17 +67,17 @@ def generate_code(problem, code_dir='CPG_code', solver=None, enable_settings=[],
     # checks in sparsity
     handle_sparsity(param_prob)
 
+    # dimensions and information specific to solver
+    solver_interface = interface_class(data, param_prob, enable_settings)  # noqa
+
     # variable information
     variable_info = get_variable_info(problem, inverse_data)
 
     # dual variable information
-    dual_variable_info = get_dual_variable_info(inverse_data, solver_name)
+    dual_variable_info = get_dual_variable_info(inverse_data, solver_interface, cvxpy_interface_class)
 
     # user parameters
     parameter_info = get_parameter_info(param_prob)
-
-    # dimensions and information specific to solver
-    solver_interface = interface_class(data, param_prob, enable_settings)  # noqa
 
     constraint_info = get_constraint_info(solver_interface)
 
@@ -107,34 +105,42 @@ def process_canonical_parameters(constraint_info, param_prob, parameter_info, so
     adjacency = np.zeros(shape=(len(solver_interface.canon_p_ids), parameter_info.num), dtype=bool)
     parameter_canon = ParameterCanon()
     # compute affine mapping for each canonical parameter
-    for i, p_id in enumerate(solver_interface.canon_p_ids):
+    for i, (p_id, p_sign) in enumerate(zip(solver_interface.canon_p_ids, solver_interface.canon_p_signs)):
 
         affine_map = solver_interface.get_affine_map(p_id, param_prob, constraint_info)
 
-        if p_id in solver_interface.canon_p_ids_constr_vec:
-            affine_map = update_to_dense_mapping(affine_map, param_prob, solver_interface)
+        if affine_map is not None:
 
-        if p_id == 'd':
-            parameter_canon.nonzero_d = affine_map.mapping.nnz > 0
+            if p_id in solver_interface.canon_p_ids_constr_vec:
+                affine_map = update_to_dense_mapping(affine_map, param_prob)
 
-        adjacency = update_adjacency_matrix(adjacency, i, parameter_info, affine_map.mapping)
+            if p_id == 'd':
+                parameter_canon.nonzero_d = affine_map.mapping.nnz > 0
 
-        # take sparsity into account
-        affine_map.mapping = affine_map.mapping[:, parameter_info.sparsity_mask]
+            adjacency = update_adjacency_matrix(adjacency, i, parameter_info, affine_map.mapping)
 
-        # compute default values of canonical parameters
-        affine_map, parameter_canon = set_default_values(affine_map, p_id, parameter_canon, parameter_info, solver_interface, solver_name)
+            # take sparsity into account
+            affine_map.mapping = affine_map.mapping[:, parameter_info.sparsity_mask]
 
-        parameter_canon.p_id_to_mapping[p_id] = affine_map.mapping.tocsr()
-        parameter_canon.p_id_to_changes[p_id] = affine_map.mapping[:, :-1].nnz > 0
-        parameter_canon.p_id_to_size[p_id] = affine_map.mapping.shape[0]
+            # compute default values of canonical parameters
+            affine_map, parameter_canon = set_default_values(affine_map, p_id, parameter_canon, parameter_info, solver_interface)
+
+            parameter_canon.p_id_to_mapping[p_id] = p_sign * affine_map.mapping.tocsr()
+            parameter_canon.p_id_to_changes[p_id] = affine_map.mapping[:, :-1].nnz > 0
+            parameter_canon.p_id_to_size[p_id] = affine_map.mapping.shape[0]
+
+        else:
+
+            parameter_canon.p_id_to_mapping[p_id] = None
+            parameter_canon.p_id_to_changes[p_id] = False
+            parameter_canon.p_id_to_size[p_id] = 0
+
     parameter_canon.is_maximization = type(problem.objective) == Maximize
     return adjacency, parameter_canon
 
 
-def update_to_dense_mapping(affine_map, param_prob, solver_interface):
-    mapping_to_sparse = solver_interface.sign_constr_vec * param_prob.reduced_A.reduced_mat[
-        affine_map.mapping_rows]
+def update_to_dense_mapping(affine_map, param_prob):
+    mapping_to_sparse = param_prob.reduced_A.reduced_mat[affine_map.mapping_rows]
     mapping_to_dense = sparse.lil_matrix(
         np.zeros((affine_map.shape[0], mapping_to_sparse.shape[1])))
     for i_data in range(mapping_to_sparse.shape[0]):
@@ -143,28 +149,27 @@ def update_to_dense_mapping(affine_map, param_prob, solver_interface):
     return affine_map
 
 
-def set_default_values(affine_map, p_id, parameter_canon, parameter_info, solver_interface,
-                       solver_name):
+def set_default_values(affine_map, p_id, parameter_canon, parameter_info, solver_interface):
     if p_id.isupper():
         rows_nonzero, _ = affine_map.mapping.nonzero()
         canon_p_data_nonzero = np.sort(np.unique(rows_nonzero))
         affine_map.mapping = affine_map.mapping[canon_p_data_nonzero, :]
         canon_p_data = affine_map.mapping @ parameter_info.flat_usp
         # compute 'indptr' to construct sparse matrix from 'canon_p_data' and 'indices'
-        if solver_name in ['OSQP', 'SCS']:
-            if p_id == 'P':
-                affine_map.indptr = solver_interface.indptr_obj
-            elif p_id == 'A':
-                affine_map.indptr = solver_interface.indptr_constr[:-1]
-        elif solver_name == 'ECOS':
+        if solver_interface.dual_var_split: # by equality and inequality
             indptr_original = solver_interface.indptr_constr[:-1]
-            affine_map.indptr = 0 * indptr_original
+            affine_map.indptr = 0 * indptr_original # rebuild 'indptr' by considering only 'mapping_rows' (corresponds to either equality or inequality)
             for r in affine_map.mapping_rows:
-                for c in range(affine_map.shape[1]):
+                for c in range(affine_map.shape[1]): # shape of matrix re-shaped from flat param vector resulting from mapping
                     if indptr_original[c] <= r < indptr_original[c + 1]:
                         affine_map.indptr[c + 1:] += 1
                         break
-        # compute 'indices_usp' and 'indptr_usp'
+        else:
+            if p_id == 'P':
+                affine_map.indptr = solver_interface.indptr_obj
+            elif p_id == 'A':
+                affine_map.indptr = solver_interface.indptr_constr[:-1] # leave out part for rhs
+        # compute 'indices_usp' and 'indptr_usp' (usp = user-defined sparsity)
         indices_usp = affine_map.indices[canon_p_data_nonzero]
         indptr_usp = 0 * affine_map.indptr
         for r in canon_p_data_nonzero:
@@ -174,16 +179,13 @@ def set_default_values(affine_map, p_id, parameter_canon, parameter_info, solver
                     break
         csc_mat = sparse.csc_matrix((canon_p_data, indices_usp, indptr_usp),
                                     shape=affine_map.shape)
-        if solver_name == 'OSQP':
-            parameter_canon.p_csc[p_id] = csc_mat
+        parameter_canon.p_csc[p_id] = csc_mat
         parameter_canon.p[p_id] = utils.csc_to_dict(csc_mat)
     else:
-        canon_p_data = affine_map.mapping @ parameter_info.flat_usp
-        if solver_name == 'OSQP' and p_id == 'l':
-            parameter_canon.p[p_id] = np.concatenate(
-                (canon_p_data, -np.inf * np.ones(solver_interface.n_ineq)), axis=0)
-        else:
-            parameter_canon.p[p_id] = canon_p_data
+        parameter_canon.p[p_id] = solver_interface.augment_vector_parameter(
+            p_id,
+            affine_map.mapping @ parameter_info.flat_usp
+            )
 
     return affine_map, parameter_canon
 
@@ -222,14 +224,14 @@ def get_variable_info(problem, inverse_data) -> PrimalVariableInfo:
     return variable_info
 
 
-def get_dual_variable_info(inverse_data, solver_name) -> DualVariableInfo:
+def get_dual_variable_info(inverse_data, solver_interface, cvxpy_interface_class) -> DualVariableInfo:
     # get chain of constraint id maps for 'CvxAttr2Constr' and 'Canonicalization' objects
     dual_id_maps = []
-    if solver_name == 'OSQP':
+    if solver_interface.solver_type == 'quadratic':
         if inverse_data[-4]:
             dual_id_maps.append(inverse_data[-4][2])
         dual_id_maps.append(inverse_data[-3].cons_id_map)
-    elif solver_name in ['SCS', 'ECOS']:
+    elif solver_interface.solver_type == 'conic':
         dual_id_maps.append(inverse_data[-4].cons_id_map)
         if inverse_data[-3]:
             dual_id_maps.append(inverse_data[-3][2])
@@ -241,20 +243,18 @@ def get_dual_variable_info(inverse_data, solver_name) -> DualVariableInfo:
             dual_id = dual_id_map[dual_id]
         dual_ids.append(dual_id)
     # get canonical constraint information
-    if solver_name == 'OSQP':
+    if solver_interface.solver_type == 'quadratic':
         con_canon = inverse_data[-2].constraints  # same order as in canonical dual vector
-    elif solver_name == 'SCS':
-        con_canon = inverse_data[-1][SCS.EQ_CONSTR] + inverse_data[-1][SCS.NEQ_CONSTR]
-    else:
-        con_canon = inverse_data[-1][ECOS.EQ_CONSTR] + inverse_data[-1][ECOS.NEQ_CONSTR]
+    elif solver_interface.solver_type == 'conic':
+        con_canon = inverse_data[-1][cvxpy_interface_class.EQ_CONSTR] + inverse_data[-1][cvxpy_interface_class.NEQ_CONSTR]
     con_canon_dict = {c.id: c for c in con_canon}
     d_canon_offsets = np.cumsum([0] + [c.args[0].size for c in con_canon[:-1]])
-    if solver_name in ['OSQP', 'SCS']:
-        d_vectors = ['y'] * len(d_canon_offsets)
+    if solver_interface.dual_var_split:
+        n_split = len(inverse_data[-1][cvxpy_interface_class.EQ_CONSTR])
+        d_vectors = [solver_interface.dual_var_names[0]] * n_split + [solver_interface.dual_var_names[1]] * (len(d_canon_offsets) - n_split)
+        d_canon_offsets[n_split:] -= d_canon_offsets[n_split]
     else:
-        n_split_yz = len(inverse_data[-1][ECOS.EQ_CONSTR])
-        d_vectors = ['y'] * n_split_yz + ['z'] * (len(d_canon_offsets) - n_split_yz)
-        d_canon_offsets[n_split_yz:] -= d_canon_offsets[n_split_yz]
+        d_vectors = solver_interface.dual_var_names * len(d_canon_offsets)
     d_canon_offsets_dict = {c.id: off for c, off in zip(con_canon, d_canon_offsets)}
     # select for user-defined constraints
     d_offsets = [d_canon_offsets_dict[i] for i in dual_ids]
