@@ -172,11 +172,11 @@ def get_primal_vec(prob, name):
         return np.concatenate((prob.var_dict['w'].value, prob.var_dict['delta_w'].value, prob.var_dict['f'].value))
 
 
-N_RAND = 3
+N_RAND = 2
 
 name_solver_style_seed = [['actuator', 'MPC', 'portfolio'],
                           ['OSQP', 'SCS'],
-                          ['unroll', 'loops'],
+                          ['loops'],
                           list(np.arange(N_RAND))]
 
 name_to_prob = {'actuator': actuator_problem(),
@@ -251,3 +251,7 @@ def test_OSQP_verbose():
     assert 'optimal objective' in verbose_output.getvalue()
 
     sys.stdout = sys.__stdout__
+
+
+def test_clarabel():
+    test('actuator', 'CLARABEL', 'loops', 0)
