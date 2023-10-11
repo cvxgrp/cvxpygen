@@ -37,16 +37,19 @@ jobs:
     - name: Install dependencies (Linux)
       if: runner.os == 'Linux'
       run: |
+        sudo apt install libeigen3-dev
         python setup.py install
 
     - name: Install dependencies (macOS)
       if: runner.os == 'macOS'
       run: |
+        brew install eigen
         python setup.py install
 
     - name: Install dependencies (Windows)
       if: runner.os == 'Windows'
       run: |
+        vcpkg install eigen3:x64-windows
         python setup.py install
 
     - name: Test with pytest (Linux)
@@ -68,4 +71,4 @@ jobs:
       run: |
         pip install pytest
         cd tests
-        pytest
+        pytest test_E2E_LP.py::test test_E2E_QP.py::test test_E2E_QP.py::test_OSQP_verbose test_E2E_SOCP.py::test

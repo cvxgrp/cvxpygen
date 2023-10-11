@@ -30,6 +30,7 @@ class get_pybind_include(object):
 # Add parameters to cmake_args and define_macros
 cmake_args = ['-DCMAKE_POSITION_INDEPENDENT_CODE=ON', '-Wno-dev']
 if system() == 'Windows':
+    cmake_args.append('-DCMAKE_PREFIX_PATH=C:/vcpkg/packages/eigen3_x64-windows/share/eigen3')
     # try to find installation of Visual Studio and set as CMake generator, otherwise let CMake choose default generator
     vs_versions = []
     vswhere_exe = 'C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe'

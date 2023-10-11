@@ -18,14 +18,15 @@ from cvxpy.reductions.solvers.conic_solvers.clarabel_conif import CLARABEL
 
 
 def get_interface_class(solver_name: str) -> "SolverInterface":
+    if system() == 'Windows' and solver_name.upper() == 'CLARABEL':
+        raise ValueError(f'Clarabel solver currently unsupported on Windows.')
     mapping = {
         'OSQP': (OSQPInterface, OSQP),
         'SCS': (SCSInterface, SCS),
         'ECOS': (ECOSInterface, ECOS),
         'CLARABEL': (ClarabelInterface, CLARABEL),
-        'Clarabel': (ClarabelInterface, CLARABEL)
     }
-    interface = mapping.get(solver_name, None)
+    interface = mapping.get(solver_name.upper(), None)
     if interface is None:
         raise ValueError(f'Unsupported solver: {solver_name}.')
     return interface[0], interface[1]
@@ -957,8 +958,10 @@ class ClarabelInterface(SolverInterface):
         # adjust paths in Clarabel.cpp/rust_wrapper/CMakeLists.txt
         with open(os.path.join(code_dir, 'c', 'solver_code', 'rust_wrapper', 'CMakeLists.txt'), 'r') as f:
             cmake_data = f.read()
+        cmake_data = cmake_data.replace('${CMAKE_SOURCE_DIR}/', '${CMAKE_SOURCE_DIR}/solver_code/')
+        cmake_data = cmake_data.replace('/libclarabel_c.lib', '/clarabel_c.lib') # until fixed on Clarabel side
         with open(os.path.join(code_dir, 'c', 'solver_code', 'rust_wrapper', 'CMakeLists.txt'), 'w') as f:
-            f.write(cmake_data.replace('${CMAKE_SOURCE_DIR}/', '${CMAKE_SOURCE_DIR}/solver_code/'))
+            f.write(cmake_data)
 
         # adjust Clarabel
         with open(os.path.join(code_dir, 'c', 'solver_code', 'include', 'Clarabel'), 'r') as f:

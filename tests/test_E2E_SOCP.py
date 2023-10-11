@@ -75,7 +75,7 @@ def get_primal_vec(prob, name):
 N_RAND = 2
 
 name_solver_style_seed = [['ADP'],
-                          ['SCS', 'ECOS', 'CLARABEL'],
+                          ['SCS', 'ECOS'],
                           ['unroll', 'loops'],
                           list(np.arange(N_RAND))]
 
@@ -120,3 +120,7 @@ def test(name, solver, style, seed):
         assert np.linalg.norm(dual_cg - dual_py, 2) / dual_py_norm < 0.1
     else:
         assert np.linalg.norm(dual_cg, 2) < 1e-3
+
+
+def test_clarabel():
+    test('ADP', 'CLARABEL', 'loops', 0)

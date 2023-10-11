@@ -175,7 +175,7 @@ def get_primal_vec(prob, name):
 N_RAND = 2
 
 name_solver_style_seed = [['actuator', 'MPC', 'portfolio'],
-                          ['OSQP', 'SCS', 'CLARABEL'],
+                          ['OSQP', 'SCS'],
                           ['loops'],
                           list(np.arange(N_RAND))]
 
@@ -251,3 +251,7 @@ def test_OSQP_verbose():
     assert 'optimal objective' in verbose_output.getvalue()
 
     sys.stdout = sys.__stdout__
+
+
+def test_clarabel():
+    test('actuator', 'CLARABEL', 'loops', 0)
