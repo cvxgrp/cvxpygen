@@ -43,6 +43,8 @@ under the [GNU General Public License v3.0](https://github.com/embotech/ecos/blo
    pip install ipykernel jupyter matplotlib
    ipython kernel install --user --name=cvxpygen
    ```
+
+If you wish to use the `Clarabel` solver, you need to install [`Rust`](https://www.rust-lang.org/tools/install) and [`Eigen`](https://github.com/oxfordcontrol/Clarabel.cpp#installation).
     
 ## Example
 
@@ -98,6 +100,7 @@ Next to the positional argument `problem`, all keyword arguments for the `genera
 | -------------    | ------------- | ------------- | ------------- |
 | `code_dir`       | directory for code to be stored in                                 | String          | `'CPG_code'`  |
 | `solver`         | canonical solver to generate code with                             | String          | CVXPY default |
+| `solver_opts`    | options passed to canonical solver                                 | Dict            | `None`        |
 | `enable_settings`| enabled settings that are otherwise locked by embedded solver      | List of Strings | `[]`          |
 | `unroll`         | unroll loops in canonicalization code                              | Bool            | `False`       |
 | `prefix`         | prefix for unique code symbols when dealing with multiple problems | String          | `''`          |
