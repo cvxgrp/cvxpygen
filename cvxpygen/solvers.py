@@ -8,7 +8,8 @@ from platform import system
 import numpy as np
 import scipy as sp
 
-from cvxpygen.utils import replace_in_file, write_struct_prot, write_struct_def, write_vec_prot, write_vec_def
+from cvxpygen.utils import read_write_file, write_struct_prot, write_struct_def, \
+    write_vec_prot, write_vec_def, multiple_replace
 from cvxpygen.mappings import PrimalVariableInfo, DualVariableInfo, ConstraintInfo, AffineMap, \
     ParameterCanon, WorkspacePointerInfo, UpdatePendingLogic, ParameterUpdateLogic
 
@@ -275,23 +276,29 @@ class OSQPInterface(SolverInterface):
                          indices_constr, indptr_constr, shape_constr, canon_constants, enable_settings)
 
     def generate_code(self, code_dir, solver_code_dir, cvxpygen_directory,
-                      parameter_canon: ParameterCanon) -> None:
+                  parameter_canon: ParameterCanon) -> None:
         import osqp
+        from sys import platform
 
         # OSQP codegen
         osqp_obj = osqp.OSQP()
         osqp_obj.setup(P=parameter_canon.p_csc['P'], q=parameter_canon.p['q'],
-                       A=parameter_canon.p_csc['A'], l=parameter_canon.p['l'],
-                       u=parameter_canon.p['u'])
-        if system() == 'Windows':
-            cmake_generator = 'MinGW Makefiles'
-        elif system() == 'Linux' or system() == 'Darwin':
-            cmake_generator = 'Unix Makefiles'
-        else:
-            raise ValueError(f'Unsupported OS {system()}.')
+                    A=parameter_canon.p_csc['A'], l=parameter_canon.p['l'],
+                    u=parameter_canon.p['u'])
+
+        cmake_generators = {
+            'win32': 'MinGW Makefiles',
+            'linux': 'Unix Makefiles',
+            'darwin': 'Unix Makefiles'
+        }
+
+        try:
+            cmake_generator = cmake_generators[platform]
+        except KeyError:
+            raise ValueError(f'Unsupported OS {platform}.')
 
         osqp_obj.codegen(os.path.join(code_dir, 'c', 'solver_code'), project_type=cmake_generator,
-                         parameters='matrices', force_rewrite=True)
+                        parameters='matrices', force_rewrite=True)
 
         # copy license files
         shutil.copyfile(os.path.join(cvxpygen_directory, 'solvers', 'osqp-python', 'LICENSE'),
@@ -300,24 +307,39 @@ class OSQPInterface(SolverInterface):
 
         # modify for extra settings
         if 'verbose' in self.enable_settings:
-            replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'),
-                [('message(STATUS "Disabling printing for embedded")', 'message(STATUS "Not disabling printing for embedded by user request")'),
-                 ('set(PRINTING OFF)', '')])
-            replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'include', 'constants.h'),
-                [('# ifdef __cplusplus\n}', '#  define VERBOSE (1)\n\n# ifdef __cplusplus\n}')])
-            replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'include', 'types.h'),
-                [('} OSQPInfo;', '  c_int status_polish;\n} OSQPInfo;'),
-                 ('} OSQPSettings;', '  c_int polish;\n  c_int verbose;\n} OSQPSettings;'),
-                 ('# ifndef EMBEDDED\n  c_int nthreads; ///< number of threads active\n# endif // ifndef EMBEDDED', '  c_int nthreads;')])
-            replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'include', 'osqp.h'),
-                [('# ifdef __cplusplus\n}', 'c_int osqp_update_verbose(OSQPWorkspace *work, c_int verbose_new);\n\n# ifdef __cplusplus\n}')])
-            replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'src', 'osqp', 'util.c'),
-                [('// Print Settings', '/* Print Settings'),
-                 ('LINSYS_SOLVER_NAME[settings->linsys_solver]);', 'LINSYS_SOLVER_NAME[settings->linsys_solver]);*/')])
-            replace_in_file(os.path.join(code_dir, 'c', 'solver_code', 'src', 'osqp', 'osqp.c'),
-                [('void osqp_set_default_settings(OSQPSettings *settings) {', 'void osqp_set_default_settings(OSQPSettings *settings) {\n  settings->verbose = VERBOSE;'),
-                 ('c_int osqp_update_verbose', '#endif // EMBEDDED\n\nc_int osqp_update_verbose'),
-                 ('verbose = verbose_new;\n\n  return 0;\n}\n\n#endif // EMBEDDED', 'verbose = verbose_new;\n\n  return 0;\n}')])
+            replacements_by_file = {
+                'CMakeLists.txt': [
+                    ('message(STATUS "Disabling printing for embedded")', 'message(STATUS "Not disabling printing for embedded by user request")'),
+                    ('set(PRINTING OFF)', '')
+                ],
+                os.path.join('include', 'constants.h'): [
+                    ('# ifdef __cplusplus\n}', '#  define VERBOSE (1)\n\n# ifdef __cplusplus\n}')
+                ],
+                os.path.join('include', 'types.h'): [
+                    ('} OSQPInfo;', '  c_int status_polish;\n} OSQPInfo;'),
+                    ('} OSQPSettings;', '  c_int polish;\n  c_int verbose;\n} OSQPSettings;'),
+                    ('# ifndef EMBEDDED\n  c_int nthreads; ///< number of threads active\n# endif // ifndef EMBEDDED', '  c_int nthreads;')
+                ],
+                os.path.join('include', 'osqp.h'): [
+                    ('# ifdef __cplusplus\n}', 'c_int osqp_update_verbose(OSQPWorkspace *work, c_int verbose_new);\n\n# ifdef __cplusplus\n}')
+                ],
+                os.path.join('src', 'osqp', 'util.c'): [
+                    ('// Print Settings', '/* Print Settings'),
+                    ('LINSYS_SOLVER_NAME[settings->linsys_solver]);', 'LINSYS_SOLVER_NAME[settings->linsys_solver]);*/')
+                ],
+                os.path.join('src', 'osqp', 'osqp.c'): [
+                    ('void osqp_set_default_settings(OSQPSettings *settings) {', 'void osqp_set_default_settings(OSQPSettings *settings) {\n  settings->verbose = VERBOSE;'),
+                    ('c_int osqp_update_verbose', '#endif // EMBEDDED\n\nc_int osqp_update_verbose'),
+                    ('verbose = verbose_new;\n\n  return 0;\n}\n\n#endif // EMBEDDED', 'verbose = verbose_new;\n\n  return 0;\n}')
+                ]
+            }
+
+            solver_code_dir = os.path.join(code_dir, 'c', 'solver_code')
+            for filename, replacements in replacements_by_file.items():
+                filepath = os.path.join(solver_code_dir, filename)
+                read_write_file(filepath, lambda x: multiple_replace(x, replacements))
+
+
 
     def get_affine_map(self, p_id, param_prob, constraint_info: ConstraintInfo) -> AffineMap:
         affine_map = AffineMap()
@@ -462,7 +484,6 @@ class SCSInterface(SolverInterface):
         n_ineq = 0
 
         indices_obj, indptr_obj, shape_obj = self.get_problem_data_index(p_prob.reduced_P)
-
         indices_constr, indptr_constr, shape_constr = self.get_problem_data_index(p_prob.reduced_A)
 
         canon_constants = {'n': n_var, 'm': n_eq, 'z': p_prob.cone_dims.zero,
@@ -481,7 +502,7 @@ class SCSInterface(SolverInterface):
                 'is not supported yet.')
 
     def generate_code(self, code_dir, solver_code_dir, cvxpygen_directory,
-                      parameter_canon: ParameterCanon) -> None:
+                  parameter_canon: ParameterCanon) -> None:
 
         # copy sources
         if os.path.isdir(solver_code_dir):
@@ -498,41 +519,32 @@ class SCSInterface(SolverInterface):
         shutil.copy(os.path.join(cvxpygen_directory, 'template', 'LICENSE'), code_dir)
 
         # disable BLAS and LAPACK
-        with open(os.path.join(code_dir, 'c', 'solver_code', 'scs.mk'), 'r') as f:
-            scs_mk_data = f.read()
-        scs_mk_data = scs_mk_data.replace('USE_LAPACK = 1', 'USE_LAPACK = 0')
-        with open(os.path.join(code_dir, 'c', 'solver_code', 'scs.mk'), 'w') as f:
-            f.write(scs_mk_data)
+        read_write_file(os.path.join(code_dir, 'c', 'solver_code', 'scs.mk'),
+                        lambda x: x.replace('USE_LAPACK = 1', 'USE_LAPACK = 0'))
 
         # modify CMakeLists.txt
-        with open(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'), 'r') as f:
-            cmake_data = f.read()
-        cmake_data = cmake_data.replace(' include/', ' ${CMAKE_CURRENT_SOURCE_DIR}/include/')
-        cmake_data = cmake_data.replace(' src/', ' ${CMAKE_CURRENT_SOURCE_DIR}/src/')
-        cmake_data = cmake_data.replace(' ${LINSYS}/', ' ${CMAKE_CURRENT_SOURCE_DIR}/${LINSYS}/')
-        with open(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'), 'w') as f:
-            f.write(cmake_data)
+        cmake_replacements = [
+            (' include/', ' ${CMAKE_CURRENT_SOURCE_DIR}/include/'),
+            (' src/', ' ${CMAKE_CURRENT_SOURCE_DIR}/src/'),
+            (' ${LINSYS}/', ' ${CMAKE_CURRENT_SOURCE_DIR}/${LINSYS}/')
+        ]
+        read_write_file(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'),
+                        lambda x: multiple_replace(x, cmake_replacements))
 
         # adjust top-level CMakeLists.txt
-        with open(os.path.join(code_dir, 'c', 'CMakeLists.txt'), 'r') as f:
-            cmake_data = f.read()
-        indent = ' ' * 6
         sdir = '${CMAKE_CURRENT_SOURCE_DIR}/solver_code/'
-        cmake_data = cmake_data.replace(sdir + 'include',
-                                        sdir + 'include\n' +
-                                        indent + sdir + 'linsys')
-        with open(os.path.join(code_dir, 'c', 'CMakeLists.txt'), 'w') as f:
-            f.write(cmake_data)
+        indent = ' ' * 6
+        read_write_file(os.path.join(code_dir, 'c', 'CMakeLists.txt'),
+                        lambda x: x.replace(sdir + 'include',
+                                            sdir + 'include\n' + indent + sdir + 'linsys'))
 
         # adjust setup.py
-        with open(os.path.join(code_dir, 'setup.py'), 'r') as f:
-            setup_text = f.read()
         indent = ' ' * 30
-        setup_text = setup_text.replace("os.path.join('c', 'solver_code', 'include'),",
-                                        "os.path.join('c', 'solver_code', 'include'),\n" +
-                                        indent + "os.path.join('c', 'solver_code', 'linsys'),")
-        with open(os.path.join(code_dir, 'setup.py'), 'w') as f:
-            f.write(setup_text)
+        read_write_file(os.path.join(code_dir, 'setup.py'),
+                        lambda x: x.replace("os.path.join('c', 'solver_code', 'include'),",
+                                            "os.path.join('c', 'solver_code', 'include'),\n" +
+                                            indent + "os.path.join('c', 'solver_code', 'linsys'),"))
+
 
     def declare_workspace(self, f, prefix, parameter_canon) -> None:
         matrices = ['P', 'A'] if parameter_canon.quad_obj else ['A']
@@ -685,7 +697,6 @@ class ECOSInterface(SolverInterface):
         n_ineq = data['G'].shape[0]
 
         indices_obj, indptr_obj, shape_obj = self.get_problem_data_index(p_prob.reduced_P)
-
         indices_constr, indptr_constr, shape_constr = self.get_problem_data_index(p_prob.reduced_A)
 
         canon_constants = {'n': n_var, 'm': n_ineq, 'p': n_eq,
@@ -739,7 +750,7 @@ class ECOSInterface(SolverInterface):
         return True
 
     def generate_code(self, code_dir, solver_code_dir, cvxpygen_directory,
-                      parameter_canon: ParameterCanon) -> None:
+                  parameter_canon: ParameterCanon) -> None:
 
         # copy sources
         if os.path.isdir(solver_code_dir):
@@ -749,54 +760,51 @@ class ECOSInterface(SolverInterface):
         for dtc in dirs_to_copy:
             shutil.copytree(os.path.join(cvxpygen_directory, 'solvers', 'ecos', dtc),
                             os.path.join(solver_code_dir, dtc))
-        shutil.copyfile(os.path.join(cvxpygen_directory, 'solvers', 'ecos', 'CMakeLists.txt'),
-                        os.path.join(solver_code_dir, 'CMakeLists.txt'))
-        shutil.copyfile(os.path.join(cvxpygen_directory, 'solvers', 'ecos', 'COPYING'),
-                        os.path.join(solver_code_dir, 'COPYING'))
+        
+        files_to_copy = ['CMakeLists.txt', 'COPYING']
+        for fl in files_to_copy:
+            shutil.copyfile(os.path.join(cvxpygen_directory, 'solvers', 'ecos', fl),
+                            os.path.join(solver_code_dir, fl))
+        
         shutil.copyfile(os.path.join(cvxpygen_directory, 'solvers', 'ecos', 'COPYING'),
                         os.path.join(code_dir, 'COPYING'))
 
         # adjust print level
-        with open(os.path.join(code_dir, 'c', 'solver_code', 'include', 'glblopts.h'), 'r') as f:
-            glbl_opts_data = f.read()
-        glbl_opts_data = glbl_opts_data.replace('#define PRINTLEVEL (2)', '#define PRINTLEVEL (0)')
-        with open(os.path.join(code_dir, 'c', 'solver_code', 'include', 'glblopts.h'), 'w') as f:
-            f.write(glbl_opts_data)
+        read_write_file(os.path.join(code_dir, 'c', 'solver_code', 'include', 'glblopts.h'),
+                        lambda x: x.replace('#define PRINTLEVEL (2)', '#define PRINTLEVEL (0)'))
 
         # adjust top-level CMakeLists.txt
-        with open(os.path.join(code_dir, 'c', 'CMakeLists.txt'), 'r') as f:
-            cmake_data = f.read()
         indent = ' ' * 6
         sdir = '${CMAKE_CURRENT_SOURCE_DIR}/solver_code/'
-        cmake_data = cmake_data.replace(sdir + 'include',
-                                        sdir + 'include\n' +
-                                        indent + sdir + 'external/SuiteSparse_config\n' +
-                                        indent + sdir + 'external/amd/include\n' +
-                                        indent + sdir + 'external/ldl/include')
-        with open(os.path.join(code_dir, 'c', 'CMakeLists.txt'), 'w') as f:
-            f.write(cmake_data)
+        cmake_replacements = [
+            (sdir + 'include',
+            sdir + 'include\n' +
+            indent + sdir + 'external/SuiteSparse_config\n' +
+            indent + sdir + 'external/amd/include\n' +
+            indent + sdir + 'external/ldl/include')
+        ]
+        read_write_file(os.path.join(code_dir, 'c', 'CMakeLists.txt'),
+                        lambda x: multiple_replace(x, cmake_replacements))
 
         # remove library target from ECOS CMakeLists.txt
         with open(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'), 'r') as f:
-            lines = f.readlines()
+            lines = [line for line in f if '# ECOS library' not in line]
         with open(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'), 'w') as f:
-            for line in lines:
-                if '# ECOS library' in line:
-                    break
-                f.write(line)
+            f.writelines(lines)
 
         # adjust setup.py
-        with open(os.path.join(code_dir, 'setup.py'), 'r') as f:
-            setup_text = f.read()
         indent = ' ' * 30
-        setup_text = setup_text.replace("os.path.join('c', 'solver_code', 'include'),",
-                                        "os.path.join('c', 'solver_code', 'include'),\n" +
-                                        indent + "os.path.join('c', 'solver_code', 'external', 'SuiteSparse_config'),\n" +
-                                        indent + "os.path.join('c', 'solver_code', 'external', 'amd', 'include'),\n" +
-                                        indent + "os.path.join('c', 'solver_code', 'external', 'ldl', 'include'),")
-        setup_text = setup_text.replace("license='Apache 2.0'", "license='GPL 3.0'")
-        with open(os.path.join(code_dir, 'setup.py'), 'w') as f:
-            f.write(setup_text)
+        setup_replacements = [
+            ("os.path.join('c', 'solver_code', 'include'),",
+            "os.path.join('c', 'solver_code', 'include'),\n" +
+            indent + "os.path.join('c', 'solver_code', 'external', 'SuiteSparse_config'),\n" +
+            indent + "os.path.join('c', 'solver_code', 'external', 'amd', 'include'),\n" +
+            indent + "os.path.join('c', 'solver_code', 'external', 'ldl', 'include'),"),
+            ("license='Apache 2.0'", "license='GPL 3.0'")
+        ]
+        read_write_file(os.path.join(code_dir, 'setup.py'),
+                        lambda x: multiple_replace(x, setup_replacements))
+
 
     def declare_workspace(self, f, prefix, parameter_canon) -> None:
         if self.canon_constants['n_cones'] > 0:
@@ -825,8 +833,7 @@ class ClarabelInterface(SolverInterface):
 
     # header and source files
     header_files = ['<Clarabel>']
-    cmake_headers = []
-    cmake_sources = []
+    cmake_headers, cmake_sources = [], []
 
     # preconditioning of problem data happening in-memory
     inmemory_preconditioning = True
@@ -944,8 +951,8 @@ class ClarabelInterface(SolverInterface):
         return True
 
     def generate_code(self, code_dir, solver_code_dir, cvxpygen_directory,
-                      parameter_canon: ParameterCanon) -> None:
-        
+                    parameter_canon: ParameterCanon) -> None:
+
         # copy sources
         if os.path.isdir(solver_code_dir):
             shutil.rmtree(solver_code_dir)
@@ -963,35 +970,29 @@ class ClarabelInterface(SolverInterface):
         # adjust top-level CMakeLists.txt
         with open(os.path.join(code_dir, 'c', 'CMakeLists.txt'), 'a') as f:
             f.write('\ntarget_link_libraries(cpg_example PRIVATE libclarabel_c_static)\n')
-            f.write('\ntarget_link_libraries(cpg PRIVATE libclarabel_c_static)\n')
+            f.write('target_link_libraries(cpg PRIVATE libclarabel_c_static)\n')
 
         # remove examples target from Clarabel.cpp/CMakeLists.txt
-        with open(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'), 'r') as f:
-            cmake_data = f.read()
-        with open(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'), 'w') as f:
-            f.write(cmake_data.replace('add_subdirectory(examples)', '# add_subdirectory(examples)'))
+        read_write_file(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'),
+                        lambda x: x.replace('add_subdirectory(examples)', '# add_subdirectory(examples)'))
 
         # adjust paths in Clarabel.cpp/rust_wrapper/CMakeLists.txt
-        with open(os.path.join(code_dir, 'c', 'solver_code', 'rust_wrapper', 'CMakeLists.txt'), 'r') as f:
-            cmake_data = f.read()
-        cmake_data = cmake_data.replace('${CMAKE_SOURCE_DIR}/', '${CMAKE_SOURCE_DIR}/solver_code/')
-        cmake_data = cmake_data.replace('/libclarabel_c.lib', '/clarabel_c.lib') # until fixed on Clarabel side
-        with open(os.path.join(code_dir, 'c', 'solver_code', 'rust_wrapper', 'CMakeLists.txt'), 'w') as f:
-            f.write(cmake_data)
+        replacements = [
+            ('${CMAKE_SOURCE_DIR}/', '${CMAKE_SOURCE_DIR}/solver_code/'),
+            ('/libclarabel_c.lib', '/clarabel_c.lib')  # until fixed on Clarabel side
+        ]
+        read_write_file(os.path.join(code_dir, 'c', 'solver_code', 'rust_wrapper', 'CMakeLists.txt'),
+                        lambda x: multiple_replace(x, replacements))
 
         # adjust Clarabel
-        with open(os.path.join(code_dir, 'c', 'solver_code', 'include', 'Clarabel'), 'r') as f:
-            clarabel_text = f.read()
-        with open(os.path.join(code_dir, 'c', 'solver_code', 'include', 'Clarabel'), 'w') as f:
-            f.write(clarabel_text.replace('cpp/', 'c/'))
+        read_write_file(os.path.join(code_dir, 'c', 'solver_code', 'include', 'Clarabel'),
+                        lambda x: x.replace('cpp/', 'c/'))
 
         # adjust setup.py
-        with open(os.path.join(code_dir, 'setup.py'), 'r') as f:
-            setup_text = f.read()
-        setup_text = setup_text.replace("extra_objects=[cpg_lib])",
-                                        "extra_objects=[cpg_lib, os.path.join(cpg_dir, 'solver_code', 'rust_wrapper', 'target', 'debug', 'libclarabel_c.a')])")
-        with open(os.path.join(code_dir, 'setup.py'), 'w') as f:
-            f.write(setup_text)
+        read_write_file(os.path.join(code_dir, 'setup.py'),
+                        lambda x: x.replace("extra_objects=[cpg_lib])",
+                                            "extra_objects=[cpg_lib, os.path.join(cpg_dir, 'solver_code', 'rust_wrapper', 'target', 'debug', 'libclarabel_c.a')])"))
+
     
     def declare_workspace(self, f, prefix, parameter_canon) -> None:
         f.write('\n// Clarabel workspace\n')

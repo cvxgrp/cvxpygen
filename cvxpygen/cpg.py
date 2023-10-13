@@ -18,6 +18,8 @@ import pickle
 import warnings
 
 from cvxpygen import utils
+from cvxpygen.utils import write_file, read_write_file, write_example_def, write_module_prot, write_module_def, \
+    write_canon_cmake, write_method, replace_cmake_data, replace_setup_data, replace_html_data
 from cvxpygen.mappings import Configuration, PrimalVariableInfo, DualVariableInfo, ConstraintInfo, \
     ParameterCanon, ParameterInfo
 from cvxpygen.solvers import get_interface_class
@@ -30,13 +32,13 @@ from cvxpy.cvxcore.python import canonInterface as cI
 from cvxpy.expressions.variable import upper_tri_to_full
 
 
-def generate_code(problem, code_dir='CPG_code', solver=None, solver_opts=None, enable_settings=[], unroll=False, prefix='', wrapper=True):
+def generate_code(problem, code_dir='CPG_code', solver=None, solver_opts=None,
+                  enable_settings=[], unroll=False, prefix='', wrapper=True):
     """
-    Generate C code for CVXPY problem and (optionally) python wrapper
+    Generate C code to solve a CVXPY problem
     """
-
     sys.stdout.write('Generating code with CVXPYgen ...\n')
-
+    
     create_folder_structure(code_dir)
 
     # problem data
@@ -45,41 +47,31 @@ def generate_code(problem, code_dir='CPG_code', solver=None, solver_opts=None, e
         gp=False,
         enforce_dpp=True,
         verbose=False,
-        solver_opts=solver_opts,
+        solver_opts=solver_opts
     )
     param_prob = data['param_prob']
-
     solver_name = solving_chain.solver.name()
     interface_class, cvxpy_interface_class = get_interface_class(solver_name)
 
     # configuration
     configuration = get_configuration(code_dir, solver, unroll, prefix)
 
-    # for cone problems, check if all cones are supported
+    # cone problems check
     if hasattr(param_prob, 'cone_dims'):
         cone_dims = param_prob.cone_dims
         interface_class.check_unsupported_cones(cone_dims)
 
-    # checks in sparsity
     handle_sparsity(param_prob)
 
-    # dimensions and information specific to solver
     solver_interface = interface_class(data, param_prob, enable_settings)  # noqa
-
-    # variable information
     variable_info = get_variable_info(problem, inverse_data)
-
-    # dual variable information
     dual_variable_info = get_dual_variable_info(inverse_data, solver_interface, cvxpy_interface_class)
-
-    # user parameters
     parameter_info = get_parameter_info(param_prob)
-
     constraint_info = get_constraint_info(solver_interface)
 
-    adjacency, parameter_canon, canon_p_ids = process_canonical_parameters(constraint_info, param_prob,
-                                                              parameter_info, solver_interface,
-                                                              solver_opts, problem, cvxpy_interface_class)
+    adjacency, parameter_canon, canon_p_ids = process_canonical_parameters(
+        constraint_info, param_prob, parameter_info, solver_interface, solver_opts, problem, cvxpy_interface_class
+    )
 
     cvxpygen_directory = os.path.dirname(os.path.realpath(__file__))
     solver_code_dir = os.path.join(code_dir, 'c', 'solver_code')
@@ -87,83 +79,87 @@ def generate_code(problem, code_dir='CPG_code', solver=None, solver_opts=None, e
 
     parameter_canon.user_p_name_to_canon_outdated = {
         user_p_name: [canon_p_ids[j] for j in np.nonzero(adjacency[:, i])[0]]
-        for i, user_p_name in enumerate(parameter_info.names)}
+        for i, user_p_name in enumerate(parameter_info.names)
+    }
 
-    write_c_code(problem, configuration, variable_info, dual_variable_info, parameter_info,
-                 parameter_canon, solver_interface)
+    write_c_code(problem, configuration, variable_info, dual_variable_info,
+                 parameter_info, parameter_canon, solver_interface)
 
     sys.stdout.write('CVXPYgen finished generating code.\n')
-
+    
     if wrapper:
         compile_python_module(code_dir)
 
 
-def get_quad_obj(problem, solver_type, solver_opts, solver_class):
+def get_quad_obj(problem, solver_type, solver_opts, solver_class) -> bool:
+    
     if solver_type == 'quadratic':
         return True
-    if solver_opts is None:
-        use_quad_obj = True
-    else:
-        use_quad_obj = solver_opts.get('use_quad_obj', True)
-    return use_quad_obj and solver_class().supports_quad_obj() and \
-        problem.objective.expr.has_quadratic_term()
+    
+    use_quad_obj = solver_opts.get('use_quad_obj', True) if solver_opts else True
+
+    return use_quad_obj and solver_class().supports_quad_obj() and problem.objective.expr.has_quadratic_term()
 
 
-def process_canonical_parameters(constraint_info, param_prob, parameter_info, solver_interface, solver_opts, problem, cvxpy_interface_class):
+
+def process_canonical_parameters(
+        constraint_info, param_prob, parameter_info, 
+        solver_interface, solver_opts, problem, cvxpy_interface_class):
+    
     parameter_canon = ParameterCanon()
-    parameter_canon.quad_obj = get_quad_obj(problem, solver_interface.solver_type, solver_opts, cvxpy_interface_class)
+    parameter_canon.quad_obj = get_quad_obj(
+        problem, solver_interface.solver_type, solver_opts, cvxpy_interface_class
+    )
     
     if not parameter_canon.quad_obj:
         canon_p_ids = [p_id for p_id in solver_interface.canon_p_ids if p_id != 'P']
     else:
         canon_p_ids = solver_interface.canon_p_ids
     
-    adjacency = np.zeros(shape=(len(canon_p_ids), parameter_info.num), dtype=bool)
-    # compute affine mapping for each canonical parameter
+    adjacency = np.zeros((len(canon_p_ids), parameter_info.num), dtype=bool)
+    
     for i, p_id in enumerate(canon_p_ids):
-
         affine_map = solver_interface.get_affine_map(p_id, param_prob, constraint_info)
 
-        if affine_map is not None:
-
+        if affine_map:
             if p_id in solver_interface.canon_p_ids_constr_vec:
                 affine_map = update_to_dense_mapping(affine_map, param_prob)
-
             if p_id == 'd':
                 parameter_canon.nonzero_d = affine_map.mapping.nnz > 0
 
             adjacency = update_adjacency_matrix(adjacency, i, parameter_info, affine_map.mapping)
-
-            # take sign into account
-            affine_map.mapping = sparse.csc_matrix(affine_map.mapping.toarray() * affine_map.sign) # be able to use broadcasting
-
-            # take sparsity into account
+            affine_map.mapping = sparse.csc_matrix(affine_map.mapping.toarray() * affine_map.sign)
             affine_map.mapping = affine_map.mapping[:, parameter_info.sparsity_mask]
-
-            # compute default values of canonical parameters
             affine_map, parameter_canon = set_default_values(affine_map, p_id, parameter_canon, parameter_info, solver_interface)
-
+            
             parameter_canon.p_id_to_mapping[p_id] = affine_map.mapping.tocsr()
             parameter_canon.p_id_to_changes[p_id] = affine_map.mapping[:, :-1].nnz > 0
             parameter_canon.p_id_to_size[p_id] = affine_map.mapping.shape[0]
-
         else:
-
             parameter_canon.p_id_to_mapping[p_id] = None
             parameter_canon.p_id_to_changes[p_id] = False
             parameter_canon.p_id_to_size[p_id] = 0
+    
+    parameter_canon.is_maximization = isinstance(problem.objective, Maximize)
 
-    parameter_canon.is_maximization = type(problem.objective) == Maximize
     return adjacency, parameter_canon, canon_p_ids
 
 
+
 def update_to_dense_mapping(affine_map, param_prob):
+
+    # Extract the sparse matrix and prepare a zero-initialized dense matrix
     mapping_to_sparse = param_prob.reduced_A.reduced_mat[affine_map.mapping_rows]
-    mapping_to_dense = sparse.lil_matrix(
-        np.zeros((affine_map.shape[0], mapping_to_sparse.shape[1])))
-    for i_data in range(mapping_to_sparse.shape[0]):
-        mapping_to_dense[affine_map.indices[i_data], :] = mapping_to_sparse[i_data, :]
+    dense_shape = (affine_map.shape[0], mapping_to_sparse.shape[1])
+    mapping_to_dense = sparse.lil_matrix(np.zeros(dense_shape))
+
+    # Update dense mapping with data from sparse mapping
+    for i_data, sparse_row in enumerate(mapping_to_sparse):
+        mapping_to_dense[affine_map.indices[i_data], :] = sparse_row
+
+    # Convert to Compressed Sparse Column format and update mapping
     affine_map.mapping = sparse.csc_matrix(mapping_to_dense)
+    
     return affine_map
 
 
@@ -243,6 +239,7 @@ def get_variable_info(problem, inverse_data) -> PrimalVariableInfo:
 
 
 def get_dual_variable_info(inverse_data, solver_interface, cvxpy_interface_class) -> DualVariableInfo:
+    
     # get chain of constraint id maps for 'CvxAttr2Constr' and 'Canonicalization' objects
     dual_id_maps = []
     if solver_interface.solver_type == 'quadratic':
@@ -254,12 +251,14 @@ def get_dual_variable_info(inverse_data, solver_interface, cvxpy_interface_class
         if inverse_data[-3]:
             dual_id_maps.append(inverse_data[-3][2])
         dual_id_maps.append(inverse_data[-2].cons_id_map)
+    
     # recurse chain of constraint ids to get ordered list of constraint ids
     dual_ids = []
     for dual_id in dual_id_maps[0].keys():
         for dual_id_map in dual_id_maps[1:]:
             dual_id = dual_id_map[dual_id]
         dual_ids.append(dual_id)
+    
     # get canonical constraint information
     if solver_interface.solver_type == 'quadratic':
         con_canon = inverse_data[-2].constraints  # same order as in canonical dual vector
@@ -274,6 +273,7 @@ def get_dual_variable_info(inverse_data, solver_interface, cvxpy_interface_class
     else:
         d_vectors = solver_interface.dual_var_names * len(d_canon_offsets)
     d_canon_offsets_dict = {c.id: off for c, off in zip(con_canon, d_canon_offsets)}
+    
     # select for user-defined constraints
     d_offsets = [d_canon_offsets_dict[i] for i in dual_ids]
     d_sizes = [con_canon_dict[i].size for i in dual_ids]
@@ -286,6 +286,7 @@ def get_dual_variable_info(inverse_data, solver_interface, cvxpy_interface_class
     d_name_to_vec = {n: v for n, v in zip(d_names, d_vectors)}
     d_name_to_offset = {n: o for n, o in zip(d_names, d_offsets)}
     d_name_to_size = {n: s for n, s in zip(d_names, d_sizes)}
+
     # initialize values to zero
     d_name_to_init = dict()
     for name, shape in d_name_to_shape.items():
@@ -300,84 +301,102 @@ def get_dual_variable_info(inverse_data, solver_interface, cvxpy_interface_class
 
 
 def get_constraint_info(solver_interface) -> ConstraintInfo:
+
     n_data_constr = len(solver_interface.indices_constr)
-    n_data_constr_vec = solver_interface.indptr_constr[-1] - solver_interface.indptr_constr[-2]
+    n_data_constr_vec = (solver_interface.indptr_constr[-1] 
+                         - solver_interface.indptr_constr[-2])
     n_data_constr_mat = n_data_constr - n_data_constr_vec
 
-    mapping_rows_eq = np.nonzero(solver_interface.indices_constr < solver_interface.n_eq)[0]
-    mapping_rows_ineq = np.nonzero(solver_interface.indices_constr >= solver_interface.n_eq)[0]
+    # Obtain rows related to equalities and inequalities
+    mapping_rows_eq = np.nonzero(solver_interface.indices_constr 
+                                 < solver_interface.n_eq)[0]
+    mapping_rows_ineq = np.nonzero(solver_interface.indices_constr 
+                                   >= solver_interface.n_eq)[0]
 
-    return ConstraintInfo(n_data_constr, n_data_constr_mat, mapping_rows_eq, mapping_rows_ineq)
+    return ConstraintInfo(n_data_constr, n_data_constr_mat, 
+                          mapping_rows_eq, mapping_rows_ineq)
 
 
 def update_adjacency_matrix(adjacency, i, parameter_info, mapping) -> np.ndarray:
-    # compute adjacency matrix
+    
+    # Iterate through parameters and update adjacency if there are non-zero entries in mapping
     for j in range(parameter_info.num):
         column_slice = slice(parameter_info.id_to_col[parameter_info.ids[j]],
                              parameter_info.id_to_col[parameter_info.ids[j + 1]])
-        if mapping[:, column_slice].nnz > 0:
-            adjacency[i, j] = True
+        # Update adjacency matrix if there are non-zero entries in the mapped slice
+        adjacency[i, j] = mapping[:, column_slice].nnz > 0
+    
     return adjacency
 
 
-def write_c_code(problem: cp.Problem, configuration: dict, variable_info: dict, dual_variable_info: dict,
-                 parameter_info: dict, parameter_canon: dict, solver_interface: dict) -> None:
-    # 'workspace' prototypes
-    with open(os.path.join(configuration.code_dir, 'c', 'include', 'cpg_workspace.h'), 'w') as f:
-        utils.write_workspace_prot(f, configuration, variable_info, dual_variable_info, parameter_info, parameter_canon, solver_interface)
-    # 'workspace' definitions
-    with open(os.path.join(configuration.code_dir, 'c', 'src', 'cpg_workspace.c'), 'w') as f:
-        utils.write_workspace_def(f, configuration, variable_info, dual_variable_info, parameter_info, parameter_canon, solver_interface)
-    # 'solve' prototypes
-    with open(os.path.join(configuration.code_dir, 'c', 'include', 'cpg_solve.h'), 'w') as f:
-        utils.write_solve_prot(f, configuration, variable_info, dual_variable_info, parameter_info, parameter_canon, solver_interface)
-    # 'solve' definitions
-    with open(os.path.join(configuration.code_dir, 'c', 'src', 'cpg_solve.c'), 'w') as f:
-        utils.write_solve_def(f, configuration, variable_info, dual_variable_info, parameter_info, parameter_canon, solver_interface)
-    # 'example' definitions
-    with open(os.path.join(configuration.code_dir, 'c', 'src', 'cpg_example.c'), 'w') as f:
-        utils.write_example_def(f, configuration, variable_info, dual_variable_info, parameter_info)
-    # adapt top-level CMakeLists.txt
-    with open(os.path.join(configuration.code_dir, 'c', 'CMakeLists.txt'), 'r') as f:
-        cmake_data = f.read()
-    cmake_data = utils.replace_cmake_data(cmake_data, configuration)
-    with open(os.path.join(configuration.code_dir, 'c', 'CMakeLists.txt'), 'w') as f:
-        f.write(cmake_data)
-    # adapt solver CMakeLists.txt
-    with open(os.path.join(configuration.code_dir, 'c', 'solver_code', 'CMakeLists.txt'), 'a') as f:
-        utils.write_canon_cmake(f, configuration, solver_interface)
-    # binding module prototypes
-    with open(os.path.join(configuration.code_dir, 'cpp', 'include', 'cpg_module.hpp'), 'w') as f:
-        utils.write_module_prot(f, configuration, parameter_info, variable_info, dual_variable_info, solver_interface)
-    # binding module definition
-    with open(os.path.join(configuration.code_dir, 'cpp', 'src', 'cpg_module.cpp'), 'w') as f:
-        utils.write_module_def(f, configuration, variable_info, dual_variable_info, parameter_info, solver_interface)
-    # adapt setup.py
-    with open(os.path.join(configuration.code_dir, 'setup.py'), 'r') as f:
-        setup_data = f.read()
-    setup_data = utils.replace_setup_data(setup_data)
-    with open(os.path.join(configuration.code_dir, 'setup.py'), 'w') as f:
-        f.write(setup_data)
-    # custom CVXPY solve method
-    with open(os.path.join(configuration.code_dir, 'cpg_solver.py'), 'w') as f:
-        utils.write_method(f, configuration, variable_info, dual_variable_info, parameter_info, solver_interface)
-    # serialize problem formulation
-    with open(os.path.join(configuration.code_dir, 'problem.pickle'), 'wb') as f:
-        pickle.dump(cp.Problem(problem.objective, problem.constraints), f)
-    # html documentation file
-    with open(os.path.join(configuration.code_dir, 'README.html'), 'r') as f:
-        html_data = f.read()
-    html_data = utils.replace_html_data(html_data, configuration, variable_info, dual_variable_info, parameter_info, solver_interface)
-    with open(os.path.join(configuration.code_dir, 'README.html'), 'w') as f:
-        f.write(html_data)
+def write_c_code(problem: cp.Problem, configuration: Configuration, variable_info: DualVariableInfo, 
+                 dual_variable_info: DualVariableInfo, parameter_info: ParameterInfo, 
+                 parameter_canon: ParameterCanon, solver_interface) -> None:
 
+    # Simplified directory and file access
+    c_dir = os.path.join(configuration.code_dir, 'c')
+    cpp_dir = os.path.join(configuration.code_dir, 'cpp')
+    include_dir = os.path.join(c_dir, 'include')
+    src_dir = os.path.join(c_dir, 'src')
+    solver_code_dir = os.path.join(c_dir, 'solver_code')
+    
+    # write files
+    for name in ['workspace', 'solve']:
+        write_file(os.path.join(include_dir, f'cpg_{name}.h'), 'w', 
+                   getattr(utils, f'write_{name}_prot'),
+                   configuration, variable_info, dual_variable_info, 
+                   parameter_info, parameter_canon, solver_interface)
+        
+        write_file(os.path.join(src_dir, f'cpg_{name}.c'), 'w', 
+                   getattr(utils, f'write_{name}_def'),
+                   configuration, variable_info, dual_variable_info, 
+                   parameter_info, parameter_canon, solver_interface)
+    
+    write_file(os.path.join(src_dir, 'cpg_example.c'), 'w', 
+               write_example_def, 
+               configuration, variable_info, dual_variable_info, parameter_info)
+    
+    write_file(os.path.join(cpp_dir, 'include', 'cpg_module.hpp'), 'w',
+               write_module_prot,
+               configuration, parameter_info, variable_info, 
+               dual_variable_info, solver_interface)
+
+    write_file(os.path.join(cpp_dir, 'src', 'cpg_module.cpp'), 'w',
+               write_module_def,
+               configuration, variable_info, dual_variable_info, 
+               parameter_info, solver_interface)
+
+    write_file(os.path.join(solver_code_dir, 'CMakeLists.txt'), 'a',
+               write_canon_cmake,
+               configuration, solver_interface)
+
+    write_file(os.path.join(configuration.code_dir, 'cpg_solver.py'), 'w',
+               write_method,
+               configuration, variable_info, dual_variable_info, 
+               parameter_info, solver_interface)
+
+    write_file(os.path.join(configuration.code_dir, 'problem.pickle'), 'wb',
+               lambda x, y: pickle.dump(y, x),
+               cp.Problem(problem.objective, problem.constraints))
+    
+    # replace file contents
+    read_write_file(os.path.join(c_dir, 'CMakeLists.txt'),
+                    replace_cmake_data, 
+                    configuration)
+    
+    read_write_file(os.path.join(configuration.code_dir, 'setup.py'),
+                    replace_setup_data)
+
+    read_write_file(os.path.join(configuration.code_dir, 'README.html'),
+                    replace_html_data,
+                    configuration, variable_info, dual_variable_info, 
+                    parameter_info, solver_interface)
+    
 
 def adjust_prefix(prefix):
-    if prefix != '':
-        if not prefix[0].isalpha():
-            prefix = '_' + prefix
-        prefix = prefix + '_'
-    return prefix
+    if prefix and not prefix[0].isalpha():
+        prefix = '_' + prefix
+    return prefix + '_' if prefix else prefix
 
 
 def get_configuration(code_dir, solver_name, unroll, prefix) -> Configuration:
@@ -453,32 +472,36 @@ def get_parameter_info(p_prob) -> ParameterInfo:
 
 
 def handle_sparsity(p_prob: cp.Problem) -> None:
-    for p in p_prob.parameters:
-        if p.attributes['sparsity'] is not None:
-            if p.size == 1:
-                warnings.warn(f'Ignoring sparsity pattern for scalar parameter {p.name()}!')
-                p.attributes['sparsity'] = None
-            elif max(p.shape) == p.size:
-                warnings.warn(f'Ignoring sparsity pattern for vector parameter {p.name()}!')
-                p.attributes['sparsity'] = None
+    for param in p_prob.parameters:
+        sparsity = param.attributes['sparsity']
+
+        # Check and warn about inappropriate sparsity for scalar and vector
+        if sparsity is not None:
+            if param.size == 1 or max(param.shape) == param.size:
+                param_type = 'scalar' if param.size == 1 else 'vector'
+                warnings.warn(f'Ignoring sparsity pattern for {param_type} parameter {param.name()}!')
+                param.attributes['sparsity'] = None
             else:
-                for coord in p.attributes['sparsity']:
-                    if coord[0] < 0 or coord[1] < 0 or coord[0] >= p.shape[0] or coord[1] >= \
-                            p.shape[1]:
-                        warnings.warn(f'Invalid sparsity pattern for parameter {p.name()} - out of range! '
-                                      'Ignoring sparsity pattern.')
-                        p.attributes['sparsity'] = None
+                invalid_sparsity = False
+                for coord in sparsity:
+                    if coord[0] < 0 or coord[1] < 0 or coord[0] >= param.shape[0] or coord[1] >= param.shape[1]:
+                        warnings.warn(f'Invalid sparsity pattern for parameter {param.name()} - out of range! Ignoring sparsity pattern.')
+                        param.attributes['sparsity'] = None
+                        invalid_sparsity = True
                         break
-                p.attributes['sparsity'] = list(set(p.attributes['sparsity']))
-        elif p.attributes['diag']:
-            p.attributes['sparsity'] = [(i, i) for i in range(p.shape[0])]
-        if p.attributes['sparsity'] is not None and p.value is not None:
-            for i in range(p.shape[0]):
-                for j in range(p.shape[1]):
-                    if (i, j) not in p.attributes['sparsity'] and p.value[i, j] != 0:
-                        warnings.warn(
-                            f'Ignoring nonzero value outside of sparsity pattern for parameter {p.name()}!')
-                        p.value[i, j] = 0
+                if not invalid_sparsity:
+                    param.attributes['sparsity'] = list(set(param.attributes['sparsity']))
+        elif param.attributes['diag']:
+            param.attributes['sparsity'] = [(i, i) for i in range(param.shape[0])]
+
+        # Zero out non-sparse values
+        if param.attributes['sparsity'] is not None and param.value is not None:
+            for i in range(param.shape[0]):
+                for j in range(param.shape[1]):
+                    if (i, j) not in param.attributes['sparsity'] and param.value[i, j] != 0:
+                        warnings.warn(f'Ignoring nonzero value outside of sparsity pattern for parameter {param.name()}!')
+                        param.value[i, j] = 0
+
 
 
 def compile_python_module(code_dir: str):
@@ -493,18 +516,21 @@ def compile_python_module(code_dir: str):
 def create_folder_structure(code_dir: str):
     cvxpygen_directory = os.path.dirname(os.path.realpath(__file__))
 
-    # create code directory and copy template files
-    if os.path.isdir(code_dir):
-        shutil.rmtree(code_dir)
+    # Re-create code directory
+    shutil.rmtree(code_dir, ignore_errors=True)
     os.mkdir(code_dir)
-    os.mkdir(os.path.join(code_dir, 'c'))
-    for d in ['src', 'include', 'build']:
-        os.mkdir(os.path.join(code_dir, 'c', d))
-    os.mkdir(os.path.join(code_dir, 'cpp'))
-    for d in ['src', 'include']:
-        os.mkdir(os.path.join(code_dir, 'cpp', d))
+    
+    # Create directory structures
+    os.makedirs(os.path.join(code_dir, 'c', 'src'))
+    os.makedirs(os.path.join(code_dir, 'c', 'include'))
+    os.makedirs(os.path.join(code_dir, 'c', 'build'))
+    os.makedirs(os.path.join(code_dir, 'cpp', 'src'))
+    os.makedirs(os.path.join(code_dir, 'cpp', 'include'))
+
+    # Copy template files
     shutil.copy(os.path.join(cvxpygen_directory, 'template', 'CMakeLists.txt'),
                 os.path.join(code_dir, 'c'))
     for file in ['setup.py', 'README.html', '__init__.py']:
         shutil.copy(os.path.join(cvxpygen_directory, 'template', file), code_dir)
+
     return cvxpygen_directory
