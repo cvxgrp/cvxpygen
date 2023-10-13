@@ -30,7 +30,7 @@ from cvxpy.cvxcore.python import canonInterface as cI
 from cvxpy.expressions.variable import upper_tri_to_full
 
 
-def generate_code(problem, code_dir='CPG_code', solver=None, enable_settings=[], unroll=False, prefix='', wrapper=True):
+def generate_code(problem, code_dir='CPG_code', solver=None, solver_opts=None, enable_settings=[], unroll=False, prefix='', wrapper=True):
     """
     Generate C code for CVXPY problem and (optionally) python wrapper
     """
@@ -40,10 +40,6 @@ def generate_code(problem, code_dir='CPG_code', solver=None, enable_settings=[],
     create_folder_structure(code_dir)
 
     # problem data
-    solver_opts = {}
-    # TODO support quadratic objective for SCS.
-    if solver == 'SCS':
-        solver_opts['use_quad_obj'] = False
     data, solving_chain, inverse_data = problem.get_problem_data(
         solver=solver,
         gp=False,
@@ -81,16 +77,16 @@ def generate_code(problem, code_dir='CPG_code', solver=None, enable_settings=[],
 
     constraint_info = get_constraint_info(solver_interface)
 
-    adjacency, parameter_canon = process_canonical_parameters(constraint_info, param_prob,
+    adjacency, parameter_canon, canon_p_ids = process_canonical_parameters(constraint_info, param_prob,
                                                               parameter_info, solver_interface,
-                                                              solver_name, problem)
+                                                              solver_opts, problem, cvxpy_interface_class)
 
     cvxpygen_directory = os.path.dirname(os.path.realpath(__file__))
     solver_code_dir = os.path.join(code_dir, 'c', 'solver_code')
     solver_interface.generate_code(code_dir, solver_code_dir, cvxpygen_directory, parameter_canon)
 
     parameter_canon.user_p_name_to_canon_outdated = {
-        user_p_name: [solver_interface.canon_p_ids[j] for j in np.nonzero(adjacency[:, i])[0]]
+        user_p_name: [canon_p_ids[j] for j in np.nonzero(adjacency[:, i])[0]]
         for i, user_p_name in enumerate(parameter_info.names)}
 
     write_c_code(problem, configuration, variable_info, dual_variable_info, parameter_info,
@@ -101,11 +97,30 @@ def generate_code(problem, code_dir='CPG_code', solver=None, enable_settings=[],
     if wrapper:
         compile_python_module(code_dir)
 
-def process_canonical_parameters(constraint_info, param_prob, parameter_info, solver_interface, solver_name, problem):
-    adjacency = np.zeros(shape=(len(solver_interface.canon_p_ids), parameter_info.num), dtype=bool)
+
+def get_quad_obj(problem, solver_type, solver_opts, solver_class):
+    if solver_type == 'quadratic':
+        return True
+    if solver_opts is None:
+        use_quad_obj = True
+    else:
+        use_quad_obj = solver_opts.get('use_quad_obj', True)
+    return use_quad_obj and solver_class().supports_quad_obj() and \
+        problem.objective.expr.has_quadratic_term()
+
+
+def process_canonical_parameters(constraint_info, param_prob, parameter_info, solver_interface, solver_opts, problem, cvxpy_interface_class):
     parameter_canon = ParameterCanon()
+    parameter_canon.quad_obj = get_quad_obj(problem, solver_interface.solver_type, solver_opts, cvxpy_interface_class)
+    
+    if not parameter_canon.quad_obj:
+        canon_p_ids = [p_id for p_id in solver_interface.canon_p_ids if p_id != 'P']
+    else:
+        canon_p_ids = solver_interface.canon_p_ids
+    
+    adjacency = np.zeros(shape=(len(canon_p_ids), parameter_info.num), dtype=bool)
     # compute affine mapping for each canonical parameter
-    for i, (p_id, p_sign) in enumerate(zip(solver_interface.canon_p_ids, solver_interface.canon_p_signs)):
+    for i, p_id in enumerate(canon_p_ids):
 
         affine_map = solver_interface.get_affine_map(p_id, param_prob, constraint_info)
 
@@ -119,13 +134,16 @@ def process_canonical_parameters(constraint_info, param_prob, parameter_info, so
 
             adjacency = update_adjacency_matrix(adjacency, i, parameter_info, affine_map.mapping)
 
+            # take sign into account
+            affine_map.mapping = sparse.csc_matrix(affine_map.mapping.toarray() * affine_map.sign) # be able to use broadcasting
+
             # take sparsity into account
             affine_map.mapping = affine_map.mapping[:, parameter_info.sparsity_mask]
 
             # compute default values of canonical parameters
             affine_map, parameter_canon = set_default_values(affine_map, p_id, parameter_canon, parameter_info, solver_interface)
 
-            parameter_canon.p_id_to_mapping[p_id] = p_sign * affine_map.mapping.tocsr()
+            parameter_canon.p_id_to_mapping[p_id] = affine_map.mapping.tocsr()
             parameter_canon.p_id_to_changes[p_id] = affine_map.mapping[:, :-1].nnz > 0
             parameter_canon.p_id_to_size[p_id] = affine_map.mapping.shape[0]
 
@@ -136,7 +154,7 @@ def process_canonical_parameters(constraint_info, param_prob, parameter_info, so
             parameter_canon.p_id_to_size[p_id] = 0
 
     parameter_canon.is_maximization = type(problem.objective) == Maximize
-    return adjacency, parameter_canon
+    return adjacency, parameter_canon, canon_p_ids
 
 
 def update_to_dense_mapping(affine_map, param_prob):
