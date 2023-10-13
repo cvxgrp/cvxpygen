@@ -15,6 +15,28 @@ import numpy as np
 from datetime import datetime
 
 
+def write_file(path, mode, function, *args):
+    """Write data to a file using a specific utility function."""
+    with open(path, mode) as file:
+        function(file, *args)
+    
+
+def read_write_file(path, function, *args):
+    """Read data from a file, process it, and write back."""
+    with open(path, 'r') as file:
+        data = file.read()
+    data = function(data, *args)
+    with open(path, 'w') as file:
+        file.write(data)
+
+
+def multiple_replace(text, replacements):
+    """Perform multiple replacements (list of 2-tuples) on text"""
+    for old, new in replacements:
+        text = text.replace(old, new)
+    return text
+
+
 def write_vec_def(f, vec, name, typ):
     """
     Write vector to file
@@ -305,6 +327,12 @@ def extend_functions_if_false(pus, functions_if_false):
     return extended_functions_if_false
 
 
+def remove_function(functions, function_to_remove):
+    if function_to_remove in functions:
+        functions.remove(function_to_remove)
+    return functions
+
+
 def analyze_pus(pus, p_id_to_changes):
     '''
     Analyze parameter update structure (pus) to return set of canonical update functions
@@ -325,22 +353,22 @@ def analyze_pus(pus, p_id_to_changes):
         if operator in ['&&', '&', 'and', 'AND']:
             skip = False
             for p in up_logic.parameters_outdated:
-                if not p_id_to_changes[p]:
-                    functions_called.remove(function)
+                if not p_id_to_changes.get(p, False):
+                    functions_called = remove_function(functions_called, function)
                     skip = True
             if skip:
                 continue
         elif operator in ['||', '|', 'or', 'OR']:
             skip = True
             for p in up_logic.parameters_outdated:
-                if p_id_to_changes[p]:
+                if p_id_to_changes.get(p, False):
                     skip = False
             if skip:
-                functions_called.remove(function)
+                functions_called = remove_function(functions_called, function)
                 continue
         elif operator is None:
             if up_logic.extra_condition_operator is None and len(up_logic.parameters_outdated) == 1 and not p_id_to_changes[function]:
-                functions_called.remove(function)
+                functions_called = remove_function(functions_called, function)
                 continue
         else:
             raise ValueError(f'Operator "{operator}" not implemented.')
@@ -360,7 +388,7 @@ operator_map = {'&&': '&&', '&': '&&', 'and': '&&', 'AND': '&&',
                 '||': '||', '|': '||', 'or': '||', 'OR': '||'}
 
 
-def write_update_structure(f, configuration, pus, functions, functions_never_called, depth=0):
+def write_update_structure(f, configuration, parameter_canon, pus, functions, functions_never_called, depth=0):
     """
     Recursively write logical parameter update structure to file
     """
@@ -377,6 +405,8 @@ def write_update_structure(f, configuration, pus, functions, functions_never_cal
 
         logic = pus[function]
         up_logic = logic.update_pending_logic
+        if 'P' in up_logic.parameters_outdated and not parameter_canon.quad_obj:
+            up_logic.parameters_outdated.remove('P')
 
         if function not in functions_never_called:
             extra_condition = f'{up_logic.extra_condition.format(prefix=configuration.prefix)} ' if up_logic.extra_condition is not None else ''
@@ -390,7 +420,7 @@ def write_update_structure(f, configuration, pus, functions, functions_never_cal
         else:
             new_depth = depth * 1
 
-        write_update_structure(f, configuration, pus, up_logic.functions_if_false, functions_never_called, new_depth)
+        write_update_structure(f, configuration, parameter_canon, pus, up_logic.functions_if_false, functions_never_called, new_depth)
 
         if function not in functions_never_called:
             f.write('\n')
@@ -566,7 +596,7 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
         f.write('};\n')
 
     if not solver_interface.ws_statically_allocated_in_solver_code:
-        solver_interface.define_workspace(f, configuration.prefix)
+        solver_interface.define_workspace(f, configuration.prefix, parameter_canon)
 
 
 def write_workspace_prot(f, configuration, variable_info, dual_variable_info, parameter_info, parameter_canon, solver_interface):
@@ -735,7 +765,7 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
         write_struct_prot(f, f'{configuration.prefix}Canon_Settings', 'Canon_Settings_t')
 
     if not solver_interface.ws_statically_allocated_in_solver_code:
-        solver_interface.declare_workspace(f, configuration.prefix)
+        solver_interface.declare_workspace(f, configuration.prefix, parameter_canon)
 
 
 def write_solve_def(f, configuration, variable_info, dual_variable_info, parameter_info, parameter_canon, solver_interface):
@@ -849,7 +879,7 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
                     f.write('  }\n')
 
     pus = solver_interface.parameter_update_structure
-    write_update_structure(f, configuration, pus, *analyze_pus(pus, parameter_canon.p_id_to_changes))
+    write_update_structure(f, configuration, parameter_canon, pus, *analyze_pus(pus, parameter_canon.p_id_to_changes))
 
     if solver_interface.stgs_dynamically_allocated:
         for name in solver_interface.stgs_names_to_type.keys():

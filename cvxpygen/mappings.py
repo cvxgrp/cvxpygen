@@ -16,6 +16,7 @@ class Configuration:
 class AffineMap:
     mapping_rows: list = field(default_factory=list)
     mapping: list = field(default_factory=list)
+    sign: int = 1
     indices: list = field(default_factory=list)
     indptr: list = field(default_factory=list)
     shape = ()
@@ -31,6 +32,7 @@ class ParameterCanon:
     nonzero_d: bool = True
     is_maximization: bool = False
     user_p_name_to_canon_outdated: dict[str, list[str]] = field(default_factory=dict)
+    quad_obj: bool = True
 
 
 @dataclass
