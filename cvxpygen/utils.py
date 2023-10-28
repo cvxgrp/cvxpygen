@@ -46,7 +46,7 @@ def write_vec_def(f, vec, name, typ):
     # Write vector components
     for i in range(len(vec)):
         if typ == 'cpg_float':
-            f.write('(cpg_float)%.20f,\n' % vec[i])
+            f.write('(cpg_float)%s,\n' % vec[i].hex())
         else:
             f.write(f'{vec[i]},\n')
 
@@ -95,7 +95,7 @@ def write_dense_mat_def(f, mat, name):
     # represent matrix as vector (Fortran style)
     for j in range(mat.shape[1]):
         for i in range(mat.shape[0]):
-            f.write('(cpg_float)%.20f,\n' % mat[i, j])
+            f.write('(cpg_float)%s,\n' % mat[i, j].hex())
 
     f.write('};\n')
 
@@ -221,7 +221,7 @@ def write_canonicalize_explicit(f, p_id, s, mapping, user_p_col_to_name_usp, use
         data = mapping.data[mapping.indptr[row]:mapping.indptr[row + 1]]
         columns = mapping.indices[mapping.indptr[row]:mapping.indptr[row + 1]]
         for (datum, col) in zip(data, columns):
-            ex = '(%.20f)+' % datum
+            ex = '(%s)+' % datum.hex()
             for user_p_col, user_name in user_p_col_to_name_usp.items():
                 if user_p_col + user_p_name_to_size_usp[user_name] > col:
                     expr_is_const = False
@@ -229,12 +229,12 @@ def write_canonicalize_explicit(f, p_id, s, mapping, user_p_col_to_name_usp, use
                         if abs(datum) == 1:
                             ex = f'({sign_to_str[datum]}{prefix}CPG_Params.{user_name})+'
                         else:
-                            ex = f'(%.20f*{prefix}CPG_Params.{user_name})+' % datum
+                            ex = f'(%s*{prefix}CPG_Params.{user_name})+' % datum.hex()
                     else:
                         if abs(datum) == 1:
                             ex = f'({sign_to_str[datum]}{prefix}CPG_Params.{user_name}[%d])+' % (col - user_p_col)
                         else:
-                            ex = f'(%.20f*{prefix}CPG_Params.{user_name}[%d])+' % (datum, col - user_p_col)
+                            ex = f'(%s*{prefix}CPG_Params.{user_name}[%d])+' % (datum.hex(), col - user_p_col)
                     break
             expr += ex
         expr = expr[:-1]
@@ -267,7 +267,7 @@ def write_param_def(f, param, name, prefix, suffix):
         if name.isupper():
             write_mat_def(f, param, f'{prefix}canon_{name}{suffix}')
         elif name == 'd':
-            f.write(f'cpg_float {prefix}canon_d{suffix} = %.20f;\n' % param[0])
+            f.write(f'cpg_float {prefix}canon_d{suffix} = %s;\n' % param[0].hex())
         else:
             write_vec_def(f, param, f'{prefix}canon_{name}{suffix}', 'cpg_float')
         f.write('\n')
@@ -444,7 +444,7 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
             value = parameter_info.writable[name]
             if is_mathematical_scalar(value):
                 user_casts.append('')
-                user_values.append('%.20f' % value)
+                user_values.append('%s' % value.hex())
             else:
                 write_vec_def(f, value, f'{configuration.prefix}cpg_{name}', 'cpg_float')
                 f.write('\n')
@@ -493,9 +493,9 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
             if solver_interface.inmemory_preconditioning:
                 struct_values_conditioning.append('0')
         elif p_id=='d':
-            struct_values.append('%.20f' % p)
+            struct_values.append('%s' % p.hex())
             if solver_interface.inmemory_preconditioning:
-                struct_values_conditioning.append('%.20f' % p)
+                struct_values_conditioning.append('%s' % p.hex())
         else:
             struct_values.append(f'&{configuration.prefix}canon_{p_id}')
             if solver_interface.inmemory_preconditioning:
@@ -975,9 +975,9 @@ def write_example_def(f, configuration, variable_info, dual_variable_info, param
     f.write('  // Update first entry of every user-defined parameter\n')
     for name, value in parameter_info.writable.items():
         if is_mathematical_scalar(value):
-            f.write(f'  {configuration.prefix}cpg_update_{name}(%.20f);\n' % value)
+            f.write(f'  {configuration.prefix}cpg_update_{name}(%s);\n' % value.hex())
         else:
-            f.write(f'  {configuration.prefix}cpg_update_{name}(0, %.20f);\n' % value[0])
+            f.write(f'  {configuration.prefix}cpg_update_{name}(0, %s);\n' % value[0].hex())
 
     f.write('\n  // Solve the problem instance\n')
     f.write(f'  {configuration.prefix}cpg_solve();\n\n')
