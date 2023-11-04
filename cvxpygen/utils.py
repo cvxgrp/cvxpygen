@@ -74,8 +74,7 @@ def write_mat_def(f, mat, name):
     f.write(f'{mat["n"]}, ')
     f.write(f'{name}_p, ')
     f.write(f'{name}_i, ')
-    f.write(f'{name}_x, ')
-    f.write(f'{mat["nz"]}}};\n')
+    f.write(f'{name}_x}};\n')
 
 
 def write_mat_prot(f, mat, name):
@@ -167,7 +166,6 @@ def csc_to_dict(m):
     d['x'] = m.data
     d['nzmax'] = m.nnz
     (d['m'], d['n']) = m.shape
-    d['nz'] = -1
 
     return d
 
@@ -624,7 +622,6 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
     f.write('  cpg_int      *p;\n')
     f.write('  cpg_int      *i;\n')
     f.write('  cpg_float    *x;\n')
-    f.write('  cpg_int      nz;\n')
     f.write('} cpg_csc;\n\n')
 
     if configuration.unroll:
