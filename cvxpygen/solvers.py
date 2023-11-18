@@ -1,4 +1,5 @@
 import os
+import sys
 import shutil
 import warnings
 from abc import ABC, abstractmethod
@@ -953,6 +954,11 @@ class ClarabelInterface(SolverInterface):
     def generate_code(self, code_dir, solver_code_dir, cvxpygen_directory,
                     parameter_canon: ParameterCanon) -> None:
 
+        # check if sdp cones are present
+        is_sdp = len(self.canon_constants['cone_dims_psd']) > 0
+        if is_sdp:
+            sys.stdout.write('WARNING: You are generating code for an SDP with Clarabel, which requires BLAS and LAPACK within Rust-C wrappers - expect large compilation time and binary size.\n')
+
         # copy sources
         if os.path.isdir(solver_code_dir):
             shutil.rmtree(solver_code_dir)
@@ -969,12 +975,23 @@ class ClarabelInterface(SolverInterface):
 
         # adjust top-level CMakeLists.txt
         with open(os.path.join(code_dir, 'c', 'CMakeLists.txt'), 'a') as f:
-            f.write('\ntarget_link_libraries(cpg_example PRIVATE libclarabel_c_static)\n')
-            f.write('target_link_libraries(cpg PRIVATE libclarabel_c_static)\n')
+            if is_sdp:
+                f.write('\nfind_package(BLAS REQUIRED)')
+                f.write('\nfind_package(LAPACK REQUIRED)')
+                link_libraries = 'libclarabel_c_static ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES}'
+            else:
+                link_libraries = 'libclarabel_c_static'
+            f.write(f'\ntarget_link_libraries(cpg_example PRIVATE {link_libraries})')
+            f.write(f'\ntarget_link_libraries(cpg PRIVATE {link_libraries})\n')
 
         # remove examples target from Clarabel.cpp/CMakeLists.txt
         read_write_file(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'),
                         lambda x: x.replace('add_subdirectory(examples)', '# add_subdirectory(examples)'))
+
+        # add sdp flag
+        if is_sdp:
+            read_write_file(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'),
+                            lambda x: x.replace('set(CLARABEL_FEATURE_SDP "none"', 'set(CLARABEL_FEATURE_SDP "sdp-openblas"'))
 
         # adjust paths in Clarabel.cpp/rust_wrapper/CMakeLists.txt
         replacements = [
