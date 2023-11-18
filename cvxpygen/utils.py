@@ -69,9 +69,6 @@ def write_mat_def(f, mat, name):
     write_vec_def(f, mat['x'], name + '_x', 'cpg_float')
 
     f.write(f'cpg_csc {name} = {{')
-    f.write(f'{mat["nzmax"]}, ')
-    f.write(f'{mat["m"]}, ')
-    f.write(f'{mat["n"]}, ')
     f.write(f'{name}_p, ')
     f.write(f'{name}_i, ')
     f.write(f'{name}_x}};\n')
@@ -164,8 +161,6 @@ def csc_to_dict(m):
     d['i'] = m.indices
     d['p'] = m.indptr
     d['x'] = m.data
-    d['nzmax'] = m.nnz
-    (d['m'], d['n']) = m.shape
 
     return d
 
@@ -616,9 +611,6 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
     # struct definitions
     f.write('// Compressed sparse column matrix\n')
     f.write('typedef struct {\n')
-    f.write('  cpg_int      nzmax;\n')
-    f.write('  cpg_int      n;\n')
-    f.write('  cpg_int      m;\n')
     f.write('  cpg_int      *p;\n')
     f.write('  cpg_int      *i;\n')
     f.write('  cpg_float    *x;\n')
