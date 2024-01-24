@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Dict, List
 
 import scipy.sparse as sp
 import numpy as np
@@ -25,51 +26,51 @@ class AffineMap:
 @dataclass
 class ParameterCanon:
     p: dict = field(default_factory=dict)
-    p_csc: dict[str, sp.csc_matrix] = field(default_factory=dict)
-    p_id_to_mapping: dict[str, sp.csr_matrix] = field(default_factory=dict)
-    p_id_to_changes: dict[str, bool] = field(default_factory=dict)
-    p_id_to_size: dict[str, int] = field(default_factory=dict)
+    p_csc: Dict[str, sp.csc_matrix] = field(default_factory=dict)
+    p_id_to_mapping: Dict[str, sp.csr_matrix] = field(default_factory=dict)
+    p_id_to_changes: Dict[str, bool] = field(default_factory=dict)
+    p_id_to_size: Dict[str, int] = field(default_factory=dict)
     nonzero_d: bool = True
     is_maximization: bool = False
-    user_p_name_to_canon_outdated: dict[str, list[str]] = field(default_factory=dict)
+    user_p_name_to_canon_outdated: Dict[str, List[str]] = field(default_factory=dict)
     quad_obj: bool = True
 
 
 @dataclass
 class ParameterInfo:
-    col_to_name_usp: dict[int, str]
+    col_to_name_usp: Dict[int, str]
     flat_usp: np.ndarray
-    id_to_col: dict[int, int]
-    ids: list[int]
-    name_to_shape: dict[str, tuple]
-    name_to_size_usp: dict[str, int]
-    name_to_sparsity: dict[str, np.ndarray]
-    name_to_sparsity_type: dict[str, str]
-    names: list[str]
+    id_to_col: Dict[int, int]
+    ids: List[int]
+    name_to_shape: Dict[str, tuple]
+    name_to_size_usp: Dict[str, int]
+    name_to_sparsity: Dict[str, np.ndarray]
+    name_to_sparsity_type: Dict[str, str]
+    names: List[str]
     num: int
     sparsity_mask: np.ndarray
-    writable: dict[str, np.ndarray]
+    writable: Dict[str, np.ndarray]
 
 
 @dataclass
 class VariableInfo:
-    name_to_offset: dict[str, int]
-    name_to_indices: dict[str, np.ndarray]
-    name_to_size: dict[str, int]
-    sizes: list[int]
-    name_to_shape: dict[str, tuple]
-    name_to_init: dict[str, np.ndarray]
+    name_to_offset: Dict[str, int]
+    name_to_indices: Dict[str, np.ndarray]
+    name_to_size: Dict[str, int]
+    sizes: List[int]
+    name_to_shape: Dict[str, tuple]
+    name_to_init: Dict[str, np.ndarray]
 
 
 @dataclass
 class PrimalVariableInfo(VariableInfo):
-    name_to_sym: dict[str, bool]
-    sym: list[bool]
+    name_to_sym: Dict[str, bool]
+    sym: List[bool]
 
 
 @dataclass
 class DualVariableInfo(VariableInfo):
-    name_to_vec: dict[str, str]
+    name_to_vec: Dict[str, str]
 
 
 @dataclass
@@ -94,9 +95,9 @@ class WorkspacePointerInfo:
 
 @dataclass
 class UpdatePendingLogic:
-    parameters_outdated: list[str]
+    parameters_outdated: List[str]
     operator: str = None
-    functions_if_false: list[str] = None
+    functions_if_false: List[str] = None
     extra_condition: str = None
     extra_condition_operator: str = None
 
