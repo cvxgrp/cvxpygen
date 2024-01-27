@@ -3,14 +3,13 @@ import sys
 import shutil
 import warnings
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 from platform import system
 
 import numpy as np
 import scipy as sp
 
 from cvxpygen.utils import read_write_file, write_struct_prot, write_struct_def, \
-    write_vec_prot, write_vec_def, multiple_replace
+    write_vec_prot, write_vec_def, multiple_replace, cut_from_expr
 from cvxpygen.mappings import PrimalVariableInfo, DualVariableInfo, ConstraintInfo, AffineMap, \
     ParameterCanon, WorkspacePointerInfo, UpdatePendingLogic, ParameterUpdateLogic
 
@@ -185,39 +184,55 @@ class OSQPInterface(SolverInterface):
     parameter_update_structure = {
         'PA': ParameterUpdateLogic(
             update_pending_logic = UpdatePendingLogic(['P', 'A'], '&&', ['P', 'A']),
-            function_call = 'osqp_update_P_A(&workspace, {prefix}Canon_Params.P->x, 0, 0, {prefix}Canon_Params.A->x, 0, 0)',
+            function_call = 'osqp_update_data_mat(&solver, {prefix}Canon_Params.P->x, 0, 0, {prefix}Canon_Params.A->x, 0, 0)',
         ),
         'P': ParameterUpdateLogic(
             update_pending_logic = UpdatePendingLogic(['P']),
-            function_call = 'osqp_update_P(&workspace, {prefix}Canon_Params.P->x, 0, 0)'
+            function_call = 'osqp_update_data_mat(&solver, {prefix}Canon_Params.P->x, 0, 0, OSQP_NULL, 0, 0)',
         ),
         'A': ParameterUpdateLogic(
             update_pending_logic = UpdatePendingLogic(['A']),
-            function_call = 'osqp_update_A(&workspace, {prefix}Canon_Params.A->x, 0, 0)'
+            function_call = 'osqp_update_data_mat(&solver, OSQP_NULL, 0, 0, {prefix}Canon_Params.A->x, 0, 0)'
         ),
-        'q': ParameterUpdateLogic(
-            update_pending_logic = UpdatePendingLogic(['q']),
-            function_call = 'osqp_update_lin_cost(&workspace, {prefix}Canon_Params.q)'
+        'qlu': ParameterUpdateLogic(
+            update_pending_logic = UpdatePendingLogic(['q', 'l', 'u'], '&&', ['ql', 'qu', 'lu']),
+            function_call = 'osqp_update_data_vec(&solver, {prefix}Canon_Params.q, {prefix}Canon_Params.l, {prefix}Canon_Params.u)',
+        ),
+        'ql': ParameterUpdateLogic(
+            update_pending_logic = UpdatePendingLogic(['q', 'l'], '&&', ['q', 'l']),
+            function_call = 'osqp_update_data_vec(&solver, {prefix}Canon_Params.q, {prefix}Canon_Params.l, OSQP_NULL)',
+        ),
+        'qu': ParameterUpdateLogic(
+            update_pending_logic = UpdatePendingLogic(['q', 'u'], '&&', ['q', 'u']),
+            function_call = 'osqp_update_data_vec(&solver, {prefix}Canon_Params.q, OSQP_NULL, {prefix}Canon_Params.u)',
         ),
         'lu': ParameterUpdateLogic(
             update_pending_logic = UpdatePendingLogic(['l', 'u'], '&&', ['l', 'u']),
-            function_call = 'osqp_update_bounds(&workspace, {prefix}Canon_Params.l, {prefix}Canon_Params.u)',
+            function_call = 'osqp_update_data_vec(&solver, OSQP_NULL, {prefix}Canon_Params.l, {prefix}Canon_Params.u)',
+        ),
+        'q': ParameterUpdateLogic(
+            update_pending_logic = UpdatePendingLogic(['q']),
+            function_call = 'osqp_update_data_vec(&solver, {prefix}Canon_Params.q, OSQP_NULL, OSQP_NULL)',
         ),
         'l': ParameterUpdateLogic(
             update_pending_logic = UpdatePendingLogic(['l']),
-            function_call = 'osqp_update_lower_bound(&workspace, {prefix}Canon_Params.l)'
+            function_call = 'osqp_update_data_vec(&solver, OSQP_NULL, {prefix}Canon_Params.l, OSQP_NULL)',
         ),
         'u': ParameterUpdateLogic(
             update_pending_logic = UpdatePendingLogic(['u']),
-            function_call = 'osqp_update_upper_bound(&workspace, {prefix}Canon_Params.u)'
+            function_call = 'osqp_update_data_vec(&solver, OSQP_NULL, OSQP_NULL, {prefix}Canon_Params.u)',
         )
     }
-    solve_function_call = 'osqp_solve(&workspace)'
+    solve_function_call = 'osqp_solve(&solver)'
 
     # header and source files
-    header_files = ['"osqp.h"', '"types.h"', '"workspace.h"']
-    cmake_headers = ['${osqp_headers}']
-    cmake_sources = ['${osqp_src}']
+    header_files = ['"osqp.h"', '"workspace.h"']
+    cmake_headers = [
+        '${CMAKE_CURRENT_SOURCE_DIR}/*.h',
+        '${CMAKE_CURRENT_SOURCE_DIR}/inc/public/*.h',
+        '${CMAKE_CURRENT_SOURCE_DIR}/inc/private/*.h'
+    ]
+    cmake_sources = ['${OSQP_SOURCES}',  '${CMAKE_CURRENT_SOURCE_DIR}/workspace.c']
 
     # preconditioning of problem data happening in-memory
     inmemory_preconditioning = False
@@ -225,13 +240,13 @@ class OSQPInterface(SolverInterface):
     # workspace
     ws_statically_allocated_in_solver_code = True
     ws_ptrs = WorkspacePointerInfo(
-        objective_value = 'workspace.info->obj_val',
-        iterations = 'workspace.info->iter',
-        status = 'workspace.info->status',
-        primal_residual = 'workspace.info->pri_res',
-        dual_residual = 'workspace.info->dua_res',
-        primal_solution = 'xsolution',
-        dual_solution = '{dual_var_name}solution'
+        objective_value = 'solver.info->obj_val',
+        iterations = 'solver.info->iter',
+        status = 'solver.info->status',
+        primal_residual = 'solver.info->prim_res',
+        dual_residual = 'solver.info->dual_res',
+        primal_solution = 'sol_x',
+        dual_solution = 'sol_{dual_var_name}'
     )
 
     # solution vectors statically allocated
@@ -241,20 +256,24 @@ class OSQPInterface(SolverInterface):
     status_is_int = False
 
     # float and integer types
-    numeric_types = {'float': 'c_float', 'int': 'c_int'}
+    numeric_types = {'float': 'double', 'int': 'int'}
 
     # solver settings
     stgs_dynamically_allocated = False
-    stgs_set_function = {'name': 'osqp_update_{setting_name}', 'ptr_name': 'workspace'}
-    stgs_reset_function = {'name': 'osqp_set_default_settings', 'ptr_name': 'settings'}
-    stgs_names = ['rho', 'max_iter', 'eps_abs', 'eps_rel', 'eps_prim_inf', 'eps_dual_inf',
-                      'alpha', 'scaled_termination', 'check_termination', 'warm_start',
-                      'verbose', 'polish', 'polish_refine_iter', 'delta']
-    stgs_types = ['cpg_float', 'cpg_int', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float',
+    stgs_requires_extra_struct_type = True
+    stgs_direct_write_ptr = 'solver.settings'
+    stgs_reset_function = {'name': 'osqp_set_default_settings', 'ptr': 'solver.settings'}
+    stgs_names = ['max_iter', 'eps_abs', 'eps_rel', 'eps_prim_inf', 'eps_dual_inf',
+                      'scaled_termination', 'check_termination', 'warm_starting',
+                      'verbose', 'polishing', 'polish_refine_iter', 'delta']
+    stgs_translation = "{'warm_start': 'warm_starting'}"
+    stgs_types = ['cpg_int', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float',
                       'cpg_int', 'cpg_int', 'cpg_int', 'cpg_int', 'cpg_int', 'cpg_int', 'cpg_float']
-    stgs_enabled = [True, True, True, True, True, True, True, True, True, True,
+    stgs_enabled = [True, True, True, True, True, True, True, True,
                         False, False, False, False]
-    stgs_defaults = []
+    stgs_defaults = ['4000', '1e-3', '1e-3', '1e-4', '1e-4',
+                         '0', '25', '1',
+                         '0', '0', '0', '1e-6']
 
     # dual variables split into two vectors
     dual_var_split = False
@@ -279,7 +298,6 @@ class OSQPInterface(SolverInterface):
     def generate_code(self, code_dir, solver_code_dir, cvxpygen_directory,
                   parameter_canon: ParameterCanon) -> None:
         import osqp
-        from sys import platform
 
         # OSQP codegen
         osqp_obj = osqp.OSQP()
@@ -287,59 +305,45 @@ class OSQPInterface(SolverInterface):
                     A=parameter_canon.p_csc['A'], l=parameter_canon.p['l'],
                     u=parameter_canon.p['u'])
 
-        cmake_generators = {
-            'win32': 'MinGW Makefiles',
-            'linux': 'Unix Makefiles',
-            'darwin': 'Unix Makefiles'
-        }
-
-        try:
-            cmake_generator = cmake_generators[platform]
-        except KeyError:
-            raise ValueError(f'Unsupported OS {platform}.')
-
-        osqp_obj.codegen(os.path.join(code_dir, 'c', 'solver_code'), project_type=cmake_generator,
-                        parameters='matrices', force_rewrite=True)
+        osqp_obj.codegen(os.path.join(code_dir, 'c', 'solver_code'), parameters='matrices', force_rewrite=True)
 
         # copy license files
         shutil.copyfile(os.path.join(cvxpygen_directory, 'solvers', 'osqp-python', 'LICENSE'),
                         os.path.join(solver_code_dir, 'LICENSE'))
         shutil.copy(os.path.join(cvxpygen_directory, 'template', 'LICENSE'), code_dir)
 
+        # adjust workspace.h
+        read_write_file(os.path.join(code_dir, 'c', 'solver_code', 'workspace.h'),
+                        lambda x: x.replace('extern OSQPSolver solver;',
+                                            'extern OSQPSolver solver;\n'
+                                            + f'  extern OSQPFloat sol_x[{self.n_var}];\n'
+                                            + f'  extern OSQPFloat sol_y[{self.n_eq + self.n_ineq}];'))
+
+        # modify CMakeLists.txt
+        read_write_file(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'),
+                        lambda x: cut_from_expr(x, 'add_library').replace('src', '${CMAKE_CURRENT_SOURCE_DIR}/src'))
+        
+        # adjust top-level CMakeLists.txt
+        sdir = '${CMAKE_CURRENT_SOURCE_DIR}/solver_code'
+        indent = ' ' * 6
+        read_write_file(os.path.join(code_dir, 'c', 'CMakeLists.txt'),
+                        lambda x: x.replace(sdir + '/include',
+                                            sdir + '\n'
+                                            + indent + sdir + '/inc/public\n'
+                                            + indent + sdir + '/inc/private'))
+        
+        # adjust setup.py
+        indent = ' ' * 30
+        read_write_file(os.path.join(code_dir, 'setup.py'),
+                        lambda x: x.replace("os.path.join('c', 'solver_code', 'include'),",
+                                            "os.path.join('c', 'solver_code'),\n" +
+                                            indent + "os.path.join('c', 'solver_code', 'inc', 'public'),\n" + 
+                                            indent + "os.path.join('c', 'solver_code', 'inc', 'private'),"))
+
         # modify for extra settings
         if 'verbose' in self.enable_settings:
-            replacements_by_file = {
-                'CMakeLists.txt': [
-                    ('message(STATUS "Disabling printing for embedded")', 'message(STATUS "Not disabling printing for embedded by user request")'),
-                    ('set(PRINTING OFF)', '')
-                ],
-                os.path.join('include', 'constants.h'): [
-                    ('# ifdef __cplusplus\n}', '#  define VERBOSE (1)\n\n# ifdef __cplusplus\n}')
-                ],
-                os.path.join('include', 'types.h'): [
-                    ('} OSQPInfo;', '  c_int status_polish;\n} OSQPInfo;'),
-                    ('} OSQPSettings;', '  c_int polish;\n  c_int verbose;\n} OSQPSettings;'),
-                    ('# ifndef EMBEDDED\n  c_int nthreads; ///< number of threads active\n# endif // ifndef EMBEDDED', '  c_int nthreads;')
-                ],
-                os.path.join('include', 'osqp.h'): [
-                    ('# ifdef __cplusplus\n}', 'c_int osqp_update_verbose(OSQPWorkspace *work, c_int verbose_new);\n\n# ifdef __cplusplus\n}')
-                ],
-                os.path.join('src', 'osqp', 'util.c'): [
-                    ('// Print Settings', '/* Print Settings'),
-                    ('LINSYS_SOLVER_NAME[settings->linsys_solver]);', 'LINSYS_SOLVER_NAME[settings->linsys_solver]);*/')
-                ],
-                os.path.join('src', 'osqp', 'osqp.c'): [
-                    ('void osqp_set_default_settings(OSQPSettings *settings) {', 'void osqp_set_default_settings(OSQPSettings *settings) {\n  settings->verbose = VERBOSE;'),
-                    ('c_int osqp_update_verbose', '#endif // EMBEDDED\n\nc_int osqp_update_verbose'),
-                    ('verbose = verbose_new;\n\n  return 0;\n}\n\n#endif // EMBEDDED', 'verbose = verbose_new;\n\n  return 0;\n}')
-                ]
-            }
-
-            solver_code_dir = os.path.join(code_dir, 'c', 'solver_code')
-            for filename, replacements in replacements_by_file.items():
-                filepath = os.path.join(solver_code_dir, filename)
-                read_write_file(filepath, lambda x: multiple_replace(x, replacements))
-
+            read_write_file(os.path.join(code_dir, 'c', 'CMakeLists.txt'),
+                    lambda x: x.replace('project (cvxpygen)', 'project (cvxpygen)\nadd_definitions(-DOSQP_ENABLE_PRINTING)'))
 
 
     def get_affine_map(self, p_id, param_prob, constraint_info: ConstraintInfo) -> AffineMap:
@@ -456,13 +460,15 @@ class SCSInterface(SolverInterface):
 
     # solver settings
     stgs_dynamically_allocated = False
-    stgs_set_function = None
-    stgs_reset_function = {'name': 'scs_set_default_settings', 'ptr_name': None} # set 'ptr_name' to None if stgs not statically allocated in solver code
+    stgs_requires_extra_struct_type = False
+    stgs_direct_write_ptr = None
+    stgs_reset_function = {'name': 'scs_set_default_settings', 'ptr': None} # set 'ptr' to None if stgs not statically allocated in solver code
     stgs_names = ['normalize', 'scale', 'adaptive_scale', 'rho_x', 'max_iters', 'eps_abs',
                       'eps_rel',
                       'eps_infeas', 'alpha', 'time_limit_secs', 'verbose', 'warm_start',
                       'acceleration_lookback',
                       'acceleration_interval', 'write_data_filename', 'log_csv_filename']
+    stgs_translation = "{'max_iters': 'maxit'}"
     stgs_types = ['cpg_int', 'cpg_float', 'cpg_int', 'cpg_float', 'cpg_int', 'cpg_float', 'cpg_float',
                       'cpg_float', 'cpg_float',
                       'cpg_float', 'cpg_int', 'cpg_int', 'cpg_int', 'cpg_int', 'const char*', 'const char*']
@@ -677,10 +683,12 @@ class ECOSInterface(SolverInterface):
 
     # solver settings
     stgs_dynamically_allocated = True
-    stgs_set_function = None
+    stgs_requires_extra_struct_type = True
+    stgs_direct_write_ptr = None
     stgs_reset_function = None
     stgs_names = ['feastol', 'abstol', 'reltol', 'feastol_inacc', 'abstol_inacc',
                       'reltol_inacc', 'maxit']
+    stgs_translation = "{}"
     stgs_types = ['cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_int']
     stgs_enabled = [True, True, True, True, True, True, True]
     stgs_defaults = ['1e-8', '1e-8', '1e-8', '1e-4', '5e-5', '5e-5', '100']
@@ -863,11 +871,13 @@ class ClarabelInterface(SolverInterface):
     
     # solver settings
     stgs_dynamically_allocated = True
-    stgs_set_function = None
+    stgs_requires_extra_struct_type = True
+    stgs_direct_write_ptr = None
     stgs_reset_function = None
     # TODO: extend to all available settings
     stgs_names = ['max_iter', 'time_limit', 'verbose', 'max_step_fraction',
                   'equilibrate_enable', 'equilibrate_max_iter', 'equilibrate_min_scaling', 'equilibrate_max_scaling']
+    stgs_translation = "{}"
     stgs_types = ['cpg_int', 'cpg_float', 'cpg_int', 'cpg_float',
                   'cpg_int', 'cpg_int', 'cpg_float', 'cpg_float']
     stgs_enabled = [True, True, True, True, True, True, True, True]

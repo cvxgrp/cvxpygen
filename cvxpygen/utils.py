@@ -37,6 +37,16 @@ def multiple_replace(text, replacements):
     return text
 
 
+def cut_from_expr(text, expr):
+    """Cut file contents from a specific expression"""
+    idx = text.find(expr)
+    
+    if idx != -1:
+        return text[:idx]
+    else:
+        return text
+
+
 def write_vec_def(f, vec, name, typ):
     """
     Write vector to file
@@ -403,8 +413,8 @@ def write_update_structure(f, configuration, parameter_canon, pus, functions, fu
 
         if function not in functions_never_called:
             extra_condition = f'{up_logic.extra_condition.format(prefix=configuration.prefix)} ' if up_logic.extra_condition is not None else ''
-            extra_condition_operator = f'{operator_map.get(up_logic.extra_condition_operator, "||")} ' if up_logic.extra_condition is not None and len(up_logic.parameters_outdated) > 0 else ''
-            parameters_outdated = f' {operator_map.get(up_logic.operator, "&&").join([f"{configuration.prefix}Canon_Outdated.{p}" for p in up_logic.parameters_outdated])}'
+            extra_condition_operator = f' {operator_map.get(up_logic.extra_condition_operator, "||")} ' if up_logic.extra_condition is not None and len(up_logic.parameters_outdated) > 0 else ''
+            parameters_outdated = f'{(" "+operator_map.get(up_logic.operator, "&&")+" ").join([f"{configuration.prefix}Canon_Outdated.{p}" for p in up_logic.parameters_outdated])}'
 
             f.write(f'{"  "*(depth+1)}if ({extra_condition}{extra_condition_operator}{parameters_outdated}) {{\n')
             f.write(f'{"  "*(depth+2)}{logic.function_call.format(prefix=configuration.prefix)};\n')
@@ -581,7 +591,7 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
         CPG_Result_values = [f'&{configuration.prefix}CPG_Prim', f'&{configuration.prefix}CPG_Info']
     write_struct_def(f, CPG_Result_fields, result_cast, CPG_Result_values, f'{configuration.prefix}CPG_Result', 'CPG_Result_t')
 
-    if solver_interface.stgs_reset_function is None:
+    if solver_interface.stgs_requires_extra_struct_type:
         f.write('\n// Struct containing solver settings\n')
         f.write(f'Canon_Settings_t {configuration.prefix}Canon_Settings = {{\n')
         for name, default in solver_interface.stgs_names_to_default.items():
@@ -685,11 +695,12 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
     f.write('  CPG_Info_t *info;      // Solver info\n')
     f.write('} CPG_Result_t;\n\n')
 
-    f.write('// Solver settings\n')
-    f.write('typedef struct {\n')
-    for name, typ in solver_interface.stgs_names_to_type.items():
-        f.write(f'  {typ.ljust(11)}{name};\n')
-    f.write('} Canon_Settings_t;\n\n')
+    if solver_interface.stgs_requires_extra_struct_type:
+        f.write('// Solver settings\n')
+        f.write('typedef struct {\n')
+        for name, typ in solver_interface.stgs_names_to_type.items():
+            f.write(f'  {typ.ljust(11)}{name};\n')
+        f.write('} Canon_Settings_t;\n\n')
 
     f.write('#endif // ifndef CPG_TYPES_H\n')
 
@@ -749,7 +760,7 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
     f.write('\n// Struct containing solution and info\n')
     write_struct_prot(f, f'{configuration.prefix}CPG_Result', 'CPG_Result_t')
 
-    if solver_interface.stgs_reset_function is None:
+    if solver_interface.stgs_requires_extra_struct_type:
         f.write('\n// Struct containing solver settings\n')
         write_struct_prot(f, f'{configuration.prefix}Canon_Settings', 'Canon_Settings_t')
 
@@ -894,15 +905,15 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
     f.write('// Update solver settings\n')
     f.write(f'void {configuration.prefix}cpg_set_solver_default_settings(){{\n')
     if solver_interface.stgs_reset_function is not None:
-        f.write(f'  {solver_interface.stgs_reset_function["name"]}(&{solver_interface.stgs_reset_function["ptr_name"] if solver_interface.stgs_reset_function["ptr_name"] is not None else configuration.prefix + "Canon_Settings"});\n')
+        f.write(f'  {solver_interface.stgs_reset_function["name"]}({solver_interface.stgs_reset_function["ptr"] if solver_interface.stgs_reset_function["ptr"] is not None else "&" + configuration.prefix + "Canon_Settings"});\n')
     else:
         for name, value in solver_interface.stgs_names_to_default.items():
             f.write(f'  {configuration.prefix}Canon_Settings.{name} = {value};\n')
     f.write('}\n')
     for name, typ in solver_interface.stgs_names_to_type.items():
         f.write(f'\nvoid {configuration.prefix}cpg_set_solver_{name}({typ} {name}_new){{\n')
-        if solver_interface.stgs_set_function is not None:
-            f.write(f'  {solver_interface.stgs_set_function["name"].format(setting_name=name)}(&{solver_interface.stgs_set_function["ptr_name"]}, {name}_new);\n')
+        if solver_interface.stgs_direct_write_ptr is not None:
+            f.write(f'  {solver_interface.stgs_direct_write_ptr}->{name} = {name}_new;\n')
         else:
             f.write(f'  {configuration.prefix}Canon_Settings.{name} = {name}_new;\n')
         f.write('}\n')
@@ -1016,15 +1027,17 @@ def write_canon_cmake(f, configuration, solver_interface):
     """
 
     if len(solver_interface.cmake_headers) > 0:
-        f.write('\nset(solver_head')
+        f.write('\nfile(\n  GLOB\n  SOLVER_HEAD')
         for h in solver_interface.cmake_headers:
             f.write('\n  ' + h)
-        f.write('\n  PARENT_SCOPE)')
+        f.write(')\n')
+        f.write('\nset(solver_head ${SOLVER_HEAD} PARENT_SCOPE)\n')
     if len(solver_interface.cmake_sources) > 0:
-        f.write('\n\nset(solver_src')
-        for s in solver_interface.cmake_sources:
-            f.write('\n  ' + s)
-        f.write('\n  PARENT_SCOPE)')
+        f.write('\nfile(\n  GLOB\n  SOLVER_SRC')
+        for h in solver_interface.cmake_sources:
+            f.write('\n  ' + h)
+        f.write(')')
+        f.write('\nset(solver_src ${SOLVER_SRC} PARENT_SCOPE)\n')
 
 
 def write_module_def(f, configuration, variable_info, dual_variable_info, parameter_info, solver_interface):
@@ -1254,7 +1267,7 @@ def write_method(f, configuration, variable_info, dual_variable_info, parameter_
     f.write('from cvxpy.problems.problem import SolverStats\n')
     f.write('from %s import cpg_module\n\n\n' % configuration.code_dir.replace('/', '.').replace('\\', '.'))
 
-    f.write('standard_settings_names = {"max_iters": "maxit"}\n\n\n')
+    f.write(f'standard_settings_names = {solver_interface.stgs_translation}\n\n\n')
 
     f.write('def cpg_solve(prob, updated_params=None, **kwargs):\n\n')
     f.write('    # set flags for updated parameters\n')
