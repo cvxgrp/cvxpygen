@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 MAJOR = 0
 MINOR = 3
-MICRO = 2
+MICRO = 3
 VERSION = '%d.%d.%d' % (MAJOR, MINOR, MICRO)
 
 
@@ -43,8 +43,8 @@ setup(
         'pybind11 >= 2.8',
         'osqp >= 0.6.2, < 1.0.0',
         'clarabel >= 0.6.0',
-        'scipy >= 1.1.0',
-        'numpy >= 1.15',
+        'scipy >= 1.1.0, <1.12.0',
+        'numpy >= 1.15, <1.28.0',
     ],
     extras_require={
         'dev': [
