@@ -721,11 +721,7 @@ class ECOSInterface(SolverInterface):
             ),
             'AbcGh': ParameterUpdateLogic(
                 update_pending_logic=UpdatePendingLogic(['A', 'b', 'G'], '||', ['c', 'h']),
-                function_call=f'{{prefix}}cpg_copy_A();\n'
-                            f'      {{prefix}}cpg_copy_b();\n'
-                            f'      {{prefix}}cpg_copy_c();\n'
-                            f'      {{prefix}}cpg_copy_G();\n'
-                            f'      {{prefix}}cpg_copy_h();\n'
+                function_call=f'{{prefix}}cpg_copy_all();\n'
                             f'      ECOS_updateData({{prefix}}ecos_workspace, {{prefix}}Canon_Params_conditioning.G->x, {"0" if canon_constants["p"] == 0 else "{prefix}Canon_Params_conditioning.A->x"}'
                             f', {{prefix}}Canon_Params_conditioning.c, {{prefix}}Canon_Params_conditioning.h, {"0" if canon_constants["p"] == 0 else "{prefix}Canon_Params_conditioning.b"})'
             ),

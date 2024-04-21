@@ -849,20 +849,22 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
     if solver_interface.inmemory_preconditioning:
         f.write('// Copy canonical parameters for preconditioning\n')
         for p_id, size in parameter_canon.p_id_to_size.items():
-            f.write(f'void {configuration.prefix}cpg_copy_{p_id}(){{\n')
-            if size == 1:
-                f.write(f'  {configuration.prefix}Canon_Params_conditioning.{p_id} = {configuration.prefix}Canon_Params.{p_id};\n')
-            elif size > 1:
-                f.write(f'  for (i=0; i<{size}; i++){{\n')
-                if p_id.isupper():
-                    f.write(f'    {configuration.prefix}Canon_Params_conditioning.{p_id}->x[i] = {configuration.prefix}Canon_Params.{p_id}->x[i];\n')
-                else:
-                    f.write(f'    {configuration.prefix}Canon_Params_conditioning.{p_id}[i] = {configuration.prefix}Canon_Params.{p_id}[i];\n')
-                f.write('  }\n')
-            f.write('}\n\n')
+            if p_id != 'd':
+                f.write(f'void {configuration.prefix}cpg_copy_{p_id}(){{\n')
+                if size == 1:
+                    f.write(f'  {configuration.prefix}Canon_Params_conditioning.{p_id} = {configuration.prefix}Canon_Params.{p_id};\n')
+                elif size > 1:
+                    f.write(f'  for (i=0; i<{size}; i++){{\n')
+                    if p_id.isupper():
+                        f.write(f'    {configuration.prefix}Canon_Params_conditioning.{p_id}->x[i] = {configuration.prefix}Canon_Params.{p_id}->x[i];\n')
+                    else:
+                        f.write(f'    {configuration.prefix}Canon_Params_conditioning.{p_id}[i] = {configuration.prefix}Canon_Params.{p_id}[i];\n')
+                    f.write('  }\n')
+                f.write('}\n\n')
         f.write(f'void {configuration.prefix}cpg_copy_all(){{\n')
         for p_id in parameter_canon.p.keys():
-            f.write(f'  {configuration.prefix}cpg_copy_{p_id}();\n')
+            if p_id != 'd':
+                f.write(f'  {configuration.prefix}cpg_copy_{p_id}();\n')
         f.write('}\n\n')
         
     f.write('// Solve via canonicalization, canonical solve, retrieval\n')
@@ -946,6 +948,13 @@ def write_solve_prot(f, configuration, variable_info, dual_variable_info, parame
 
     f.write('\n// Retrieve solver information\n')
     f.write(f'extern void {configuration.prefix}cpg_retrieve_info();\n')
+
+    if solver_interface.inmemory_preconditioning:
+        f.write('\n// Copy canonical parameters for preconditioning\n')
+        for p_id in parameter_canon.p_id_to_size.keys():
+            if p_id != 'd':
+                f.write(f'extern void {configuration.prefix}cpg_copy_{p_id}();\n')
+        f.write(f'extern void {configuration.prefix}cpg_copy_all();\n')
 
     f.write('\n// Solve via canonicalization, canonical solve, retrieval\n')
     f.write(f'extern void {configuration.prefix}cpg_solve();\n')
