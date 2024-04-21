@@ -632,7 +632,7 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
     f.write('typedef struct {\n')
     for p_id in parameter_canon.p.keys():
         if p_id.isupper():
-            f.write(f'  cpg_csc        *{(p_id+";").ljust(8)}   // Canonical parameter {p_id}\n')
+            f.write(f'  cpg_csc      *{(p_id+";").ljust(8)}   // Canonical parameter {p_id}\n')
         else:
             if p_id == 'd':
                 s = ''
@@ -644,7 +644,7 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
     f.write('// Flags indicating outdated canonical parameters\n')
     f.write('typedef struct {\n')
     for p_id in parameter_canon.p.keys():
-        f.write(f'  int        {(p_id + ";").ljust(8)}    // Bool, if canonical parameter {p_id} outdated\n')
+        f.write(f'  int        {(p_id + ";").ljust(10)}    // Bool, if canonical parameter {p_id} outdated\n')
     f.write('} Canon_Outdated_t;\n\n')
 
     f.write('// Primal solution\n')
@@ -672,17 +672,17 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
     f.write('typedef struct {\n')
     f.write('  cpg_float    obj_val;    // Objective function value\n')
     f.write('  cpg_int      iter;       // Number of iterations\n')
-    f.write(f'  {"cpg_int      " if solver_interface.status_is_int else "char       *"}status;     // Solver status\n')
+    f.write(f'  {"cpg_int      status;     " if solver_interface.status_is_int else "char         *status;    "}// Solver status\n')
     f.write('  cpg_float    pri_res;    // Primal residual\n')
     f.write('  cpg_float    dua_res;    // Dual residual\n')
     f.write('} CPG_Info_t;\n\n')
 
     f.write('// Solution and solver information\n')
     f.write('typedef struct {\n')
-    f.write('  CPG_Prim_t *prim;      // Primal solution\n')
+    f.write('  CPG_Prim_t *prim;        // Primal solution\n')
     if len(dual_variable_info.name_to_init) > 0:
-        f.write('  CPG_Dual_t *dual;      // Dual solution\n')
-    f.write('  CPG_Info_t *info;      // Solver info\n')
+        f.write('  CPG_Dual_t *dual;        // Dual solution\n')
+    f.write('  CPG_Info_t *info;        // Solver info\n')
     f.write('} CPG_Result_t;\n\n')
 
     f.write('// Solver settings\n')
@@ -1414,7 +1414,7 @@ def replace_html_data(text, configuration, variable_info, dual_variable_info, pa
     CPGINFOTYPEDEF += 'typedef struct {\n'
     CPGINFOTYPEDEF += '  cpg_float    obj_val;    // Objective function value\n'
     CPGINFOTYPEDEF += '  cpg_int      iter;       // Number of iterations\n'
-    CPGINFOTYPEDEF += (f'  {"cpg_int      " if solver_interface.status_is_int else "char       *"}status;     // Solver status\n')
+    CPGINFOTYPEDEF += (f'  {"cpg_int      status;     " if solver_interface.status_is_int else "char         *status;    "}// Solver status\n')
     CPGINFOTYPEDEF += '  cpg_float    pri_res;    // Primal residual\n'
     CPGINFOTYPEDEF += '  cpg_float    dua_res;    // Dual residual\n'
     CPGINFOTYPEDEF += '} CPG_Info_t;\n'
@@ -1423,10 +1423,10 @@ def replace_html_data(text, configuration, variable_info, dual_variable_info, pa
     # type definition of CPG_Result_t
     CPGRESULTTYPEDEF = '\n// Struct type with user-defined objective value and solution as fields\n'
     CPGRESULTTYPEDEF += 'typedef struct {\n'
-    CPGRESULTTYPEDEF += '  CPG_Prim_t *prim;      // Primal solution\n'
+    CPGRESULTTYPEDEF += '  CPG_Prim_t *prim;        // Primal solution\n'
     if len(dual_variable_info.name_to_init) > 0:
-        CPGRESULTTYPEDEF += '  CPG_Dual_t *dual;      // Dual solution\n'
-    CPGRESULTTYPEDEF += '  CPG_Info_t *info;      // Solver information\n'
+        CPGRESULTTYPEDEF += '  CPG_Dual_t *dual;        // Dual solution\n'
+    CPGRESULTTYPEDEF += '  CPG_Info_t *info;        // Solver information\n'
     CPGRESULTTYPEDEF += '} CPG_Result_t;\n'
     text = text.replace('$CPGRESULTTYPEDEF', CPGRESULTTYPEDEF)
 
