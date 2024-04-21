@@ -845,7 +845,26 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
     f.write(f'  {configuration.prefix}CPG_Info.pri_res = {result_prefix}{solver_interface.ws_ptrs.primal_residual};\n')
     f.write(f'  {configuration.prefix}CPG_Info.dua_res = {result_prefix}{solver_interface.ws_ptrs.dual_residual};\n')
     f.write('}\n\n')
-
+    
+    if solver_interface.inmemory_preconditioning:
+        f.write('// Copy canonical parameters for preconditioning\n')
+        for p_id, size in parameter_canon.p_id_to_size.items():
+            f.write(f'void {configuration.prefix}cpg_copy_{p_id}(){{\n')
+            if size == 1:
+                f.write(f'  {configuration.prefix}Canon_Params_conditioning.{p_id} = {configuration.prefix}Canon_Params.{p_id};\n')
+            elif size > 1:
+                f.write(f'  for (i=0; i<{size}; i++){{\n')
+                if p_id.isupper():
+                    f.write(f'    {configuration.prefix}Canon_Params_conditioning.{p_id}->x[i] = {configuration.prefix}Canon_Params.{p_id}->x[i];\n')
+                else:
+                    f.write(f'    {configuration.prefix}Canon_Params_conditioning.{p_id}[i] = {configuration.prefix}Canon_Params.{p_id}[i];\n')
+                f.write('  }\n')
+            f.write('}\n\n')
+        f.write(f'void {configuration.prefix}cpg_copy_all(){{\n')
+        for p_id in parameter_canon.p.keys():
+            f.write(f'  {configuration.prefix}cpg_copy_{p_id}();\n')
+        f.write('}\n\n')
+        
     f.write('// Solve via canonicalization, canonical solve, retrieval\n')
     f.write(f'void {configuration.prefix}cpg_solve(){{\n')
     f.write('  // Canonicalize if necessary\n')
@@ -855,17 +874,6 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
             f.write(f'  if ({configuration.prefix}Canon_Outdated.{p_id}) {{\n')
             f.write(f'    {configuration.prefix}cpg_canonicalize_{p_id}();\n')
             f.write('  }\n')
-            if solver_interface.inmemory_preconditioning:
-                size = parameter_canon.p_id_to_size[p_id]
-                if size == 1:
-                    f.write(f'  {configuration.prefix}Canon_Params_conditioning.{p_id} = {configuration.prefix}Canon_Params.{p_id};\n')
-                elif size > 1:
-                    f.write(f'  for (i=0; i<{size}; i++){{\n')
-                    if p_id.isupper():
-                        f.write(f'    {configuration.prefix}Canon_Params_conditioning.{p_id}->x[i] = {configuration.prefix}Canon_Params.{p_id}->x[i];\n')
-                    else:
-                        f.write(f'    {configuration.prefix}Canon_Params_conditioning.{p_id}[i] = {configuration.prefix}Canon_Params.{p_id}[i];\n')
-                    f.write('  }\n')
 
     pus = solver_interface.parameter_update_structure
     write_update_structure(f, configuration, parameter_canon, pus, *analyze_pus(pus, parameter_canon.p_id_to_changes))
