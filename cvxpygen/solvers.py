@@ -989,9 +989,13 @@ class ClarabelInterface(SolverInterface):
             f.write(f'\ntarget_link_libraries(cpg_example PRIVATE {link_libraries})')
             f.write(f'\ntarget_link_libraries(cpg PRIVATE {link_libraries})\n')
 
-        # remove examples target from Clarabel.cpp/CMakeLists.txt
+        # remove examples target from Clarabel.cpp/CMakeLists.txt and set build type to Release
+        replacements = [
+            ('add_subdirectory(examples)', '# add_subdirectory(examples)'),
+            ('set(CMAKE_C_STANDARD_REQUIRED True)', 'set(CMAKE_C_STANDARD_REQUIRED True)\n\n# set build type to Release\nset(CMAKE_BUILD_TYPE Release)')
+        ]
         read_write_file(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'),
-                        lambda x: x.replace('add_subdirectory(examples)', '# add_subdirectory(examples)'))
+                        lambda x: multiple_replace(x, replacements))
 
         # add sdp flag
         if is_sdp:
@@ -1013,7 +1017,7 @@ class ClarabelInterface(SolverInterface):
         # adjust setup.py
         read_write_file(os.path.join(code_dir, 'setup.py'),
                         lambda x: x.replace("extra_objects=[cpg_lib])",
-                                            "extra_objects=[cpg_lib, os.path.join(cpg_dir, 'solver_code', 'rust_wrapper', 'target', 'debug', 'libclarabel_c.a')])"))
+                                            "extra_objects=[cpg_lib, os.path.join(cpg_dir, 'solver_code', 'rust_wrapper', 'target', 'release', 'libclarabel_c.a')])"))
 
     
     def declare_workspace(self, f, prefix, parameter_canon) -> None:
