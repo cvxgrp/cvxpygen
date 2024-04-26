@@ -1265,14 +1265,14 @@ def write_interface(
     solver_interface: "SolverInterface",
 ):
     write_description(f, 'py', 'Python extension stub file.')
-    interface_content = "\n"
+    interface_content = ""
 
     def define_struct(
         cls_name: str,
         properties: Iterable[str] = [],
         methods: Iterable[str] = [],
     ):
-        decl_ = ["\n", f"class {configuration.prefix}{cls_name}:", ""]
+        decl_ = ["", f"class {configuration.prefix}{cls_name}:", ""]
         for name in properties:
             decl_ += [
                 "    @property",
@@ -1287,7 +1287,7 @@ def write_interface(
                 ""
             ]
 
-        return "\n".join(decl_)
+        return "\n".join(decl_) + "\n"
 
     interface_content += define_struct("cpg_params", parameter_info.name_to_size_usp.keys())
     interface_content += define_struct("cpg_updated", parameter_info.name_to_size_usp.keys())
@@ -1313,13 +1313,15 @@ def write_interface(
         ["cpg_prim", "cpg_info"] + (["cpg_dual"] if len(dual_variable_info.name_to_init) > 0 else [])
     )
 
-    interface_content += "\n"
-
-    interface_content += "\ndef solve(upd, par):\n    ...\n"
+    interface_content += "\ndef solve(arg0: cpg_updated, arg1: cpg_params):\n    ...\n"
 
     interface_content += "\ndef set_solver_default_settings():\n    ...\n"
-    for name in solver_interface.stgs_names_to_type.keys():
-        interface_content += f"\ndef set_solver_{name}():\n    ...\n"
+    for name, type_ in solver_interface.stgs_names_to_type.items():
+        pytype = type_.removeprefix("cpg_")
+        match pytype:
+            case "const char*":
+                pytype = "str"
+        interface_content += f"\ndef set_solver_{name}(arg0: {pytype}):\n    ...\n"
 
     f.write(
         interface_content
