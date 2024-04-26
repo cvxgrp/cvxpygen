@@ -1262,7 +1262,14 @@ def replace_setup_data(text):
     return text.replace('%DATE', now.strftime("on %B %d, %Y at %H:%M:%S"))
 
 
-def write_method(f: TextIOWrapper, configuration: Configuration, variable_info: VariableInfo, dual_variable_info: DualVariableInfo, parameter_info: ParameterInfo, solver_interface: SolverInterface):
+def write_method(
+    f: TextIOWrapper,
+    configuration: Configuration,
+    variable_info: VariableInfo,
+    dual_variable_info: DualVariableInfo,
+    parameter_info: ParameterInfo,
+    solver_interface: SolverInterface,
+):
     """
     Write function to be registered as custom CVXPY solve method
     """
