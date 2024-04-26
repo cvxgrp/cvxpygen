@@ -50,7 +50,7 @@ from cvxpygen.utils import (
 )
 
 
-def generate_code(problem, code_dir='CPG_code', solver=None, solver_opts=None,
+def generate_code(problem: cp.Problem, code_dir='CPG_code', solver=None, solver_opts=None,
                   enable_settings=[], unroll=False, prefix='', wrapper=True):
     """
     Generate C code to solve a CVXPY problem
