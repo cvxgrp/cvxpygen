@@ -1258,11 +1258,11 @@ def write_module_prot(f, configuration, parameter_info, variable_info, dual_vari
 
 def write_interface(
     f: TextIOWrapper,
-    configuration: Configuration,
-    variable_info: VariableInfo,
-    dual_variable_info: DualVariableInfo,
-    parameter_info: ParameterInfo,
-    solver_interface: SolverInterface,
+    configuration: "Configuration",
+    variable_info: "VariableInfo",
+    dual_variable_info: "DualVariableInfo",
+    parameter_info: "ParameterInfo",
+    solver_interface: "SolverInterface",
 ):
     write_description(f, 'py', 'Python extension stub file.')
     interface_content = f"""
@@ -1297,11 +1297,11 @@ def replace_setup_data(text):
 
 def write_method(
     f: TextIOWrapper,
-    configuration: Configuration,
-    variable_info: VariableInfo,
-    dual_variable_info: DualVariableInfo,
-    parameter_info: ParameterInfo,
-    solver_interface: SolverInterface,
+    configuration: "Configuration",
+    variable_info: "VariableInfo",
+    dual_variable_info: "DualVariableInfo",
+    parameter_info: "ParameterInfo",
+    solver_interface: "SolverInterface",
 ):
     """
     Write function to be registered as custom CVXPY solve method
