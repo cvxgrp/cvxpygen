@@ -1311,7 +1311,7 @@ def write_method(
     f.write('    cpg_module.set_solver_default_settings()\n')
     f.write('    for key, value in kwargs.items():\n')
     f.write('        try:\n')
-    f.write('            eval(f\'cpg_module.set_solver_{standard_settings_names.get(key, key)}(value)\')\n')
+    f.write('            getattr(cpg_module, f\'set_solver_{standard_settings_names.get(key, key)}(value)\')\n')
     f.write('        except AttributeError:\n')
     f.write('            raise AttributeError(f\'Solver setting "{key}" not available.\')\n\n')
 
