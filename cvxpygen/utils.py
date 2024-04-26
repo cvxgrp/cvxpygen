@@ -13,11 +13,14 @@ limitations under the License.
 
 from io import TextIOWrapper
 import textwrap
+from typing import TYPE_CHECKING
 import numpy as np
 from datetime import datetime
 
-from cvxpygen.mappings import Configuration, DualVariableInfo, ParameterInfo, VariableInfo
-from cvxpygen.solvers import SolverInterface
+
+if TYPE_CHECKING:
+    from cvxpygen.mappings import Configuration, DualVariableInfo, ParameterInfo, VariableInfo
+    from cvxpygen.solvers import SolverInterface
 
 
 def write_file(path, mode, function, *args):
