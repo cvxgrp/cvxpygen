@@ -13,7 +13,7 @@ limitations under the License.
 
 from io import TextIOWrapper
 import textwrap
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterable
 import numpy as np
 from datetime import datetime
 
@@ -1265,24 +1265,64 @@ def write_interface(
     solver_interface: "SolverInterface",
 ):
     write_description(f, 'py', 'Python extension stub file.')
-    interface_content = f"""
-    def {configuration.prefix}cpg_updated(...):
-        ...
+    interface_content = "\n"
 
-    def set_solver_default_settings(...):
-        ...
+    def define_struct(
+        cls_name: str,
+        properties: Iterable[str] = [],
+        methods: Iterable[str] = [],
+    ):
+        decl_ = ["\n", f"class {configuration.prefix}{cls_name}:", ""]
+        for name in properties:
+            decl_ += [
+                "    @property",
+                f"    def {name}(self):",
+                "        ...",
+                ""
+            ]
+        for name in methods:
+            decl_ += [
+                f"    def {name}(self):"
+                "        ...",
+                ""
+            ]
 
-    # f\'set_solver_{{standard_settings_names.get(key, key)}}(value)
+        return "\n".join(decl_)
 
-    def {configuration.prefix}cpg_params():
-        ...
+    interface_content += define_struct("cpg_params", parameter_info.name_to_size_usp.keys())
+    interface_content += define_struct("cpg_updated", parameter_info.name_to_size_usp.keys())
+    interface_content += define_struct("cpg_prim", variable_info.name_to_init.keys())
 
-    def solve(upd, par):
-        ...
-    """
+    if len(dual_variable_info.name_to_init) > 0:
+        interface_content += define_struct("cpg_dual", dual_variable_info.name_to_init.keys())
+
+    interface_content += define_struct(
+        "cpg_info",
+        properties=[
+            "obj_val",
+            "iter",
+            "status",
+            "pri_res",
+            "dua_res",
+            "time",
+        ]
+    )
+
+    interface_content += define_struct(
+        "cpg_result",
+        ["cpg_prim", "cpg_info"] + (["cpg_dual"] if len(dual_variable_info.name_to_init) > 0 else [])
+    )
+
+    interface_content += "\n"
+
+    interface_content += "\ndef solve(upd, par):\n    ...\n"
+
+    interface_content += "\ndef set_solver_default_settings():\n    ...\n"
+    for name in solver_interface.stgs_names_to_type.keys():
+        interface_content += f"\ndef set_solver_{name}():\n    ...\n"
 
     f.write(
-        textwrap.dedent(interface_content)
+        interface_content
     )
 
 def replace_setup_data(text):
