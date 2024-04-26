@@ -11,8 +11,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+from io import TextIOWrapper
 import numpy as np
 from datetime import datetime
+
+from cvxpygen.mappings import Configuration, DualVariableInfo, ParameterInfo, VariableInfo
+from cvxpygen.solvers import SolverInterface
 
 
 def write_file(path, mode, function, *args):
@@ -1258,7 +1262,7 @@ def replace_setup_data(text):
     return text.replace('%DATE', now.strftime("on %B %d, %Y at %H:%M:%S"))
 
 
-def write_method(f, configuration, variable_info, dual_variable_info, parameter_info, solver_interface):
+def write_method(f: TextIOWrapper, configuration: Configuration, variable_info: VariableInfo, dual_variable_info: DualVariableInfo, parameter_info: ParameterInfo, solver_interface: SolverInterface):
     """
     Write function to be registered as custom CVXPY solve method
     """
