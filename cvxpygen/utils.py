@@ -12,6 +12,7 @@ limitations under the License.
 """
 
 from io import TextIOWrapper
+import textwrap
 import numpy as np
 from datetime import datetime
 
@@ -1261,7 +1262,25 @@ def write_interface(
     solver_interface: SolverInterface,
 ):
     write_description(f, 'py', 'Python extension stub file.')
-    
+    interface_content = f"""
+    def {configuration.prefix}cpg_updated(...):
+        ...
+
+    def set_solver_default_settings(...):
+        ...
+
+    # f\'set_solver_{{standard_settings_names.get(key, key)}}(value)
+
+    def {configuration.prefix}cpg_params():
+        ...
+
+    def solve(upd, par):
+        ...
+    """
+
+    f.write(
+        textwrap.dedent(interface_content)
+    )
 
 def replace_setup_data(text):
     """
