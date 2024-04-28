@@ -33,7 +33,7 @@ from cvxpy.expressions.variable import upper_tri_to_full
 
 
 def generate_code(problem, code_dir='CPG_code', solver=None, solver_opts=None,
-                  enable_settings=[], unroll=False, prefix='', wrapper=True):
+                  enable_settings=[], unroll=False, prefix='', wrapper=True, gradient=False):
     """
     Generate C code to solve a CVXPY problem
     """
@@ -54,7 +54,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, solver_opts=None,
     interface_class, cvxpy_interface_class = get_interface_class(solver_name)
 
     # configuration
-    configuration = get_configuration(code_dir, solver, unroll, prefix)
+    configuration = get_configuration(code_dir, solver, unroll, prefix, gradient)
 
     # cone problems check
     if hasattr(param_prob, 'cone_dims'):
@@ -75,7 +75,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, solver_opts=None,
 
     cvxpygen_directory = os.path.dirname(os.path.realpath(__file__))
     solver_code_dir = os.path.join(code_dir, 'c', 'solver_code')
-    solver_interface.generate_code(code_dir, solver_code_dir, cvxpygen_directory, parameter_canon)
+    solver_interface.generate_code(code_dir, solver_code_dir, cvxpygen_directory, parameter_canon, gradient)
 
     parameter_canon.user_p_name_to_canon_outdated = {
         user_p_name: [canon_p_ids[j] for j in np.nonzero(adjacency[:, i])[0]]
@@ -341,7 +341,8 @@ def write_c_code(problem: cp.Problem, configuration: Configuration, variable_inf
     solver_code_dir = os.path.join(c_dir, 'solver_code')
     
     # write files
-    for name in ['workspace', 'solve']:
+    file_names = ['workspace', 'solve'] + (['gradient'] if configuration.gradient else [])
+    for name in file_names:
         write_file(os.path.join(include_dir, f'cpg_{name}.h'), 'w', 
                    getattr(utils, f'write_{name}_prot'),
                    configuration, variable_info, dual_variable_info, 
@@ -399,8 +400,8 @@ def adjust_prefix(prefix):
     return prefix + '_' if prefix else prefix
 
 
-def get_configuration(code_dir, solver_name, unroll, prefix) -> Configuration:
-    return Configuration(code_dir, solver_name, unroll, adjust_prefix(prefix))
+def get_configuration(code_dir, solver_name, unroll, prefix, gradient) -> Configuration:
+    return Configuration(code_dir, solver_name, unroll, adjust_prefix(prefix), gradient)
 
 
 def get_parameter_info(p_prob) -> ParameterInfo:
@@ -491,6 +492,7 @@ def handle_sparsity(p_prob: cp.Problem) -> None:
                         break
                 if not invalid_sparsity:
                     param.attributes['sparsity'] = list(set(param.attributes['sparsity']))
+                    param.attributes['sparsity'] = sorted(param.attributes['sparsity'], key=lambda x: (x[1], x[0]))
         elif param.attributes['diag']:
             param.attributes['sparsity'] = [(i, i) for i in range(param.shape[0])]
 

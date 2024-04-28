@@ -166,7 +166,7 @@ class SolverInterface(ABC):
 
     @abstractmethod
     def generate_code(self, code_dir, solver_code_dir, cvxpygen_directory,
-                      parameter_canon: ParameterCanon) -> None:
+                      parameter_canon: ParameterCanon, gradient) -> None:
         pass
 
     def declare_workspace(self, f, prefix, parameter_canon) -> None:
@@ -296,7 +296,7 @@ class OSQPInterface(SolverInterface):
                          indices_constr, indptr_constr, shape_constr, canon_constants, enable_settings)
 
     def generate_code(self, code_dir, solver_code_dir, cvxpygen_directory,
-                  parameter_canon: ParameterCanon) -> None:
+                  parameter_canon: ParameterCanon, gradient) -> None:
         import osqp
 
         # OSQP codegen
@@ -509,7 +509,7 @@ class SCSInterface(SolverInterface):
                 'is not supported yet.')
 
     def generate_code(self, code_dir, solver_code_dir, cvxpygen_directory,
-                  parameter_canon: ParameterCanon) -> None:
+                  parameter_canon: ParameterCanon, gradient) -> None:
 
         # copy sources
         if os.path.isdir(solver_code_dir):
@@ -759,7 +759,7 @@ class ECOSInterface(SolverInterface):
         return True
 
     def generate_code(self, code_dir, solver_code_dir, cvxpygen_directory,
-                  parameter_canon: ParameterCanon) -> None:
+                  parameter_canon: ParameterCanon, gradient) -> None:
 
         # copy sources
         if os.path.isdir(solver_code_dir):
@@ -962,7 +962,7 @@ class ClarabelInterface(SolverInterface):
         return True
 
     def generate_code(self, code_dir, solver_code_dir, cvxpygen_directory,
-                    parameter_canon: ParameterCanon) -> None:
+                    parameter_canon: ParameterCanon, gradient) -> None:
 
         # check if sdp cones are present
         is_sdp = len(self.canon_constants['cone_dims_psd']) > 0
