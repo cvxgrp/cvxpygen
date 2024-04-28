@@ -43,8 +43,8 @@ setup(
         'pybind11 >= 2.8',
         'osqp >= 1.0.0b1',
         'clarabel >= 0.6.0',
-        'scipy >= 1.1.0',
-        'numpy >= 1.15',
+        'scipy >= 1.1.0, <1.12.0',
+        'numpy >= 1.15, <1.28.0',
     ],
     extras_require={
         'dev': [

@@ -54,7 +54,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, solver_opts=None,
     interface_class, cvxpy_interface_class = get_interface_class(solver_name)
 
     # configuration
-    configuration = get_configuration(code_dir, solver, unroll, prefix, gradient)
+    configuration = get_configuration(code_dir, solver_name, unroll, prefix, gradient)
 
     # cone problems check
     if hasattr(param_prob, 'cone_dims'):

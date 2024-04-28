@@ -717,7 +717,8 @@ class ECOSInterface(SolverInterface):
         self.parameter_update_structure = {
             'init': ParameterUpdateLogic(
                 update_pending_logic=UpdatePendingLogic([], extra_condition='!{prefix}ecos_workspace', functions_if_false=['AbcGh']),
-                function_call=f'{{prefix}}ecos_workspace = ECOS_setup({canon_constants["n"]}, {canon_constants["m"]}, {canon_constants["p"]}, {canon_constants["l"]}, {canon_constants["n_cones"]}'
+                function_call=f'{{prefix}}cpg_copy_all();\n'
+                            f'    {{prefix}}ecos_workspace = ECOS_setup({canon_constants["n"]}, {canon_constants["m"]}, {canon_constants["p"]}, {canon_constants["l"]}, {canon_constants["n_cones"]}'
                             f', {"0" if canon_constants["n_cones"] == 0 else "(int *) &{prefix}ecos_q"}, {canon_constants["e"]}'
                             f', {{prefix}}Canon_Params_conditioning.G->x, {{prefix}}Canon_Params_conditioning.G->p, {{prefix}}Canon_Params_conditioning.G->i'
                             f', {"0" if canon_constants["p"] == 0 else "{prefix}Canon_Params_conditioning.A->x"}'
@@ -728,16 +729,19 @@ class ECOSInterface(SolverInterface):
             ),
             'AbcGh': ParameterUpdateLogic(
                 update_pending_logic=UpdatePendingLogic(['A', 'b', 'G'], '||', ['c', 'h']),
-                function_call=f'ECOS_updateData({{prefix}}ecos_workspace, {{prefix}}Canon_Params_conditioning.G->x, {"0" if canon_constants["p"] == 0 else "{prefix}Canon_Params_conditioning.A->x"}'
+                function_call=f'{{prefix}}cpg_copy_all();\n'
+                            f'      ECOS_updateData({{prefix}}ecos_workspace, {{prefix}}Canon_Params_conditioning.G->x, {"0" if canon_constants["p"] == 0 else "{prefix}Canon_Params_conditioning.A->x"}'
                             f', {{prefix}}Canon_Params_conditioning.c, {{prefix}}Canon_Params_conditioning.h, {"0" if canon_constants["p"] == 0 else "{prefix}Canon_Params_conditioning.b"})'
             ),
             'c': ParameterUpdateLogic(
                 update_pending_logic=UpdatePendingLogic(['c']),
-                function_call=f'for (i=0; i<{canon_constants["n"]}; i++) {{{{ ecos_updateDataEntry_c({{prefix}}ecos_workspace, i, {{prefix}}Canon_Params_conditioning.c[i]); }}}}'
+                function_call=f'{{prefix}}cpg_copy_c();\n'
+                            f'        for (i=0; i<{canon_constants["n"]}; i++) {{{{ ecos_updateDataEntry_c({{prefix}}ecos_workspace, i, {{prefix}}Canon_Params_conditioning.c[i]); }}}}'
             ),
             'h': ParameterUpdateLogic(
                 update_pending_logic=UpdatePendingLogic(['h']),
-                function_call=f'for (i=0; i<{canon_constants["m"]}; i++) {{{{ ecos_updateDataEntry_h({{prefix}}ecos_workspace, i, {{prefix}}Canon_Params_conditioning.h[i]); }}}}'
+                function_call=f'{{prefix}}cpg_copy_h();\n'
+                            f'        for (i=0; i<{canon_constants["m"]}; i++) {{{{ ecos_updateDataEntry_h({{prefix}}ecos_workspace, i, {{prefix}}Canon_Params_conditioning.h[i]); }}}}'
             )
         }
 
@@ -939,7 +943,8 @@ class ClarabelInterface(SolverInterface):
             'init': ParameterUpdateLogic(
                 update_pending_logic=UpdatePendingLogic([], extra_condition=extra_condition, functions_if_false=[]),
                 function_call= \
-                    f'clarabel_CscMatrix_init(&{{prefix}}P, {canon_constants["n"]}, {canon_constants["n"]}, {P_p}, {P_i}, {P_x});\n'
+                    f'{{prefix}}cpg_copy_all();\n'
+                    f'    clarabel_CscMatrix_init(&{{prefix}}P, {canon_constants["n"]}, {canon_constants["n"]}, {P_p}, {P_i}, {P_x});\n'
                     f'    clarabel_CscMatrix_init(&{{prefix}}A, {canon_constants["m"]}, {canon_constants["n"]}, {{prefix}}Canon_Params_conditioning.A->p, {{prefix}}Canon_Params_conditioning.A->i, {{prefix}}Canon_Params_conditioning.A->x);\n' \
                     f'    {{prefix}}settings = clarabel_DefaultSettings_default()'
             )
@@ -994,9 +999,13 @@ class ClarabelInterface(SolverInterface):
             f.write(f'\ntarget_link_libraries(cpg_example PRIVATE {link_libraries})')
             f.write(f'\ntarget_link_libraries(cpg PRIVATE {link_libraries})\n')
 
-        # remove examples target from Clarabel.cpp/CMakeLists.txt
+        # remove examples target from Clarabel.cpp/CMakeLists.txt and set build type to Release
+        replacements = [
+            ('add_subdirectory(examples)', '# add_subdirectory(examples)'),
+            ('set(CMAKE_C_STANDARD_REQUIRED True)', 'set(CMAKE_C_STANDARD_REQUIRED True)\n\n# set build type to Release\nset(CMAKE_BUILD_TYPE Release)')
+        ]
         read_write_file(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'),
-                        lambda x: x.replace('add_subdirectory(examples)', '# add_subdirectory(examples)'))
+                        lambda x: multiple_replace(x, replacements))
 
         # add sdp flag
         if is_sdp:
@@ -1018,7 +1027,7 @@ class ClarabelInterface(SolverInterface):
         # adjust setup.py
         read_write_file(os.path.join(code_dir, 'setup.py'),
                         lambda x: x.replace("extra_objects=[cpg_lib])",
-                                            "extra_objects=[cpg_lib, os.path.join(cpg_dir, 'solver_code', 'rust_wrapper', 'target', 'debug', 'libclarabel_c.a')])"))
+                                            "extra_objects=[cpg_lib, os.path.join(cpg_dir, 'solver_code', 'rust_wrapper', 'target', 'release', 'libclarabel_c.a')])"))
 
     
     def declare_workspace(self, f, prefix, parameter_canon) -> None:
