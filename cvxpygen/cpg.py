@@ -64,6 +64,8 @@ def generate_code(problem, code_dir='CPG_code', solver=None, solver_opts=None,
     handle_sparsity(param_prob)
 
     solver_interface = interface_class(data, param_prob, enable_settings)  # noqa
+    if gradient and not solver_interface.supports_gradient:
+        raise ValueError(f'Problem gradients not supported with {solver_name}!')
     variable_info = get_variable_info(problem, inverse_data)
     dual_variable_info = get_dual_variable_info(inverse_data, solver_interface, cvxpy_interface_class)
     parameter_info = get_parameter_info(param_prob)

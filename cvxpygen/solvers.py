@@ -8,8 +8,8 @@ from platform import system
 import numpy as np
 import scipy as sp
 
-from cvxpygen.utils import read_write_file, write_struct_prot, write_struct_def, \
-    write_vec_prot, write_vec_def, multiple_replace, cut_from_expr
+from cvxpygen.utils import write_file, read_write_file, write_struct_prot, write_struct_def, \
+    write_vec_prot, write_vec_def, write_gradient_workspace_def, multiple_replace, cut_from_expr
 from cvxpygen.mappings import PrimalVariableInfo, DualVariableInfo, ConstraintInfo, AffineMap, \
     ParameterCanon, WorkspacePointerInfo, UpdatePendingLogic, ParameterUpdateLogic
 
@@ -181,6 +181,7 @@ class OSQPInterface(SolverInterface):
     solver_type = 'quadratic'
     canon_p_ids = ['P', 'q', 'd', 'A', 'l', 'u']
     canon_p_ids_constr_vec = ['l', 'u']
+    supports_gradient = True
     parameter_update_structure = {
         'PA': ParameterUpdateLogic(
             update_pending_logic = UpdatePendingLogic(['P', 'A'], '&&', ['P', 'A']),
@@ -307,6 +308,19 @@ class OSQPInterface(SolverInterface):
 
         osqp_obj.codegen(os.path.join(code_dir, 'c', 'solver_code'), parameters='matrices', force_rewrite=True)
 
+        # copy / generate source files
+        if gradient:
+            shutil.copy(os.path.join(cvxpygen_directory, 'template', 'grad', 'cpg_osqp_grad_compute.c'),
+                        os.path.join(solver_code_dir, 'src'))
+            for f in ['cpg_osqp_grad_compute.h', 'cpg_osqp_grad_workspace.h']:
+                shutil.copy(os.path.join(cvxpygen_directory, 'template', 'grad', f),
+                            os.path.join(solver_code_dir, 'inc', 'private'))
+            write_file(os.path.join(solver_code_dir, 'src', 'cpg_osqp_grad_workspace.c'), 'w', 
+                       write_gradient_workspace_def, 
+                       parameter_canon)
+            
+        # TODO: change values in gradient LDL when P or A values change
+
         # copy license files
         shutil.copyfile(os.path.join(cvxpygen_directory, 'solvers', 'osqp-python', 'LICENSE'),
                         os.path.join(solver_code_dir, 'LICENSE'))
@@ -395,6 +409,7 @@ class SCSInterface(SolverInterface):
     solver_type = 'conic'
     canon_p_ids = ['P', 'c', 'd', 'A', 'b']
     canon_p_ids_constr_vec = ['b']
+    supports_gradient = False
     parameter_update_structure = {
         'init': ParameterUpdateLogic(
             update_pending_logic = UpdatePendingLogic([], extra_condition = '!{prefix}Scs_Work', functions_if_false = ['PA']),
@@ -649,6 +664,7 @@ class ECOSInterface(SolverInterface):
     solver_type = 'conic'
     canon_p_ids = ['c', 'd', 'A', 'b', 'G', 'h']
     canon_p_ids_constr_vec = ['b', 'h']
+    supports_gradient = False
     solve_function_call = '{prefix}ecos_flag = ECOS_solve({prefix}ecos_workspace)'
 
     # header files
@@ -843,6 +859,7 @@ class ClarabelInterface(SolverInterface):
     solver_type = 'conic'
     canon_p_ids = ['P', 'q', 'd', 'A', 'b']
     canon_p_ids_constr_vec = ['b']
+    gradient_supported = False
 
     # header and source files
     header_files = ['<Clarabel>']

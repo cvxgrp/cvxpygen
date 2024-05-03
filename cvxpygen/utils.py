@@ -203,6 +203,24 @@ def is_mathematical_scalar(x):
     return True if np.isscalar(x) else x.size == 1
 
 
+def ldl(A):
+    
+    n = A.shape[0]
+    L = np.zeros_like(A)
+    D = np.zeros(n)
+    
+    for i in range(n):
+        for j in range(i):
+            sum_LDL = np.dot(L[i, :j], L[j, :j] * D[:j])
+            L[i, j] = (A[i, j] - sum_LDL) / D[j]
+        
+        sum_LDL = np.dot(L[i, :i], L[i, :i] * D[:i])
+        D[i] = A[i, i] - sum_LDL
+        L[i, i] = 1
+    
+    return L, D
+
+
 def write_problem_summary(name_to_shape, name_to_size):
     """
     Create html code for param / variables table entries
@@ -551,7 +569,7 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
             if variable_info.name_to_sym[name] or not solver_interface.sol_statically_allocated:
                 CPG_Prim_values.append('&' + configuration.prefix + name)
             else:
-                CPG_Prim_values.append(f'{result_prefix}{solver_interface.ws_ptrs.primal_solution} + {offset}')
+                CPG_Prim_values.append(f'&{result_prefix}{solver_interface.ws_ptrs.primal_solution} + {offset}')
     write_struct_def(f, CPG_Prim_fields, prim_cast, CPG_Prim_values, f'{configuration.prefix}CPG_Prim', 'CPG_Prim_t')
 
     if len(dual_variable_info.name_to_init) > 0:
@@ -613,6 +631,7 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
     if configuration.gradient:
         
         f.write('\n// Derivative workspace\n')
+        write_vec_def(f, zeros(len(parameter_info.flat_usp)), f'{configuration.prefix}cpg_dp', 'cpg_float')
         
         delta_cast = []
         f.write('// User-defined parameter deltas\n')
@@ -811,6 +830,7 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
     if configuration.gradient:
         
         f.write('\n// Derivative workspace\n')
+        write_vec_prot(f, zeros(len(parameter_info.flat_usp)), f'{configuration.prefix}cpg_dp', 'cpg_float')
         
         f.write('\n// Struct containing parameter deltas\n')
         write_struct_prot(f, f'{configuration.prefix}CPG_Delta', 'CPG_Delta_t')
@@ -1038,70 +1058,65 @@ def write_gradient_def(f, configuration, variable_info, dual_variable_info, para
 
     write_description(f, 'c', 'Function definitions')
     f.write('#include "cpg_gradient.h"\n')
-    #f.write('#include "qdldl.h"\n')
-    #f.write('#include "qdldl_interface.h"\n\n')
+    f.write('#include "cpg_osqp_grad_workspace.h"\n')
+    f.write('#include "cpg_osqp_grad_compute.h"\n\n')
 
-    f.write('static cpg_int i;\n')
-    f.write('static cpg_int j;\n')
-    f.write('static cpg_int k;\n')
+    f.write('static cpg_int i, j, k;\n')
     
     f.write('\n// Update user-defined variable deltas\n')
     for name, size in variable_info.name_to_size.items():
         if size == 1:
             f.write(f'void {configuration.prefix}cpg_update_d{name}(cpg_float val){{\n')
-            f.write(f'    {configuration.prefix}cpg_canon_dx[{variable_info.name_to_offset[name]}] = val;\n')
+            f.write(f'    {configuration.prefix}CPG_OSQP_Grad.dx[{variable_info.name_to_offset[name]}] = val;\n')
         else:
             f.write(f'void {configuration.prefix}cpg_update_d{name}(cpg_int idx, cpg_float val){{\n')
-            f.write(f'    {configuration.prefix}cpg_canon_dx[{variable_info.name_to_offset[name]}+idx] = val;\n')
+            f.write(f'    {configuration.prefix}CPG_OSQP_Grad.dx[{variable_info.name_to_offset[name]}+idx] = val;\n')
         f.write('}\n')
     
-    f.write('\n// Un-canonicalize\n')
-    f.write(f'void {configuration.prefix}cpg_uncanonicalize_vec(const cpg_float* dq, cpg_float* dl, cpg_float* du, cpg_float* dp){{\n')
+    f.write('\n// End-to-end gradient\n')
+    f.write(f'void {configuration.prefix}cpg_gradient(){{\n')
+    #f.write(f'    {configuration.prefix}osqp_adjoint_derivative_compute(&solver, {configuration.prefix}cpg_canon_dx, {configuration.prefix}cpg_canon_dy_l, {configuration.prefix}cpg_canon_dy_u);\n')
+    #f.write(f'    {configuration.prefix}osqp_adjoint_derivative_get_mat(&solver, (OSQPCscMatrix*) &{configuration.prefix}cpg_canon_dP, (OSQPCscMatrix*) &{configuration.prefix}cpg_canon_dA);\n')
+    #f.write(f'    {configuration.prefix}osqp_adjoint_derivative_get_vec(&solver, {configuration.prefix}cpg_canon_dq, {configuration.prefix}cpg_canon_dl, {configuration.prefix}cpg_canon_du);\n')
+    f.write('    // Canonical gradient\n')
+    f.write(f'    {configuration.prefix}cpg_osqp_gradient();\n')
+    f.write('    // Un-canonicalize\n')
     f.write(f'    for(j=0; j<{NP}; j++){{\n')
-    f.write(f'        dp[j] = 0.0;\n')
+    f.write(f'        {configuration.prefix}cpg_dp[j] = 0.0;\n')
     f.write('    }\n')
     if parameter_canon.p_id_to_changes['q']:
         f.write(f'    for(j=0; j<{n}; j++){{\n')
         f.write(f'        for(k={configuration.prefix}canon_q_map.p[j]; k<{configuration.prefix}canon_q_map.p[j+1]; k++){{\n')
-        f.write(f'            dp[{configuration.prefix}canon_q_map.i[k]] += {configuration.prefix}canon_q_map.x[k]*{configuration.prefix}dq[j];\n')
+        f.write(f'            {configuration.prefix}cpg_dp[{configuration.prefix}canon_q_map.i[k]] += {configuration.prefix}canon_q_map.x[k]*{configuration.prefix}CPG_OSQP_Grad.dq[j];\n')
         f.write('        }\n')
         f.write('    }\n')
     if parameter_canon.p_id_to_changes['l']:
         f.write(f'    for(j=0; j<{nl}; j++){{\n')
         f.write(f'        for(k={configuration.prefix}canon_l_map.p[j]; k<{configuration.prefix}canon_l_map.p[j+1]; k++){{\n')
-        f.write(f'            dp[{configuration.prefix}canon_l_map.i[k]] += {configuration.prefix}canon_l_map.x[k]*{configuration.prefix}dl[j];\n')
+        f.write(f'            {configuration.prefix}cpg_dp[{configuration.prefix}canon_l_map.i[k]] += {configuration.prefix}canon_l_map.x[k]*{configuration.prefix}CPG_OSQP_Grad.dl[j];\n')
         f.write('        }\n')
         f.write('    }\n')
     if parameter_canon.p_id_to_changes['u']:
         f.write(f'    for(j=0; j<{nu}; j++){{\n')
         f.write(f'        for(k={configuration.prefix}canon_u_map.p[j]; k<{configuration.prefix}canon_u_map.p[j+1]; k++){{\n')
-        f.write(f'            dp[{configuration.prefix}canon_u_map.i[k]] += {configuration.prefix}canon_u_map.x[k]*{configuration.prefix}du[j];\n')
+        f.write(f'            {configuration.prefix}cpg_dp[{configuration.prefix}canon_u_map.i[k]] += {configuration.prefix}canon_u_map.x[k]*{configuration.prefix}CPG_OSQP_Grad.du[j];\n')
         f.write('        }\n')
         f.write('    }\n')
-    f.write('}\n\n')
-    
-    f.write('// cpg_uncanonicalize_vec to be called first\n')
-    f.write(f'void {configuration.prefix}cpg_uncanonicalize_mat(const cpg_csc dP, const cpg_csc dA, cpg_float* dp){{\n')
     if parameter_canon.p_id_to_changes['P']:
         f.write(f'    for(j=0; j<{parameter_canon.p_csc["P"].nnz}; j++){{\n')
         f.write(f'        for(k={configuration.prefix}canon_P_map.p[j]; k<{configuration.prefix}canon_P_map.p[j+1]; k++){{\n')
-        f.write(f'            dp[{configuration.prefix}canon_P_map.i[k]] += {configuration.prefix}canon_P_map.x[k]*{configuration.prefix}dP.x[j];\n')
+        f.write(f'            {configuration.prefix}cpg_dp[{configuration.prefix}canon_P_map.i[k]] += {configuration.prefix}canon_P_map.x[k]*{configuration.prefix}CPG_OSQP_Grad.dP->x[j];\n')
         f.write('        }\n')
         f.write('    }\n')
     if parameter_canon.p_id_to_changes['A']:
         f.write(f'    for(j=0; j<{parameter_canon.p_csc["A"].nnz}; j++){{\n')
         f.write(f'        for(k={configuration.prefix}canon_A_map.p[j]; k<{configuration.prefix}canon_A_map.p[j+1]; k++){{\n')
-        f.write(f'            dp[{configuration.prefix}canon_A_map.i[k]] += {configuration.prefix}canon_A_map.x[k]*{configuration.prefix}dA.x[j];\n')
+        f.write(f'            {configuration.prefix}cpg_dp[{configuration.prefix}canon_A_map.i[k]] += {configuration.prefix}canon_A_map.x[k]*{configuration.prefix}CPG_OSQP_Grad.dA->x[j];\n')
         f.write('        }\n')
         f.write('    }\n')
-    f.write('}\n\n')
-    
-    f.write('\n// End-to-end gradient\n')
-    f.write(f'void {configuration.prefix}cpg_gradient(){{\n')
-    f.write(f'    {configuration.prefix}cpg_uncanonicalize_vec({configuration.prefix}cpg_canon_dq, {configuration.prefix}cpg_canon_dl, {configuration.prefix}cpg_canon_du, {configuration.prefix}cpg_dp);\n')
-    f.write(f'    {configuration.prefix}cpg_uncanonicalize_mat({configuration.prefix}cpg_canon_dP, {configuration.prefix}cpg_canon_dA, {configuration.prefix}cpg_dp);\n')
+    f.write('    // Reset dx\n')
     f.write(f'    for(i=0; i<{n}; i++){{\n')
-    f.write(f'        {configuration.prefix}cpg_canon_dx[i] = 0.0;\n')
+    f.write(f'        {configuration.prefix}CPG_OSQP_Grad.dx[i] = 0.0;\n')
     f.write('    }\n')
     f.write('}\n\n')
         
@@ -1122,12 +1137,58 @@ def write_gradient_prot(f, configuration, variable_info, dual_variable_info, par
         else:
             f.write(f'extern void {configuration.prefix}cpg_update_d{name}(cpg_int idx, cpg_float val);\n')
     
-    f.write('\n// Un-canonicalize\n')
-    f.write(f'extern void {configuration.prefix}cpg_uncanonicalize_vec(const cpg_float* dq, cpg_float* dl, cpg_float* du, cpg_float* dp);\n')
-    f.write(f'extern void {configuration.prefix}cpg_uncanonicalize_mat(const cpg_csc dP, const cpg_csc dA, cpg_float* dp);\n')
-    
     f.write('\n// End-to-end gradient\n')
     f.write(f'extern void {configuration.prefix}cpg_gradient();\n')
+    
+    
+def write_gradient_workspace_def(f, parameter_canon): # TODO: move to solver_interface
+    """
+    Write canonical gradient workspace to file
+    """
+    
+    n = parameter_canon.p_csc['P'].shape[0]
+    N = n + parameter_canon.p_csc['A'].shape[0]
+    
+    K = np.vstack([
+        np.hstack([parameter_canon.p_csc['P'].toarray() + 1e-8 * np.eye(n), parameter_canon.p_csc['A'].toarray().T]),
+        np.hstack([parameter_canon.p_csc['A'].toarray(), np.zeros((N-n, N-n))]),
+    ])
+
+    L, D = ldl(K)
+    L_csc = sp.csc_matrix(np.ones(L.shape) * np.tril(np.ones(L.shape), -1)) # TODO: keep sparsity where it does not change (left)
+    for col in range(L_csc.shape[1]):
+        start, end = L_csc.indptr[col], L_csc.indptr[col + 1]
+        rows = L_csc.indices[start:end]
+        for i, row in enumerate(rows):
+            if row > col:
+                L_csc.data[start + i] = L[row, col]
+    
+    Dinv = 1 / D
+    
+    write_description(f, 'c', 'Static workspace allocation for canonical gradient computation')
+    f.write('#include "cpg_osqp_grad_workspace.h"\n\n')
+    write_vec_def(f, zeros(N-n), 'cpg_osqp_grad_a', 'cpg_int')
+    write_mat_def(f, csc_to_dict(L_csc), 'cpg_osqp_grad_L')
+    write_vec_def(f, D, 'cpg_osqp_grad_D', 'cpg_float')
+    write_vec_def(f, Dinv, 'cpg_osqp_grad_Dinv', 'cpg_float')
+    write_vec_def(f, K.flatten(order='F'), 'cpg_osqp_grad_K', 'cpg_float')
+    write_vec_def(f, zeros(N), 'cpg_osqp_grad_c', 'cpg_float')
+    write_vec_def(f, zeros(N), 'cpg_osqp_grad_w', 'cpg_float')
+    write_vec_def(f, zeros(n), 'cpg_osqp_grad_dx', 'cpg_float')
+    write_vec_def(f, zeros(N), 'cpg_osqp_grad_r', 'cpg_float')
+    write_vec_def(f, zeros(n), 'cpg_osqp_grad_dq', 'cpg_float')
+    write_vec_def(f, zeros(N-n), 'cpg_osqp_grad_dl', 'cpg_float')
+    write_vec_def(f, zeros(N-n), 'cpg_osqp_grad_du', 'cpg_float')
+    write_mat_def(f, csc_to_dict(0*parameter_canon.p_csc['P']), 'cpg_osqp_grad_dP')
+    write_mat_def(f, csc_to_dict(0*parameter_canon.p_csc['A']), 'cpg_osqp_grad_dA')
+    OSQP_Grad_fiels = ['a', 'L', 'D', 'Dinv', 'K', 'c', 'w', 'dx', 'r', 'dq', 'dl', 'du', 'dP', 'dA']
+    OSQP_Grad_casts = ['(cpg_int *) &', '&', '(cpg_float *) &', '(cpg_float *) &', '(cpg_float *) &', '(cpg_float *) &', '(cpg_float *) &',
+                       '(cpg_float *) &', '(cpg_float *) &', '(cpg_float *) &', '(cpg_float *) &', '(cpg_float *) &', '&', '&']
+    OSQP_Grad_values = ['cpg_osqp_grad_a', 'cpg_osqp_grad_L', 'cpg_osqp_grad_D', 'cpg_osqp_grad_Dinv', 'cpg_osqp_grad_K',
+                        'cpg_osqp_grad_c', 'cpg_osqp_grad_w', 'cpg_osqp_grad_dx', 'cpg_osqp_grad_r', 'cpg_osqp_grad_dq',
+                        'cpg_osqp_grad_dl', 'cpg_osqp_grad_du', 'cpg_osqp_grad_dP', 'cpg_osqp_grad_dA']
+    write_struct_def(f, OSQP_Grad_fiels, OSQP_Grad_casts, OSQP_Grad_values, 'CPG_OSQP_Grad', 'CPG_OSQP_Grad_t')
+    
 
 
 def write_example_def(f, configuration, variable_info, dual_variable_info, parameter_info):
@@ -1138,8 +1199,10 @@ def write_example_def(f, configuration, variable_info, dual_variable_info, param
     write_description(f, 'c', 'Example program for updating parameters, solving, and inspecting the result')
     f.write('#include <stdio.h>\n')
     f.write('#include "cpg_workspace.h"\n')
-    f.write('#include "cpg_solve.h"\n\n')
-    f.write('static int i;\n\n')
+    f.write('#include "cpg_solve.h"\n')
+    if configuration.gradient:
+        f.write('#include "cpg_gradient.h"\n')
+    f.write('\nstatic int i;\n\n')
 
     f.write('int main(int argc, char *argv[]){\n\n')
 
@@ -1175,6 +1238,24 @@ def write_example_def(f, configuration, variable_info, dual_variable_info, param
             f.write(f'  for(i=0; i<{var.size}; i++) {{\n')
             f.write(f'    printf("{name}[%d] = %f\\n", i, {configuration.prefix}CPG_Result.dual->{name}[i]);\n')
             f.write('  }\n')
+            
+    if configuration.gradient:
+        f.write('  // Update first entry of every user-defined solution gradient\n')
+        for name, var in variable_info.name_to_init.items():
+            if is_mathematical_scalar(var):
+                f.write(f'  {configuration.prefix}cpg_update_d{name}(CPG_Result.prim->{name}[i] / 10.0);\n')
+            else:
+                f.write(f'  {configuration.prefix}cpg_update_d{name}(0, CPG_Result.prim->{name}[0] / 10.0);\n')
+        f.write('\n  // Compute the gradient\n')
+        f.write(f'  {configuration.prefix}cpg_gradient();\n\n')
+        f.write('  // Print gradient\n')
+        for name, value in parameter_info.writable.items():
+            if is_mathematical_scalar(value):
+                f.write(f'  printf("d{name} = %f\\n", {configuration.prefix}CPG_Delta.{name});\n')
+            else:
+                f.write(f'  for(i=0; i<{value.size}; i++) {{\n')
+                f.write(f'    printf("d{name}[%d] = %f\\n", i, {configuration.prefix}CPG_Delta.{name}[i]);\n')
+                f.write('  }\n')
 
     f.write('\n  return 0;\n\n')
     f.write('}\n')
