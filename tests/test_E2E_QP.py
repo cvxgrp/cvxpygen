@@ -203,9 +203,6 @@ def test(name, solver, style, seed):
     with open('test_%s_%s_%s/problem.pickle' % (name, solver, style), 'rb') as f:
         prob = pickle.load(f)
 
-    module = importlib.import_module('test_%s_%s_%s.cpg_solver' % (name, solver, style))
-    prob.register_solve('CPG', module.cpg_solve)
-
     prob = assign_data(prob, name, seed)
 
     val_py, prim_py, dual_py, val_cg, prim_cg, dual_cg, prim_py_norm, dual_py_norm = \
@@ -235,9 +232,6 @@ def test_OSQP_verbose():
 
     with open('test_actuator_OSQP_verbose/problem.pickle', 'rb') as f:
         prob = pickle.load(f)
-
-    module = importlib.import_module('test_actuator_OSQP_verbose.cpg_solver')
-    prob.register_solve('CPG', module.cpg_solve)
 
     prob = assign_data(prob, 'actuaor', 0)
 
