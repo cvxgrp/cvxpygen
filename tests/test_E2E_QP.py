@@ -255,3 +255,4 @@ def test_OSQP_verbose():
 
 def test_clarabel():
     test('actuator', 'CLARABEL', 'loops', 0)
+    test('actuator', 'CLARABEL', 'loops', 1)

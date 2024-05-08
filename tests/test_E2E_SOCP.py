@@ -124,3 +124,4 @@ def test(name, solver, style, seed):
 
 def test_clarabel():
     test('ADP', 'CLARABEL', 'loops', 0)
+    test('ADP', 'CLARABEL', 'loops', 1)
