@@ -923,22 +923,42 @@ class ClarabelInterface(SolverInterface):
             P_p = f'(cpg_int[]){{{{ {", ".join(["0"]*(n_var+1))} }}}}'
             P_i = '0'
             P_x = '0'
+            update_after_init = ['A', 'q', 'b']
         else:
             extra_condition = '!{prefix}solver'
             P_p = '{prefix}Canon_Params_conditioning.P->p'
             P_i = '{prefix}Canon_Params_conditioning.P->i'
             P_x = '{prefix}Canon_Params_conditioning.P->x'
+            update_after_init = ['P', 'A', 'q', 'b']
 
         self.parameter_update_structure = {
             'init': ParameterUpdateLogic(
-                update_pending_logic=UpdatePendingLogic([], extra_condition=extra_condition, functions_if_false=[]),
+                update_pending_logic=UpdatePendingLogic([], extra_condition=extra_condition, functions_if_false=update_after_init),
                 function_call= \
                     f'{{prefix}}cpg_copy_all();\n'
                     f'    clarabel_CscMatrix_init(&{{prefix}}P, {canon_constants["n"]}, {canon_constants["n"]}, {P_p}, {P_i}, {P_x});\n'
                     f'    clarabel_CscMatrix_init(&{{prefix}}A, {canon_constants["m"]}, {canon_constants["n"]}, {{prefix}}Canon_Params_conditioning.A->p, {{prefix}}Canon_Params_conditioning.A->i, {{prefix}}Canon_Params_conditioning.A->x);\n' \
                     f'    {{prefix}}settings = clarabel_DefaultSettings_default()'
-            )
+            ),
+            'A': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['A']),
+                function_call = f'{{prefix}}cpg_copy_A();\n      clarabel_CscMatrix_init(&{{prefix}}A, {canon_constants["m"]}, {canon_constants["n"]}, {{prefix}}Canon_Params_conditioning.A->p, {{prefix}}Canon_Params_conditioning.A->i, {{prefix}}Canon_Params_conditioning.A->x)'
+            ),
+            'q': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['q']),
+                function_call = f'{{prefix}}cpg_copy_q()'
+            ),
+            'b': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['b']),
+                function_call = f'{{prefix}}cpg_copy_b()'
+            ),
         }
+        
+        if indices_obj is not None:
+            self.parameter_update_structure['P'] = ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['P']),
+                function_call = f'{{prefix}}cpg_copy_P();\n      clarabel_CscMatrix_init(&{{prefix}}P, {canon_constants["n"]}, {canon_constants["n"]}, {P_p}, {P_i}, {P_x})'
+            )
 
         self.solve_function_call = \
             f'{{prefix}}solver = clarabel_DefaultSolver_new(&{{prefix}}P, {{prefix}}Canon_Params_conditioning.q, &{{prefix}}A, {{prefix}}Canon_Params_conditioning.b, {canon_constants["n_cone_types"]}, {{prefix}}cones, &{{prefix}}settings);\n' \
