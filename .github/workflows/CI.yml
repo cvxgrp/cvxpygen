@@ -64,7 +64,7 @@ jobs:
       run: |
         pip install pytest
         cd tests
-        $CONDA/bin/pytest
+        python -m pytest
 
     - name: Test with pytest (Windows)
       if: runner.os == 'Windows'
