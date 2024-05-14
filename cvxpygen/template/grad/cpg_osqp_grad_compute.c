@@ -102,6 +102,59 @@ void cpg_ldl_add(cpg_int index) {
 
 }
 
+void cpg_ldl() {
+
+    cpg_int i, j, k;
+    cpg_float sum_LDLT;
+
+    CPG_OSQP_Grad.D[0] = CPG_OSQP_Grad.K[0];
+    CPG_OSQP_Grad.Dinv[0] = 1.0 / CPG_OSQP_Grad.D[0];
+
+    for (i = 1; i < N; i++) {
+        for (j = 0; j < i; j++) {
+            sum_LDLT = 0.0;
+            for (k = 0; k < j; k++) {
+                sum_LDLT += CPG_OSQP_Grad.L->x[CPG_OSQP_Grad.L->p[k] + i - k - 1] * CPG_OSQP_Grad.L->x[CPG_OSQP_Grad.L->p[k] + j - k - 1] * CPG_OSQP_Grad.D[k];
+            }
+            CPG_OSQP_Grad.L->x[CPG_OSQP_Grad.L->p[j] + i - j - 1] = (CPG_OSQP_Grad.K[i + j * N] - sum_LDLT) * CPG_OSQP_Grad.Dinv[j];
+        }
+        sum_LDLT = 0.0;
+        for (k = 0; k < i; k++) {
+            sum_LDLT += CPG_OSQP_Grad.L->x[CPG_OSQP_Grad.L->p[k] + i - k - 1] * CPG_OSQP_Grad.L->x[CPG_OSQP_Grad.L->p[k] + i - k - 1] * CPG_OSQP_Grad.D[k];
+        }
+        CPG_OSQP_Grad.D[i] = CPG_OSQP_Grad.K[i + i * N] - sum_LDLT;
+        CPG_OSQP_Grad.Dinv[i] = 1.0 / CPG_OSQP_Grad.D[i];
+    }
+
+}
+
+void cpg_P_to_K(cpg_csc *P) {
+
+    cpg_int i, j, k;
+    for (j = 0; j < n; j++) {
+        for (k = P->p[j]; k < P->p[j + 1]; k++) {
+            i = P->i[k];
+            CPG_OSQP_Grad.K[i + j * N] = P->x[k];
+            CPG_OSQP_Grad.K[j + i * N] = P->x[k];
+        }
+    }
+
+}
+
+void cpg_A_to_K(cpg_csc *A) {
+
+    // Fill A (csc format) into lower left block and transpose into upper right block of K (column-major)
+    cpg_int i, j, k;
+    for (j = 0; j < n; j++) {
+        for (k = A->p[j]; k < A->p[j + 1]; k++) {
+            i = A->i[k];
+            CPG_OSQP_Grad.K[(i + n) + j * N] = A->x[k];
+            CPG_OSQP_Grad.K[j + (i + n) * N] = A->x[k];
+        }
+    }
+
+}
+
 
 void cpg_osqp_gradient() {
 

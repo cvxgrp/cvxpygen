@@ -551,6 +551,13 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
     for p_id in parameter_canon.p.keys():
         f.write(f'.{p_id} = 0,\n')
     f.write('};\n\n')
+    if configuration.gradient:
+        f.write('// Struct containing flags for outdated canonical parameters for gradient computation\n')
+        f.write(f'Canon_Outdated_t {configuration.prefix}Canon_Outdated_Grad = {{\n')
+        for p_id in parameter_canon.p.keys():
+            if p_id.isupper():
+                f.write(f'.{p_id} = 0,\n')
+        f.write('};\n\n')
 
     prim_cast = []
     if any(variable_info.name_to_sym) or not solver_interface.sol_statically_allocated:
@@ -801,6 +808,8 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
 
     f.write('\n// Struct containing flags for outdated canonical parameters\n')
     f.write(f'extern Canon_Outdated_t {configuration.prefix}Canon_Outdated;\n')
+    if configuration.gradient:
+        f.write(f'extern Canon_Outdated_t {configuration.prefix}Canon_Outdated_Grad;\n')
 
     if any(variable_info.name_to_sym.values()) or not solver_interface.sol_statically_allocated:
         f.write('\n// User-defined variables\n')
@@ -871,6 +880,8 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
                 f.write(f'  {configuration.prefix}CPG_Params.{user_p_name}[idx] = val;\n')
             for Canon_outdated_name in Canon_outdated_names:
                 f.write(f'  {configuration.prefix}Canon_Outdated.{Canon_outdated_name} = 1;\n')
+                if configuration.gradient and Canon_outdated_name.isupper():
+                    f.write(f'  {configuration.prefix}Canon_Outdated_Grad.{Canon_outdated_name} = 1;\n')
             f.write('}\n\n')
     else:
         for base_col, name in parameter_info.col_to_name_usp.items():
@@ -883,6 +894,8 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
                 f.write(f'  {configuration.prefix}cpg_params_vec[idx+{base_col}] = val;\n')
             for Canon_outdated_name in Canon_outdated_names:
                 f.write(f'  {configuration.prefix}Canon_Outdated.{Canon_outdated_name} = 1;\n')
+                if configuration.gradient and Canon_outdated_name.isupper():
+                    f.write(f'  {configuration.prefix}Canon_Outdated_Grad.{Canon_outdated_name} = 1;\n')
             f.write('}\n\n')
 
     f.write('// Map user-defined to canonical parameters\n')
@@ -1075,57 +1088,73 @@ def write_gradient_def(f, configuration, variable_info, dual_variable_info, para
     for name, size in variable_info.name_to_size.items():
         if size == 1:
             f.write(f'void {configuration.prefix}cpg_update_d{name}(cpg_float val){{\n')
-            f.write(f'    {configuration.prefix}CPG_OSQP_Grad.dx[{variable_info.name_to_offset[name]}] = val;\n')
+            f.write(f'  {configuration.prefix}CPG_OSQP_Grad.dx[{variable_info.name_to_offset[name]}] = val;\n')
         else:
             f.write(f'void {configuration.prefix}cpg_update_d{name}(cpg_int idx, cpg_float val){{\n')
-            f.write(f'    {configuration.prefix}CPG_OSQP_Grad.dx[{variable_info.name_to_offset[name]}+idx] = val;\n')
+            f.write(f'  {configuration.prefix}CPG_OSQP_Grad.dx[{variable_info.name_to_offset[name]}+idx] = val;\n')
         f.write('}\n')
     
     f.write('\n// End-to-end gradient\n')
     f.write(f'void {configuration.prefix}cpg_gradient(){{\n')
-    #f.write(f'    {configuration.prefix}osqp_adjoint_derivative_compute(&solver, {configuration.prefix}cpg_canon_dx, {configuration.prefix}cpg_canon_dy_l, {configuration.prefix}cpg_canon_dy_u);\n')
-    #f.write(f'    {configuration.prefix}osqp_adjoint_derivative_get_mat(&solver, (OSQPCscMatrix*) &{configuration.prefix}cpg_canon_dP, (OSQPCscMatrix*) &{configuration.prefix}cpg_canon_dA);\n')
-    #f.write(f'    {configuration.prefix}osqp_adjoint_derivative_get_vec(&solver, {configuration.prefix}cpg_canon_dq, {configuration.prefix}cpg_canon_dl, {configuration.prefix}cpg_canon_du);\n')
-    f.write('    // Canonical gradient\n')
-    f.write(f'    {configuration.prefix}cpg_osqp_gradient();\n')
-    f.write('    // Un-canonicalize\n')
-    f.write(f'    for(j=0; j<{NP}; j++){{\n')
-    f.write(f'        {configuration.prefix}cpg_dp[j] = 0.0;\n')
+    changing_matrices = []
+    for p_id, changes in parameter_canon.p_id_to_changes.items():
+        if p_id.isupper() and changes:
+            changing_matrices.append(p_id)
+            f.write(f'  if ({configuration.prefix}Canon_Outdated_Grad.{p_id}) {{\n')
+            f.write(f'    {configuration.prefix}cpg_{p_id}_to_K({configuration.prefix}Canon_Params.{p_id});\n')
+            f.write('  }\n')
+    # If any of {configuration.prefix}Canon_Outdated_Grad.{p_id} with p_id in changing_matrices is true, then call cpg_ldl()
+    f.write(f'  if ({f" || ".join([f"{configuration.prefix}Canon_Outdated_Grad.{p_id}" for p_id in changing_matrices])}) {{\n')
+    f.write(f'    {configuration.prefix}cpg_ldl();\n')
+    # set all CPG_OSQP_Grad.a[i] to 1
+    f.write(f'    for(i=0; i<{N - n}; i++){{\n')
+    f.write(f'      {configuration.prefix}CPG_OSQP_Grad.a[i] = 1;\n')
     f.write('    }\n')
+    f.write('  }\n')
+    f.write('  // Canonical gradient\n')
+    f.write(f'  {configuration.prefix}cpg_osqp_gradient();\n')
+    f.write('  // Un-canonicalize\n')
+    f.write(f'  for(j=0; j<{NP}; j++){{\n')
+    f.write(f'      {configuration.prefix}cpg_dp[j] = 0.0;\n')
+    f.write('  }\n')
     if parameter_canon.p_id_to_changes['q']:
-        f.write(f'    for(j=0; j<{n}; j++){{\n')
-        f.write(f'        for(k={configuration.prefix}canon_q_map.p[j]; k<{configuration.prefix}canon_q_map.p[j+1]; k++){{\n')
-        f.write(f'            {configuration.prefix}cpg_dp[{configuration.prefix}canon_q_map.i[k]] += {configuration.prefix}canon_q_map.x[k]*{configuration.prefix}CPG_OSQP_Grad.dq[j];\n')
-        f.write('        }\n')
-        f.write('    }\n')
+        f.write(f'  for(j=0; j<{n}; j++){{\n')
+        f.write(f'      for(k={configuration.prefix}canon_q_map.p[j]; k<{configuration.prefix}canon_q_map.p[j+1]; k++){{\n')
+        f.write(f'          {configuration.prefix}cpg_dp[{configuration.prefix}canon_q_map.i[k]] += {configuration.prefix}canon_q_map.x[k]*{configuration.prefix}CPG_OSQP_Grad.dq[j];\n')
+        f.write('      }\n')
+        f.write('  }\n')
     if parameter_canon.p_id_to_changes['l']:
-        f.write(f'    for(j=0; j<{nl}; j++){{\n')
-        f.write(f'        for(k={configuration.prefix}canon_l_map.p[j]; k<{configuration.prefix}canon_l_map.p[j+1]; k++){{\n')
-        f.write(f'            {configuration.prefix}cpg_dp[{configuration.prefix}canon_l_map.i[k]] += {configuration.prefix}canon_l_map.x[k]*{configuration.prefix}CPG_OSQP_Grad.dl[j];\n')
-        f.write('        }\n')
-        f.write('    }\n')
+        f.write(f'  for(j=0; j<{nl}; j++){{\n')
+        f.write(f'      for(k={configuration.prefix}canon_l_map.p[j]; k<{configuration.prefix}canon_l_map.p[j+1]; k++){{\n')
+        f.write(f'          {configuration.prefix}cpg_dp[{configuration.prefix}canon_l_map.i[k]] += {configuration.prefix}canon_l_map.x[k]*{configuration.prefix}CPG_OSQP_Grad.dl[j];\n')
+        f.write('      }\n')
+        f.write('  }\n')
     if parameter_canon.p_id_to_changes['u']:
-        f.write(f'    for(j=0; j<{nu}; j++){{\n')
-        f.write(f'        for(k={configuration.prefix}canon_u_map.p[j]; k<{configuration.prefix}canon_u_map.p[j+1]; k++){{\n')
-        f.write(f'            {configuration.prefix}cpg_dp[{configuration.prefix}canon_u_map.i[k]] += {configuration.prefix}canon_u_map.x[k]*{configuration.prefix}CPG_OSQP_Grad.du[j];\n')
-        f.write('        }\n')
-        f.write('    }\n')
+        f.write(f'  for(j=0; j<{nu}; j++){{\n')
+        f.write(f'      for(k={configuration.prefix}canon_u_map.p[j]; k<{configuration.prefix}canon_u_map.p[j+1]; k++){{\n')
+        f.write(f'          {configuration.prefix}cpg_dp[{configuration.prefix}canon_u_map.i[k]] += {configuration.prefix}canon_u_map.x[k]*{configuration.prefix}CPG_OSQP_Grad.du[j];\n')
+        f.write('      }\n')
+        f.write('  }\n')
     if parameter_canon.p_id_to_changes['P']:
-        f.write(f'    for(j=0; j<{parameter_canon.p_csc["P"].nnz}; j++){{\n')
-        f.write(f'        for(k={configuration.prefix}canon_P_map.p[j]; k<{configuration.prefix}canon_P_map.p[j+1]; k++){{\n')
-        f.write(f'            {configuration.prefix}cpg_dp[{configuration.prefix}canon_P_map.i[k]] += {configuration.prefix}canon_P_map.x[k]*{configuration.prefix}CPG_OSQP_Grad.dP->x[j];\n')
-        f.write('        }\n')
-        f.write('    }\n')
+        f.write(f'  for(j=0; j<{parameter_canon.p_csc["P"].nnz}; j++){{\n')
+        f.write(f'      for(k={configuration.prefix}canon_P_map.p[j]; k<{configuration.prefix}canon_P_map.p[j+1]; k++){{\n')
+        f.write(f'          {configuration.prefix}cpg_dp[{configuration.prefix}canon_P_map.i[k]] += {configuration.prefix}canon_P_map.x[k]*{configuration.prefix}CPG_OSQP_Grad.dP->x[j];\n')
+        f.write('      }\n')
+        f.write('  }\n')
     if parameter_canon.p_id_to_changes['A']:
-        f.write(f'    for(j=0; j<{parameter_canon.p_csc["A"].nnz}; j++){{\n')
-        f.write(f'        for(k={configuration.prefix}canon_A_map.p[j]; k<{configuration.prefix}canon_A_map.p[j+1]; k++){{\n')
-        f.write(f'            {configuration.prefix}cpg_dp[{configuration.prefix}canon_A_map.i[k]] += {configuration.prefix}canon_A_map.x[k]*{configuration.prefix}CPG_OSQP_Grad.dA->x[j];\n')
-        f.write('        }\n')
-        f.write('    }\n')
-    f.write('    // Reset dx\n')
-    f.write(f'    for(i=0; i<{n}; i++){{\n')
-    f.write(f'        {configuration.prefix}CPG_OSQP_Grad.dx[i] = 0.0;\n')
-    f.write('    }\n')
+        f.write(f'  for(j=0; j<{parameter_canon.p_csc["A"].nnz}; j++){{\n')
+        f.write(f'      for(k={configuration.prefix}canon_A_map.p[j]; k<{configuration.prefix}canon_A_map.p[j+1]; k++){{\n')
+        f.write(f'          {configuration.prefix}cpg_dp[{configuration.prefix}canon_A_map.i[k]] += {configuration.prefix}canon_A_map.x[k]*{configuration.prefix}CPG_OSQP_Grad.dA->x[j];\n')
+        f.write('      }\n')
+        f.write('  }\n')
+    f.write('  // Reset dx\n')
+    f.write(f'  for(i=0; i<{n}; i++){{\n')
+    f.write(f'      {configuration.prefix}CPG_OSQP_Grad.dx[i] = 0.0;\n')
+    f.write('  }\n')
+    f.write('  // Reset flags for outdated canonical parameters\n')
+    for p_id, changes in parameter_canon.p_id_to_changes.items():
+        if p_id.isupper() and changes:
+            f.write(f'  {configuration.prefix}Canon_Outdated_Grad.{p_id} = 0;\n')
     f.write('}\n\n')
         
         
