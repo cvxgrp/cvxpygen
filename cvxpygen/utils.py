@@ -171,6 +171,14 @@ def zeros(n):
     return np.zeros(n, dtype=float)
 
 
+def ones(n):
+    """
+    Return ones vector of length n
+    """
+
+    return np.ones(n, dtype=float)
+
+
 def csc_to_dict(m):
     """
     Convert scipy csc matrix to dict that can be passed to write_mat_def()
@@ -1167,7 +1175,7 @@ def write_gradient_workspace_def(f, parameter_canon): # TODO: move to solver_int
     
     write_description(f, 'c', 'Static workspace allocation for canonical gradient computation')
     f.write('#include "cpg_osqp_grad_workspace.h"\n\n')
-    write_vec_def(f, zeros(N-n), 'cpg_osqp_grad_a', 'cpg_int')
+    write_vec_def(f, ones(N-n), 'cpg_osqp_grad_a', 'cpg_int')
     write_mat_def(f, csc_to_dict(L_csc), 'cpg_osqp_grad_L')
     write_vec_def(f, D, 'cpg_osqp_grad_D', 'cpg_float')
     write_vec_def(f, Dinv, 'cpg_osqp_grad_Dinv', 'cpg_float')
@@ -1387,10 +1395,10 @@ def write_module_def(f, configuration, variable_info, dual_variable_info, parame
 
         f.write('    // Pass user-defined variable deltas to the solver\n')
         for name, var in variable_info.name_to_init.items():
-            if size == 1:
+            if var.size == 1:
                 f.write(f'    {configuration.prefix}cpg_update_d{name}(CPG_VDelta_cpp.{name});\n')
             else:
-                f.write(f'    for(i=0; i<{size}; i++) {{\n')
+                f.write(f'    for(i=0; i<{var.size}; i++) {{\n')
                 f.write(f'        {configuration.prefix}cpg_update_d{name}(i, CPG_VDelta_cpp.{name}[i]);\n')
                 f.write(f'    }}\n')
 
@@ -1406,7 +1414,7 @@ def write_module_def(f, configuration, variable_info, dual_variable_info, parame
             if size == 1:
                 f.write(f'    CPG_PDelta_cpp.{name} = {configuration.prefix}CPG_Delta.{name};\n')
             else:
-                f.write(f'    for(i=0; i<{var.size}; i++) {{\n')
+                f.write(f'    for(i=0; i<{size}; i++) {{\n')
                 f.write(f'        CPG_PDelta_cpp.{name}[i] = {configuration.prefix}CPG_Delta.{name}[i];\n')
                 f.write('    }\n')
 

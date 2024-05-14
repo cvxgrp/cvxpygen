@@ -3,13 +3,14 @@
 #include "qdldl.h"
 #include "cpg_osqp_grad_workspace.h"
 
-const cpg_int n = 3;
-const cpg_int N = 6;
-cpg_int i, j, k;
+const cpg_int n = $n$;
+const cpg_int N = $N$;
 cpg_float cpg_grad_a, cpg_grad_a_bar, cpg_grad_gamma;
 
 
 void cpg_rank_1_update(cpg_int sigma, cpg_int offset) {
+    
+    cpg_int i, j;
     
     cpg_grad_a = 1.0;
 
@@ -30,6 +31,8 @@ void cpg_rank_1_update(cpg_int sigma, cpg_int offset) {
 
 
 void cpg_ldl_delete(cpg_int index) {
+
+    cpg_int i, j;
 
     // Set w
     for (i = 0; i < N - index - 1; i++) {
@@ -56,6 +59,8 @@ void cpg_ldl_delete(cpg_int index) {
 
 
 void cpg_ldl_add(cpg_int index) {
+
+    cpg_int i, j, k;
 
     // Solve upper left triangular system
     for (i = 0; i < N; i++) {
@@ -100,6 +105,8 @@ void cpg_ldl_add(cpg_int index) {
 
 void cpg_osqp_gradient() {
 
+    cpg_int i, j, k;
+
     // Check active constraints
     for (i = 0; i < N - n; i++) {
         if (sol_y[i] < -1e-12) {
@@ -131,7 +138,7 @@ void cpg_osqp_gradient() {
 
     // Fill gradient in q
     for (i = 0; i < n; i++) {
-        CPG_OSQP_Grad.dq[i] = CPG_OSQP_Grad.r[i];
+        CPG_OSQP_Grad.dq[i] = - CPG_OSQP_Grad.r[i];
     }
 
     // Fill gradient in l and u
@@ -163,7 +170,7 @@ void cpg_osqp_gradient() {
             if (CPG_OSQP_Grad.a[i] == 0) {
                 CPG_OSQP_Grad.dA->x[k] = 0.0;
             } else {
-                CPG_OSQP_Grad.dA->x[k] = - (CPG_OSQP_Grad.r[n + i] * sol_y[j] + sol_y[i] * CPG_OSQP_Grad.r[n + j]);
+                CPG_OSQP_Grad.dA->x[k] = - (CPG_OSQP_Grad.r[n + i] * sol_x[j] + sol_y[i] * CPG_OSQP_Grad.r[j]);
             }
         }
     }

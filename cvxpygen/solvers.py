@@ -312,6 +312,8 @@ class OSQPInterface(SolverInterface):
         if gradient:
             shutil.copy(os.path.join(cvxpygen_directory, 'template', 'grad', 'cpg_osqp_grad_compute.c'),
                         os.path.join(solver_code_dir, 'src'))
+            read_write_file(os.path.join(solver_code_dir, 'src', 'cpg_osqp_grad_compute.c'),
+                            lambda x: x.replace('$n$', str(self.n_var)).replace('$N$', str(self.n_var + self.n_eq + self.n_ineq)))
             for f in ['cpg_osqp_grad_compute.h', 'cpg_osqp_grad_workspace.h']:
                 shutil.copy(os.path.join(cvxpygen_directory, 'template', 'grad', f),
                             os.path.join(solver_code_dir, 'inc', 'private'))
