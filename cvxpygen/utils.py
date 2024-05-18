@@ -75,14 +75,14 @@ def write_mat_def(f, mat, name):
     """
     Write sparse matrix (scipy compressed sparse column) to file
     """
-    write_vec_def(f, mat['i'], name + '_i', 'cpg_int')
-    write_vec_def(f, mat['p'], name + '_p', 'cpg_int')
-    write_vec_def(f, mat['x'], name + '_x', 'cpg_float')
+    write_vec_def(f, mat.indices, name + '_i', 'cpg_int')
+    write_vec_def(f, mat.indptr, name + '_p', 'cpg_int')
+    write_vec_def(f, mat.data, name + '_x', 'cpg_float')
 
     f.write(f'cpg_csc {name} = {{')
     f.write(f'{name}_p, ')
     f.write(f'{name}_i, ')
-    f.write(f'{name}_x}};\n')
+    f.write(f'{name}_x, {mat.nnz}}};\n')
 
 
 def write_mat_prot(f, mat, name):
@@ -151,10 +151,10 @@ def replace_inf(v):
     """
 
     # check if dealing with csc dict or numpy array
-    if type(v) == dict:
-        sign = np.sign(v['x'])
-        idx = np.isinf(v['x'])
-        v['x'][idx] = 1e30 * sign[idx]
+    if type(v) == sp.csc_matrix:
+        sign = np.sign(v.data)
+        idx = np.isinf(v.data)
+        v.data[idx] = 1e30 * sign[idx]
     else:
         sign = np.sign(v)
         idx = np.isinf(v)
@@ -177,19 +177,6 @@ def ones(n):
     """
 
     return np.ones(n, dtype=float)
-
-
-def csc_to_dict(m):
-    """
-    Convert scipy csc matrix to dict that can be passed to write_mat_def()
-    """
-
-    d = dict()
-    d['i'] = m.indices
-    d['p'] = m.indptr
-    d['x'] = m.data
-
-    return d
 
 
 def param_is_empty(param):
@@ -497,7 +484,7 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
         f.write('\n// Sparse mappings from user-defined to canonical parameters\n')
         for p_id, mapping in parameter_canon.p_id_to_mapping.items():
             if parameter_canon.p_id_to_changes[p_id]:
-                write_mat_def(f, csc_to_dict(mapping), f'{configuration.prefix}canon_{p_id}_map')
+                write_mat_def(f, mapping, f'{configuration.prefix}canon_{p_id}_map')
                 f.write('\n')
 
     p_ids = list(parameter_canon.p.keys())
@@ -522,8 +509,8 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
     struct_values_conditioning = []
     for i, p_id in enumerate(p_ids):
         p = parameter_canon.p[p_id]
-        if type(p) == dict:
-            length = len(p['x'])
+        if type(p) == sp.csc_matrix:
+            length = len(p.data)
         else:
             length = len(p)
         if length == 0:
@@ -689,6 +676,7 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
     f.write('  cpg_int      *p;\n')
     f.write('  cpg_int      *i;\n')
     f.write('  cpg_float    *x;\n')
+    f.write('  cpg_int      nnz;\n')
     f.write('} cpg_csc;\n\n')
 
     if configuration.unroll:
@@ -792,7 +780,7 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
         f.write('\n// Sparse mappings from user-defined to canonical parameters\n')
         for p_id, mapping in parameter_canon.p_id_to_mapping.items():
             if parameter_canon.p_id_to_changes[p_id]:
-                write_mat_prot(f, csc_to_dict(mapping), f'{configuration.prefix}canon_{p_id}_map')
+                write_mat_prot(f, mapping, f'{configuration.prefix}canon_{p_id}_map')
 
     f.write('\n// Canonical parameters\n')
     for p_id, p in parameter_canon.p.items():
@@ -1136,13 +1124,13 @@ def write_gradient_def(f, configuration, variable_info, dual_variable_info, para
         f.write('      }\n')
         f.write('  }\n')
     if parameter_canon.p_id_to_changes['P']:
-        f.write(f'  for(j=0; j<{parameter_canon.p_csc["P"].nnz}; j++){{\n')
+        f.write(f'  for(j=0; j<{parameter_canon.p["P"].nnz}; j++){{\n')
         f.write(f'      for(k={configuration.prefix}canon_P_map.p[j]; k<{configuration.prefix}canon_P_map.p[j+1]; k++){{\n')
         f.write(f'          {configuration.prefix}cpg_dp[{configuration.prefix}canon_P_map.i[k]] += {configuration.prefix}canon_P_map.x[k]*{configuration.prefix}CPG_OSQP_Grad.dP->x[j];\n')
         f.write('      }\n')
         f.write('  }\n')
     if parameter_canon.p_id_to_changes['A']:
-        f.write(f'  for(j=0; j<{parameter_canon.p_csc["A"].nnz}; j++){{\n')
+        f.write(f'  for(j=0; j<{parameter_canon.p["A"].nnz}; j++){{\n')
         f.write(f'      for(k={configuration.prefix}canon_A_map.p[j]; k<{configuration.prefix}canon_A_map.p[j+1]; k++){{\n')
         f.write(f'          {configuration.prefix}cpg_dp[{configuration.prefix}canon_A_map.i[k]] += {configuration.prefix}canon_A_map.x[k]*{configuration.prefix}CPG_OSQP_Grad.dA->x[j];\n')
         f.write('      }\n')
@@ -1183,12 +1171,12 @@ def write_gradient_workspace_def(f, parameter_canon): # TODO: move to solver_int
     Write canonical gradient workspace to file
     """
     
-    n = parameter_canon.p_csc['P'].shape[0]
-    N = n + parameter_canon.p_csc['A'].shape[0]
+    n = parameter_canon.p['P'].shape[0]
+    N = n + parameter_canon.p['A'].shape[0]
     
     K = np.vstack([
-        np.hstack([parameter_canon.p_csc['P'].toarray() + 1e-8 * np.eye(n), parameter_canon.p_csc['A'].toarray().T]),
-        np.hstack([parameter_canon.p_csc['A'].toarray(), np.zeros((N-n, N-n))]),
+        np.hstack([parameter_canon.p['P'].toarray() + 1e-8 * np.eye(n), parameter_canon.p['A'].toarray().T]),
+        np.hstack([parameter_canon.p['A'].toarray(), np.zeros((N-n, N-n))]),
     ])
 
     L, D = ldl(K)
@@ -1205,7 +1193,7 @@ def write_gradient_workspace_def(f, parameter_canon): # TODO: move to solver_int
     write_description(f, 'c', 'Static workspace allocation for canonical gradient computation')
     f.write('#include "cpg_osqp_grad_workspace.h"\n\n')
     write_vec_def(f, ones(N-n), 'cpg_osqp_grad_a', 'cpg_int')
-    write_mat_def(f, csc_to_dict(L_csc), 'cpg_osqp_grad_L')
+    write_mat_def(f, L_csc, 'cpg_osqp_grad_L')
     write_vec_def(f, D, 'cpg_osqp_grad_D', 'cpg_float')
     write_vec_def(f, Dinv, 'cpg_osqp_grad_Dinv', 'cpg_float')
     write_vec_def(f, K.flatten(order='F'), 'cpg_osqp_grad_K', 'cpg_float')
@@ -1216,8 +1204,8 @@ def write_gradient_workspace_def(f, parameter_canon): # TODO: move to solver_int
     write_vec_def(f, zeros(n), 'cpg_osqp_grad_dq', 'cpg_float')
     write_vec_def(f, zeros(N-n), 'cpg_osqp_grad_dl', 'cpg_float')
     write_vec_def(f, zeros(N-n), 'cpg_osqp_grad_du', 'cpg_float')
-    write_mat_def(f, csc_to_dict(0*parameter_canon.p_csc['P']), 'cpg_osqp_grad_dP')
-    write_mat_def(f, csc_to_dict(0*parameter_canon.p_csc['A']), 'cpg_osqp_grad_dA')
+    write_mat_def(f, 0*parameter_canon.p['P'], 'cpg_osqp_grad_dP')
+    write_mat_def(f, 0*parameter_canon.p['A'], 'cpg_osqp_grad_dA')
     OSQP_Grad_fiels = ['a', 'L', 'D', 'Dinv', 'K', 'c', 'w', 'dx', 'r', 'dq', 'dl', 'du', 'dP', 'dA']
     OSQP_Grad_casts = ['(cpg_int *) &', '&', '(cpg_float *) &', '(cpg_float *) &', '(cpg_float *) &', '(cpg_float *) &', '(cpg_float *) &',
                        '(cpg_float *) &', '(cpg_float *) &', '(cpg_float *) &', '(cpg_float *) &', '(cpg_float *) &', '&', '&']

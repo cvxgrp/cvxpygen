@@ -195,8 +195,7 @@ def set_default_values(affine_map, p_id, parameter_canon, parameter_info, solver
                     break
         csc_mat = sparse.csc_matrix((canon_p_data, indices_usp, indptr_usp),
                                     shape=affine_map.shape)
-        parameter_canon.p_csc[p_id] = csc_mat
-        parameter_canon.p[p_id] = utils.csc_to_dict(csc_mat)
+        parameter_canon.p[p_id] = csc_mat
     else:
         parameter_canon.p[p_id] = solver_interface.augment_vector_parameter(
             p_id,

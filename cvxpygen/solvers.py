@@ -185,15 +185,15 @@ class OSQPInterface(SolverInterface):
     parameter_update_structure = {
         'PA': ParameterUpdateLogic(
             update_pending_logic = UpdatePendingLogic(['P', 'A'], '&&', ['P', 'A']),
-            function_call = 'osqp_update_data_mat(&solver, {prefix}Canon_Params.P->x, 0, 0, {prefix}Canon_Params.A->x, 0, 0)',
+            function_call = 'osqp_update_data_mat(&solver, {prefix}Canon_Params.P->x, 0, {prefix}Canon_Params.P->nnz, {prefix}Canon_Params.A->x, 0, {prefix}Canon_Params.A->nnz)',
         ),
         'P': ParameterUpdateLogic(
             update_pending_logic = UpdatePendingLogic(['P']),
-            function_call = 'osqp_update_data_mat(&solver, {prefix}Canon_Params.P->x, 0, 0, OSQP_NULL, 0, 0)',
+            function_call = 'osqp_update_data_mat(&solver, {prefix}Canon_Params.P->x, 0, {prefix}Canon_Params.P->nnz, OSQP_NULL, 0, 0)',
         ),
         'A': ParameterUpdateLogic(
             update_pending_logic = UpdatePendingLogic(['A']),
-            function_call = 'osqp_update_data_mat(&solver, OSQP_NULL, 0, 0, {prefix}Canon_Params.A->x, 0, 0)'
+            function_call = 'osqp_update_data_mat(&solver, OSQP_NULL, 0, 0, {prefix}Canon_Params.A->x, 0, {prefix}Canon_Params.A->nnz)'
         ),
         'qlu': ParameterUpdateLogic(
             update_pending_logic = UpdatePendingLogic(['q', 'l', 'u'], '&&', ['ql', 'qu', 'lu']),
@@ -302,8 +302,8 @@ class OSQPInterface(SolverInterface):
 
         # OSQP codegen
         osqp_obj = osqp.OSQP()
-        osqp_obj.setup(P=parameter_canon.p_csc['P'], q=parameter_canon.p['q'],
-                    A=parameter_canon.p_csc['A'], l=parameter_canon.p['l'],
+        osqp_obj.setup(P=parameter_canon.p['P'], q=parameter_canon.p['q'],
+                    A=parameter_canon.p['A'], l=parameter_canon.p['l'],
                     u=parameter_canon.p['u'])
 
         osqp_obj.codegen(os.path.join(code_dir, 'c', 'solver_code'), parameters='matrices', force_rewrite=True)
