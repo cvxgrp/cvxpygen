@@ -149,3 +149,4 @@ def test(name, solver, style, seed):
 
 def test_clarabel():
     test('network', 'CLARABEL', 'loops', 0)
+    test('network', 'CLARABEL', 'loops', 1)
