@@ -11,8 +11,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+from io import TextIOWrapper
+import textwrap
+from typing import TYPE_CHECKING, Iterable
 import numpy as np
 from datetime import datetime
+
+
+if TYPE_CHECKING:
+    from cvxpygen.mappings import Configuration, DualVariableInfo, ParameterInfo, VariableInfo
+    from cvxpygen.solvers import SolverInterface
 
 
 def write_file(path, mode, function, *args):
@@ -1248,6 +1256,77 @@ def write_module_prot(f, configuration, parameter_info, variable_info, dual_vari
             f'struct {configuration.prefix}CPG_Params_cpp_t& CPG_Params_cpp);\n')
 
 
+def write_interface(
+    f: TextIOWrapper,
+    configuration: "Configuration",
+    variable_info: "VariableInfo",
+    dual_variable_info: "DualVariableInfo",
+    parameter_info: "ParameterInfo",
+    solver_interface: "SolverInterface",
+):
+    write_description(f, 'py', 'Python extension stub file.')
+    interface_content = ""
+
+    def define_struct(
+        cls_name: str,
+        properties: Iterable[str] = [],
+        methods: Iterable[str] = [],
+    ):
+        decl_ = ["", f"class {configuration.prefix}{cls_name}:", ""]
+        for name in properties:
+            decl_ += [
+                "    @property",
+                f"    def {name}(self):",
+                "        ...",
+                ""
+            ]
+        for name in methods:
+            decl_ += [
+                f"    def {name}(self):"
+                "        ...",
+                ""
+            ]
+
+        return "\n".join(decl_) + "\n"
+
+    interface_content += define_struct("cpg_params", parameter_info.name_to_size_usp.keys())
+    interface_content += define_struct("cpg_updated", parameter_info.name_to_size_usp.keys())
+    interface_content += define_struct("cpg_prim", variable_info.name_to_init.keys())
+
+    if len(dual_variable_info.name_to_init) > 0:
+        interface_content += define_struct("cpg_dual", dual_variable_info.name_to_init.keys())
+
+    interface_content += define_struct(
+        "cpg_info",
+        properties=[
+            "obj_val",
+            "iter",
+            "status",
+            "pri_res",
+            "dua_res",
+            "time",
+        ]
+    )
+
+    interface_content += define_struct(
+        "cpg_result",
+        ["cpg_prim", "cpg_info"] + (["cpg_dual"] if len(dual_variable_info.name_to_init) > 0 else [])
+    )
+
+    interface_content += "\ndef solve(arg0: cpg_updated, arg1: cpg_params):\n    ...\n"
+
+    interface_content += "\ndef set_solver_default_settings():\n    ...\n"
+    for name, type_ in solver_interface.stgs_names_to_type.items():
+        pytype = type_.removeprefix("cpg_")
+        match pytype:
+            case "const char*":
+                pytype = "str"
+        interface_content += f"\ndef set_solver_{name}(arg0: {pytype}):\n    ...\n"
+
+    f.write(
+        interface_content
+    )
+
 def replace_setup_data(text):
     """
     Replace placeholder strings in setup.py file
@@ -1258,7 +1337,14 @@ def replace_setup_data(text):
     return text.replace('%DATE', now.strftime("on %B %d, %Y at %H:%M:%S"))
 
 
-def write_method(f, configuration, variable_info, dual_variable_info, parameter_info, solver_interface):
+def write_method(
+    f: TextIOWrapper,
+    configuration: "Configuration",
+    variable_info: "VariableInfo",
+    dual_variable_info: "DualVariableInfo",
+    parameter_info: "ParameterInfo",
+    solver_interface: "SolverInterface",
+):
     """
     Write function to be registered as custom CVXPY solve method
     """
@@ -1289,7 +1375,7 @@ def write_method(f, configuration, variable_info, dual_variable_info, parameter_
     f.write('    cpg_module.set_solver_default_settings()\n')
     f.write('    for key, value in kwargs.items():\n')
     f.write('        try:\n')
-    f.write('            eval(f\'cpg_module.set_solver_{standard_settings_names.get(key, key)}(value)\')\n')
+    f.write('            getattr(cpg_module, f\'set_solver_{standard_settings_names.get(key, key)}\')(value)\n')
     f.write('        except AttributeError:\n')
     f.write('            raise AttributeError(f\'Solver setting "{key}" not available.\')\n\n')
 

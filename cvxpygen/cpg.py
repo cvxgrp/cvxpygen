@@ -12,27 +12,45 @@ limitations under the License.
 """
 
 import os
-import sys
-import shutil
 import pickle
+import shutil
+import sys
 import warnings
+from subprocess import call
 
-from cvxpygen import utils
-from cvxpygen.utils import write_file, read_write_file, write_example_def, write_module_prot, write_module_def, \
-    write_canon_cmake, write_method, replace_cmake_data, replace_setup_data, replace_html_data
-from cvxpygen.mappings import Configuration, PrimalVariableInfo, DualVariableInfo, ConstraintInfo, \
-    ParameterCanon, ParameterInfo
-from cvxpygen.solvers import get_interface_class
 import cvxpy as cp
 import numpy as np
-from scipy import sparse
-from subprocess import call
-from cvxpy.problems.objective import Maximize
 from cvxpy.cvxcore.python import canonInterface as cI
 from cvxpy.expressions.variable import upper_tri_to_full
+from cvxpy.problems.objective import Maximize
+from scipy import sparse
+
+from cvxpygen import utils
+from cvxpygen.mappings import (
+    Configuration,
+    ConstraintInfo,
+    DualVariableInfo,
+    ParameterCanon,
+    ParameterInfo,
+    PrimalVariableInfo,
+)
+from cvxpygen.solvers import get_interface_class
+from cvxpygen.utils import (
+    read_write_file,
+    replace_cmake_data,
+    replace_html_data,
+    replace_setup_data,
+    write_canon_cmake,
+    write_example_def,
+    write_file,
+    write_method,
+    write_interface,
+    write_module_def,
+    write_module_prot,
+)
 
 
-def generate_code(problem, code_dir='CPG_code', solver=None, solver_opts=None,
+def generate_code(problem: cp.Problem, code_dir='CPG_code', solver=None, solver_opts=None,
                   enable_settings=[], unroll=False, prefix='', wrapper=True):
     """
     Generate C code to solve a CVXPY problem
@@ -372,6 +390,11 @@ def write_c_code(problem: cp.Problem, configuration: Configuration, variable_inf
 
     write_file(os.path.join(configuration.code_dir, 'cpg_solver.py'), 'w',
                write_method,
+               configuration, variable_info, dual_variable_info, 
+               parameter_info, solver_interface)
+
+    write_file(os.path.join(configuration.code_dir, 'cpg_module.pyi'), 'w',
+               write_interface,
                configuration, variable_info, dual_variable_info, 
                parameter_info, solver_interface)
 
