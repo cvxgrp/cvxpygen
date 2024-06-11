@@ -1176,7 +1176,7 @@ def write_gradient_workspace_def(f, parameter_canon): # TODO: move to solver_int
     
     K = np.vstack([
         np.hstack([parameter_canon.p['P'].toarray() + 1e-8 * np.eye(n), parameter_canon.p['A'].toarray().T]),
-        np.hstack([parameter_canon.p['A'].toarray(), np.zeros((N-n, N-n))]),
+        np.hstack([parameter_canon.p['A'].toarray(), - 1e-8 * np.eye(N-n)]),
     ])
 
     L, D = ldl(K)
