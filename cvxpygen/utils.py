@@ -638,19 +638,13 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
         delta_cast = []
         f.write('// User-defined parameter deltas\n')
         for col, name in parameter_info.col_to_name_usp.items():
-            if parameter_info.name_to_size_usp[name] == 1:
-                delta_cast.append('')
-            else:
-                delta_cast.append('(cpg_float *) ')
+            delta_cast.append('(cpg_float *) ')
         
         f.write('\n// Struct containing parameter deltas\n')
         CPG_Delta_fields = list(parameter_info.col_to_name_usp.values())
         CPG_Delta_values = []
         for col, name in parameter_info.col_to_name_usp.items():
-            if parameter_info.name_to_size_usp[name] == 1:
-                CPG_Delta_values.append('0')
-            else:
-                CPG_Delta_values.append(f'&{configuration.prefix}cpg_dp + {col}')
+            CPG_Delta_values.append(f'&{configuration.prefix}cpg_dp + {col}')
         write_struct_def(f, CPG_Delta_fields, delta_cast, CPG_Delta_values, f'{configuration.prefix}CPG_Delta', 'CPG_Delta_t')
 
 
@@ -751,11 +745,7 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
     f.write('// Parameter deltas\n')
     f.write('typedef struct {\n')
     for name, size in parameter_info.name_to_size_usp.items():
-        if size == 1:
-            s = ''
-        else:
-            s = '*'
-        f.write(f'  cpg_float    {(s + name + ";").ljust(9)}   // Delta of your parameter {name}\n')
+        f.write(f'  cpg_float    {("*" + name + ";").ljust(9)}   // Delta of your parameter {name}\n')
     f.write('} CPG_Delta_t;\n\n')
 
     if solver_interface.stgs_requires_extra_struct_type:
@@ -1276,7 +1266,7 @@ def write_example_def(f, configuration, variable_info, dual_variable_info, param
         f.write('  // Print gradient\n')
         for name, value in parameter_info.writable.items():
             if is_mathematical_scalar(value):
-                f.write(f'  printf("d{name} = %f\\n", {configuration.prefix}CPG_Delta.{name});\n')
+                f.write(f'  printf("d{name} = %f\\n", {configuration.prefix}CPG_Delta.{name}[0]);\n')
             else:
                 f.write(f'  for(i=0; i<{value.size}; i++) {{\n')
                 f.write(f'    printf("d{name}[%d] = %f\\n", i, {configuration.prefix}CPG_Delta.{name}[i]);\n')
@@ -1429,7 +1419,7 @@ def write_module_def(f, configuration, variable_info, dual_variable_info, parame
         f.write(f'    {configuration.prefix}CPG_PDelta_cpp_t CPG_PDelta_cpp {{}};\n')
         for name, size in parameter_info.name_to_size_usp.items():
             if size == 1:
-                f.write(f'    CPG_PDelta_cpp.{name} = {configuration.prefix}CPG_Delta.{name};\n')
+                f.write(f'    CPG_PDelta_cpp.{name} = {configuration.prefix}CPG_Delta.{name}[0];\n')
             else:
                 f.write(f'    for(i=0; i<{size}; i++) {{\n')
                 f.write(f'        CPG_PDelta_cpp.{name}[i] = {configuration.prefix}CPG_Delta.{name}[i];\n')
