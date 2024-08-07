@@ -1082,13 +1082,14 @@ def write_gradient_def(f, configuration, variable_info, dual_variable_info, para
             f.write(f'    {configuration.prefix}cpg_{p_id}_to_K({configuration.prefix}Canon_Params.{p_id});\n')
             f.write('  }\n')
     # If any of {configuration.prefix}Canon_Outdated_Grad.{p_id} with p_id in changing_matrices is true, then call cpg_ldl()
-    f.write(f'  if ({f" || ".join([f"{configuration.prefix}Canon_Outdated_Grad.{p_id}" for p_id in changing_matrices])}) {{\n')
-    f.write(f'    {configuration.prefix}cpg_ldl();\n')
-    # set all CPG_OSQP_Grad.a[i] to 1
-    f.write(f'    for(i=0; i<{N - n}; i++){{\n')
-    f.write(f'      {configuration.prefix}CPG_OSQP_Grad.a[i] = 1;\n')
-    f.write('    }\n')
-    f.write('  }\n')
+    if len(changing_matrices) > 0:
+        f.write(f'  if ({f" || ".join([f"{configuration.prefix}Canon_Outdated_Grad.{p_id}" for p_id in changing_matrices])}) {{\n')
+        f.write(f'    {configuration.prefix}cpg_ldl();\n')
+        # set all CPG_OSQP_Grad.a[i] to 1
+        f.write(f'    for(i=0; i<{N - n}; i++){{\n')
+        f.write(f'      {configuration.prefix}CPG_OSQP_Grad.a[i] = 1;\n')
+        f.write('    }\n')
+        f.write('  }\n')
     f.write('  // Canonical gradient\n')
     f.write(f'  {configuration.prefix}cpg_osqp_gradient();\n')
     f.write('  // Un-canonicalize\n')
@@ -1165,8 +1166,8 @@ def write_gradient_workspace_def(f, parameter_canon): # TODO: move to solver_int
     N = n + parameter_canon.p['A'].shape[0]
     
     K = np.vstack([
-        np.hstack([parameter_canon.p['P'].toarray() + 1e-8 * np.eye(n), parameter_canon.p['A'].toarray().T]),
-        np.hstack([parameter_canon.p['A'].toarray(), - 1e-8 * np.eye(N-n)]),
+        np.hstack([parameter_canon.p['P'].toarray() + 1e-6 * np.eye(n), parameter_canon.p['A'].toarray().T]),
+        np.hstack([parameter_canon.p['A'].toarray(), - 1e-6 * np.eye(N-n)]),
     ])
 
     L, D = ldl(K)
