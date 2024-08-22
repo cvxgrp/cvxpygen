@@ -319,10 +319,8 @@ class OSQPInterface(SolverInterface):
                             os.path.join(solver_code_dir, 'inc', 'private'))
             write_file(os.path.join(solver_code_dir, 'src', 'cpg_osqp_grad_workspace.c'), 'w', 
                        write_gradient_workspace_def, 
-                       parameter_canon)
+                       code_dir, parameter_canon)
             
-        # TODO: change values in gradient LDL when P or A values change
-
         # copy license files
         shutil.copyfile(os.path.join(cvxpygen_directory, 'solvers', 'osqp-python', 'LICENSE'),
                         os.path.join(solver_code_dir, 'LICENSE'))

@@ -85,6 +85,26 @@ def write_mat_def(f, mat, name):
     f.write(f'{name}_x, {mat.nnz}}};\n')
 
 
+def write_L_def(f, N, name):
+    """
+    Write sparse lower triangular matrix (scipy compressed sparse column) to file
+    and allocate enough memory for maximum fill-in of the lower triangle
+    where the diagonal is implicitly ones
+    """
+    
+    # create scipy csc matrix with all ones below the diagonal, without the diagonal
+    indices = []
+    data = []
+    indptr = [0]
+    for i in range(N):
+        indices.extend(range(i + 1, N))
+        data.extend(np.ones(N - i - 1))
+        indptr.append(len(indices))
+    mat = sp.csc_matrix((data, indices, indptr), shape=(N, N))
+
+    write_mat_def(f, mat, name)
+
+
 def write_mat_prot(f, mat, name):
     """
     Write sparse matrix (scipy compressed sparse column) to file
@@ -163,20 +183,20 @@ def replace_inf(v):
     return v
 
 
-def zeros(n):
+def zeros(n, dtype=float):
     """
     Return zero vector of length n
     """
 
-    return np.zeros(n, dtype=float)
+    return np.zeros(n, dtype=dtype)
 
 
-def ones(n):
+def ones(n, dtype=float):
     """
     Return ones vector of length n
     """
 
-    return np.ones(n, dtype=float)
+    return np.ones(n, dtype=dtype)
 
 
 def param_is_empty(param):
@@ -536,7 +556,7 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
     f.write('// Struct containing flags for outdated canonical parameters\n')
     f.write(f'Canon_Outdated_t {configuration.prefix}Canon_Outdated = {{\n')
     for p_id in parameter_canon.p.keys():
-        f.write(f'.{p_id} = 0,\n')
+        f.write(f'.{p_id} = 1,\n')
     f.write('};\n\n')
     if configuration.gradient:
         f.write('// Struct containing flags for outdated canonical parameters for gradient computation\n')
@@ -1074,17 +1094,21 @@ def write_gradient_def(f, configuration, variable_info, dual_variable_info, para
     
     f.write('\n// End-to-end gradient\n')
     f.write(f'void {configuration.prefix}cpg_gradient(){{\n')
+    f.write('  if (CPG_OSQP_Grad.init) {\n')
+    f.write('    cpg_ldl_symbolic();\n')
+    f.write('    CPG_OSQP_Grad.init = 0;\n')
+    f.write('  }\n')
     changing_matrices = []
     for p_id, changes in parameter_canon.p_id_to_changes.items():
         if p_id.isupper() and changes:
             changing_matrices.append(p_id)
             f.write(f'  if ({configuration.prefix}Canon_Outdated_Grad.{p_id}) {{\n')
-            f.write(f'    {configuration.prefix}cpg_{p_id}_to_K({configuration.prefix}Canon_Params.{p_id});\n')
+            f.write(f'    {configuration.prefix}cpg_{p_id}_to_K({configuration.prefix}Canon_Params.{p_id}, {configuration.prefix}CPG_OSQP_Grad.K);\n')
             f.write('  }\n')
-    # If any of {configuration.prefix}Canon_Outdated_Grad.{p_id} with p_id in changing_matrices is true, then call cpg_ldl()
+    # If any of {configuration.prefix}Canon_Outdated_Grad.{p_id} with p_id in changing_matrices is true, then call cpg_ldl_numeric()
     if len(changing_matrices) > 0:
         f.write(f'  if ({f" || ".join([f"{configuration.prefix}Canon_Outdated_Grad.{p_id}" for p_id in changing_matrices])}) {{\n')
-        f.write(f'    {configuration.prefix}cpg_ldl();\n')
+        f.write(f'    {configuration.prefix}cpg_ldl_numeric();\n')
         # set all CPG_OSQP_Grad.a[i] to 1
         f.write(f'    for(i=0; i<{N - n}; i++){{\n')
         f.write(f'      {configuration.prefix}CPG_OSQP_Grad.a[i] = 1;\n')
@@ -1157,7 +1181,7 @@ def write_gradient_prot(f, configuration, variable_info, dual_variable_info, par
     f.write(f'extern void {configuration.prefix}cpg_gradient();\n')
     
     
-def write_gradient_workspace_def(f, parameter_canon): # TODO: move to solver_interface
+def write_gradient_workspace_def(f, code_dir, parameter_canon): # TODO: move to solver_interface
     """
     Write canonical gradient workspace to file
     """
@@ -1165,31 +1189,32 @@ def write_gradient_workspace_def(f, parameter_canon): # TODO: move to solver_int
     n = parameter_canon.p['P'].shape[0]
     N = n + parameter_canon.p['A'].shape[0]
     
-    K = np.vstack([
-        np.hstack([parameter_canon.p['P'].toarray() + 1e-6 * np.eye(n), parameter_canon.p['A'].toarray().T]),
-        np.hstack([parameter_canon.p['A'].toarray(), - 1e-6 * np.eye(N-n)]),
-    ])
+    K = sp.bmat([
+        [parameter_canon.p['P'] + 1e-6 * sp.eye(n), parameter_canon.p['A'].T],
+        [None, - 1e-6 * sp.eye(N-n)]
+    ], format='csc')
 
-    L, D = ldl(K)
-    L_csc = sp.csc_matrix(np.ones(L.shape) * np.tril(np.ones(L.shape), -1)) # TODO: keep sparsity where it does not change (left)
-    for col in range(L_csc.shape[1]):
-        start, end = L_csc.indptr[col], L_csc.indptr[col + 1]
-        rows = L_csc.indices[start:end]
-        for i, row in enumerate(rows):
-            if row > col:
-                L_csc.data[start + i] = L[row, col]
-    
-    Dinv = 1 / D
+    D = np.ones(N)
+    Dinv = np.ones(N)
     
     write_description(f, 'c', 'Static workspace allocation for canonical gradient computation')
     f.write('#include "cpg_osqp_grad_workspace.h"\n\n')
-    write_vec_def(f, ones(N-n), 'cpg_osqp_grad_a', 'cpg_int')
-    write_mat_def(f, L_csc, 'cpg_osqp_grad_L')
+    write_vec_def(f, ones(N-n, dtype=int), 'cpg_osqp_grad_a', 'cpg_int')
+    write_vec_def(f, zeros(N, dtype=int), 'cpg_osqp_grad_etree', 'cpg_int')
+    write_vec_def(f, zeros(N, dtype=int), 'cpg_osqp_grad_Lnz', 'cpg_int')
+    write_vec_def(f, zeros(3*N, dtype=int), 'cpg_osqp_grad_iwork', 'cpg_int')
+    write_vec_def(f, zeros(N, dtype=int), 'cpg_osqp_grad_bwork', 'cpg_int')
+    write_vec_def(f, zeros(N), 'cpg_osqp_grad_fwork', 'cpg_float')
+    write_L_def(f, N, 'cpg_osqp_grad_L')
     write_vec_def(f, D, 'cpg_osqp_grad_D', 'cpg_float')
     write_vec_def(f, Dinv, 'cpg_osqp_grad_Dinv', 'cpg_float')
-    write_vec_def(f, K.flatten(order='F'), 'cpg_osqp_grad_K', 'cpg_float')
+    write_mat_def(f, K, 'cpg_osqp_grad_K')
     write_vec_def(f, zeros(N), 'cpg_osqp_grad_c', 'cpg_float')
     write_vec_def(f, zeros(N), 'cpg_osqp_grad_w', 'cpg_float')
+    write_vec_def(f, np.arange(N), 'cpg_osqp_grad_wi', 'cpg_int')
+    write_vec_def(f, zeros(N), 'cpg_osqp_grad_l', 'cpg_float')
+    write_vec_def(f, np.arange(N), 'cpg_osqp_grad_li', 'cpg_int')
+    write_vec_def(f, zeros(N), 'cpg_osqp_grad_lx', 'cpg_float')
     write_vec_def(f, zeros(n), 'cpg_osqp_grad_dx', 'cpg_float')
     write_vec_def(f, zeros(N), 'cpg_osqp_grad_r', 'cpg_float')
     write_vec_def(f, zeros(n), 'cpg_osqp_grad_dq', 'cpg_float')
@@ -1197,12 +1222,13 @@ def write_gradient_workspace_def(f, parameter_canon): # TODO: move to solver_int
     write_vec_def(f, zeros(N-n), 'cpg_osqp_grad_du', 'cpg_float')
     write_mat_def(f, 0*parameter_canon.p['P'], 'cpg_osqp_grad_dP')
     write_mat_def(f, 0*parameter_canon.p['A'], 'cpg_osqp_grad_dA')
-    OSQP_Grad_fiels = ['a', 'L', 'D', 'Dinv', 'K', 'c', 'w', 'dx', 'r', 'dq', 'dl', 'du', 'dP', 'dA']
-    OSQP_Grad_casts = ['(cpg_int *) &', '&', '(cpg_float *) &', '(cpg_float *) &', '(cpg_float *) &', '(cpg_float *) &', '(cpg_float *) &',
-                       '(cpg_float *) &', '(cpg_float *) &', '(cpg_float *) &', '(cpg_float *) &', '(cpg_float *) &', '&', '&']
-    OSQP_Grad_values = ['cpg_osqp_grad_a', 'cpg_osqp_grad_L', 'cpg_osqp_grad_D', 'cpg_osqp_grad_Dinv', 'cpg_osqp_grad_K',
-                        'cpg_osqp_grad_c', 'cpg_osqp_grad_w', 'cpg_osqp_grad_dx', 'cpg_osqp_grad_r', 'cpg_osqp_grad_dq',
-                        'cpg_osqp_grad_dl', 'cpg_osqp_grad_du', 'cpg_osqp_grad_dP', 'cpg_osqp_grad_dA']
+    OSQP_Grad_fiels = ['init', 'a', 'etree', 'Lnz', 'iwork', 'bwork', 'fwork', 'L', 'D', 'Dinv', 'K', 'c', 'w', 'wi', 'dx', 'r', 'dq', 'dl', 'du', 'dP', 'dA']
+    OSQP_Grad_casts = ['', '(cpg_int *) &', '(cpg_int *) &', '(cpg_int *) &', '(cpg_int *) &', '(cpg_int *) &', '(cpg_float *) &', '&',
+                       '(cpg_float *) &', '(cpg_float *) &', '&', '(cpg_float *) &', '(cpg_float *) &', '(cpg_int *) &', '(cpg_float *) &',
+                       '(cpg_float *) &', '(cpg_float *) &', '(cpg_float *) &', '(cpg_float *) &', '&', '&']
+    OSQP_Grad_values = ['1', 'cpg_osqp_grad_a', 'cpg_osqp_grad_etree', 'cpg_osqp_grad_Lnz', 'cpg_osqp_grad_iwork', 'cpg_osqp_grad_bwork', 'cpg_osqp_grad_fwork',
+                        'cpg_osqp_grad_L', 'cpg_osqp_grad_D', 'cpg_osqp_grad_Dinv', 'cpg_osqp_grad_K', 'cpg_osqp_grad_c', 'cpg_osqp_grad_w', 'cpg_osqp_grad_wi',
+                        'cpg_osqp_grad_dx', 'cpg_osqp_grad_r', 'cpg_osqp_grad_dq', 'cpg_osqp_grad_dl', 'cpg_osqp_grad_du', 'cpg_osqp_grad_dP', 'cpg_osqp_grad_dA']
     write_struct_def(f, OSQP_Grad_fiels, OSQP_Grad_casts, OSQP_Grad_values, 'CPG_OSQP_Grad', 'CPG_OSQP_Grad_t')
     
 
