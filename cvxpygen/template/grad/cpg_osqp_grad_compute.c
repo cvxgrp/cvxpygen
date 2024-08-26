@@ -12,15 +12,20 @@ cpg_float cpg_grad_a, cpg_grad_a_bar, cpg_grad_gamma;
 void insert_nonzero(cpg_csc *L, cpg_int row, cpg_int col) {
     if (row < col) return; // Ensure lower triangular property
 
-    // Check if the entry already exists
-    cpg_int insert_pos = L->p[col + 1];
-    for (cpg_int p = L->p[col]; p < L->p[col + 1]; p++) {
-        if (L->i[p] == row) {
+    cpg_int start = L->p[col];
+    cpg_int end = L->p[col + 1];
+    cpg_int insert_pos = end;
+    
+    // Binary search for the row within the column
+    while (start < end) {
+        cpg_int mid = start + (end - start) / 2;
+        if (L->i[mid] == row) {
             return; // Non-zero already exists, no need to insert
-        }
-        if (L->i[p] > row) {
-            insert_pos = p;
-            break;
+        } else if (L->i[mid] < row) {
+            start = mid + 1;
+        } else {
+            end = mid;
+            insert_pos = mid; // Potential insertion position
         }
     }
 
@@ -47,16 +52,21 @@ void insert_nonzero(cpg_csc *L, cpg_int row, cpg_int col) {
 void insert_nonzero_and_value(cpg_csc *L, cpg_int row, cpg_int col, cpg_float value) {
     if (row < col) return; // Ensure lower triangular property
 
-    // Check if the entry already exists
-    cpg_int insert_pos = L->p[col + 1];
-    for (cpg_int p = L->p[col]; p < L->p[col + 1]; p++) {
-        if (L->i[p] == row) {
-            L->x[p] = value;
+    cpg_int start = L->p[col];
+    cpg_int end = L->p[col + 1];
+    cpg_int insert_pos = end;
+    
+    // Binary search for the row within the column
+    while (start < end) {
+        cpg_int mid = start + (end - start) / 2;
+        if (L->i[mid] == row) {
+            L->x[mid] = value;
             return; // Non-zero already exists, no need to insert
-        }
-        if (L->i[p] > row) {
-            insert_pos = p;
-            break;
+        } else if (L->i[mid] < row) {
+            start = mid + 1;
+        } else {
+            end = mid;
+            insert_pos = mid; // Potential insertion position
         }
     }
 
@@ -129,7 +139,7 @@ void symbolic_ldl_update(cpg_csc *L, cpg_int *w_indices, cpg_int w_size, cpg_int
 void symbolic_ldl_downdate(cpg_csc *L, cpg_int *w_indices, cpg_int w_size, cpg_int offset) {
     for (cpg_int k = 0; k < w_size; k++) {
         cpg_int col = w_indices[k] + offset;
-        for (cpg_int j = k; j < w_size; j++) {
+        for (cpg_int j = k + 1; j < w_size; j++) {
             cpg_int row = w_indices[j] + offset;
             remove_nonzero(L, row, col);
         }
@@ -192,9 +202,9 @@ void cpg_ldl_delete(cpg_int index) {
         CPG_OSQP_Grad.L->x[k] = 0.0;
     }
     
-    // Set index-th entry of D to 1.0
-    CPG_OSQP_Grad.D[index] = 1.0;
-    CPG_OSQP_Grad.Dinv[index] = 1.0;
+    // Set index-th entry of D to -1.0
+    CPG_OSQP_Grad.D[index] = -1.0;
+    CPG_OSQP_Grad.Dinv[index] = -1.0;
 
     // Perform symbolic update
     symbolic_ldl_update(CPG_OSQP_Grad.L, CPG_OSQP_Grad.wi, wsize, index + 1);
@@ -302,17 +312,18 @@ void cpg_ldl_add(cpg_int index) {
     cpg_rank_1_update(1, index + 1);
 
     // Perform symbolic update
-    symbolic_ldl_downdate(CPG_OSQP_Grad.L, CPG_OSQP_Grad.wi, wsize, index + 1);
+    //symbolic_ldl_downdate(CPG_OSQP_Grad.L, CPG_OSQP_Grad.wi, wsize, index + 1);
 
 }
 
 void cpg_ldl_symbolic() {
 
-    QDLDL_etree(
+    cpg_int nnz = QDLDL_etree(
         N,
         CPG_OSQP_Grad.K->p, CPG_OSQP_Grad.K->i,
         CPG_OSQP_Grad.iwork, CPG_OSQP_Grad.Lnz, CPG_OSQP_Grad.etree
     );
+    CPG_OSQP_Grad.L->nnz = nnz;
 
 }
 
@@ -393,12 +404,12 @@ void cpg_osqp_gradient() {
 
     // Check active constraints
     for (i = 0; i < N - n; i++) {
-        if (sol_y[i] < -1e-12) {
+        if (sol_y[i] < -1e-6) {
             if (CPG_OSQP_Grad.a[i] == 0) {
                 cpg_ldl_add(n + i);
                 CPG_OSQP_Grad.a[i] = -1; // lower bound active
             }
-        } else if (sol_y[i] > 1e-12) {
+        } else if (sol_y[i] > 1e-6) {
             if (CPG_OSQP_Grad.a[i] == 0) {
                 cpg_ldl_add(n + i);
                 CPG_OSQP_Grad.a[i] = 1; // upper bound active
