@@ -14,6 +14,7 @@ typedef struct {
   cpg_int      *bwork;     // boolean workspace
   cpg_float    *fwork;     // float workspace
   cpg_csc      *L;         // Lower triangular factor of K
+  cpg_int      *Lmask;     // Boolean mask for fast nonzero querying
   cpg_float    *D;         // Diagonal factor of K
   cpg_float    *Dinv;      // Inverse of D
   cpg_csc      *K;         // KKT matrix

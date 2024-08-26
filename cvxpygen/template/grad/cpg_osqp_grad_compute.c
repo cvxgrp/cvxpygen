@@ -130,7 +130,11 @@ void symbolic_ldl_update(cpg_csc *L, cpg_int *w_indices, cpg_int w_size, cpg_int
         cpg_int col = w_indices[k] + offset;
         for (cpg_int j = k + 1; j < w_size; j++) {
             cpg_int row = w_indices[j] + offset;
-            insert_nonzero(L, row, col);
+            cpg_int ind = (2*N-3-col)*col/2+row-1;
+            if (CPG_OSQP_Grad.Lmask[ind] == 0) {
+                CPG_OSQP_Grad.Lmask[ind] = 1;
+                insert_nonzero(L, row, col);
+            } 
         }
     }
 }
