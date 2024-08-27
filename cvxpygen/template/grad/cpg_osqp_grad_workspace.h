@@ -35,4 +35,4 @@ typedef struct {
 
 #endif // ifndef CPG_OSQP_GRAD_TYPES_H
 
-extern CPG_OSQP_Grad_t CPG_OSQP_Grad;
+extern CPG_OSQP_Grad_t $workspace$;

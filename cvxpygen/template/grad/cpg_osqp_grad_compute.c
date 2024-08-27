@@ -131,8 +131,8 @@ void symbolic_ldl_update(cpg_csc *L, cpg_int *w_indices, cpg_int w_size, cpg_int
         for (cpg_int j = k + 1; j < w_size; j++) {
             cpg_int row = w_indices[j] + offset;
             cpg_int ind = (2*N-3-col)*col/2+row-1;
-            if (CPG_OSQP_Grad.Lmask[ind] == 0) {
-                CPG_OSQP_Grad.Lmask[ind] = 1;
+            if ($workspace$.Lmask[ind] == 0) {
+                $workspace$.Lmask[ind] = 1;
                 insert_nonzero(L, row, col);
             } 
         }
@@ -159,16 +159,16 @@ void cpg_rank_1_update(cpg_int sigma, cpg_int offset) {
 
     // Perform rank-1 update in place
     for (j = offset; j < N; j++) {
-        cpg_grad_a_bar = cpg_grad_a + sigma * CPG_OSQP_Grad.w[j] * CPG_OSQP_Grad.w[j] / CPG_OSQP_Grad.D[j];
-        cpg_grad_gamma = CPG_OSQP_Grad.w[j] / (CPG_OSQP_Grad.D[j] * cpg_grad_a_bar);
-        CPG_OSQP_Grad.D[j] *= cpg_grad_a_bar / cpg_grad_a;
-        CPG_OSQP_Grad.Dinv[j] = 1.0 / CPG_OSQP_Grad.D[j];
+        cpg_grad_a_bar = cpg_grad_a + sigma * $workspace$.w[j] * $workspace$.w[j] / $workspace$.D[j];
+        cpg_grad_gamma = $workspace$.w[j] / ($workspace$.D[j] * cpg_grad_a_bar);
+        $workspace$.D[j] *= cpg_grad_a_bar / cpg_grad_a;
+        $workspace$.Dinv[j] = 1.0 / $workspace$.D[j];
         cpg_grad_a = cpg_grad_a_bar;
-        for (k = CPG_OSQP_Grad.L->p[j]; k < CPG_OSQP_Grad.L->p[j + 1]; k++) {
-            i = CPG_OSQP_Grad.L->i[k];
+        for (k = $workspace$.L->p[j]; k < $workspace$.L->p[j + 1]; k++) {
+            i = $workspace$.L->i[k];
             if (i > j) {
-                CPG_OSQP_Grad.w[i] -= CPG_OSQP_Grad.w[j] * CPG_OSQP_Grad.L->x[k];
-                CPG_OSQP_Grad.L->x[k] += sigma * cpg_grad_gamma * CPG_OSQP_Grad.w[i];
+                $workspace$.w[i] -= $workspace$.w[j] * $workspace$.L->x[k];
+                $workspace$.L->x[k] += sigma * cpg_grad_gamma * $workspace$.w[i];
             }
         }
     }
@@ -182,36 +182,36 @@ void cpg_ldl_delete(cpg_int index) {
 
     // Set w
     for (i = 0; i < N; i++) {
-        CPG_OSQP_Grad.w[i] = 0.0;
+        $workspace$.w[i] = 0.0;
     }
-    cpg_int wsize = CPG_OSQP_Grad.L->p[index + 1] - CPG_OSQP_Grad.L->p[index];
+    cpg_int wsize = $workspace$.L->p[index + 1] - $workspace$.L->p[index];
     for (i = 0; i < wsize; i++) {
-        CPG_OSQP_Grad.wi[i] = CPG_OSQP_Grad.L->i[CPG_OSQP_Grad.L->p[index] + i] - index - 1; // w indices are local
-        CPG_OSQP_Grad.w[index + 1 + CPG_OSQP_Grad.wi[i]] = CPG_OSQP_Grad.L->x[CPG_OSQP_Grad.L->p[index] + i] * sqrt(-CPG_OSQP_Grad.D[index]);
+        $workspace$.wi[i] = $workspace$.L->i[$workspace$.L->p[index] + i] - index - 1; // w indices are local
+        $workspace$.w[index + 1 + $workspace$.wi[i]] = $workspace$.L->x[$workspace$.L->p[index] + i] * sqrt(-$workspace$.D[index]);
     }
 
     // Set index-th row and column of L to zero
     for (j = 0; j < index; j++) {
-        for (k = CPG_OSQP_Grad.L->p[j]; k < CPG_OSQP_Grad.L->p[j + 1]; k++) {
-            i = CPG_OSQP_Grad.L->i[k];
+        for (k = $workspace$.L->p[j]; k < $workspace$.L->p[j + 1]; k++) {
+            i = $workspace$.L->i[k];
             if (i >= index) {
                 if (i == index) {
-                    CPG_OSQP_Grad.L->x[k] = 0.0;
+                    $workspace$.L->x[k] = 0.0;
                 }
                 break;
             }
         }
     }
-    for (k = CPG_OSQP_Grad.L->p[index]; k < CPG_OSQP_Grad.L->p[index + 1]; k++) {
-        CPG_OSQP_Grad.L->x[k] = 0.0;
+    for (k = $workspace$.L->p[index]; k < $workspace$.L->p[index + 1]; k++) {
+        $workspace$.L->x[k] = 0.0;
     }
     
     // Set index-th entry of D to -1.0
-    CPG_OSQP_Grad.D[index] = -1.0;
-    CPG_OSQP_Grad.Dinv[index] = -1.0;
+    $workspace$.D[index] = -1.0;
+    $workspace$.Dinv[index] = -1.0;
 
     // Perform symbolic update
-    symbolic_ldl_update(CPG_OSQP_Grad.L, CPG_OSQP_Grad.wi, wsize, index + 1);
+    symbolic_ldl_update($workspace$.L, $workspace$.wi, wsize, index + 1);
 
     // Update lower right part
     cpg_rank_1_update(-1, index + 1);
@@ -226,63 +226,63 @@ void cpg_ldl_add(cpg_int index) {
     // Solve upper left triangular system
 
     // fill index-th (partial) column of K (starting from 0 to index-1) into c
-    for (i = 0; i < N; i++) CPG_OSQP_Grad.c[i] = 0.0;
+    for (i = 0; i < N; i++) $workspace$.c[i] = 0.0;
     cpg_int c_size = 0;
-    for (k = CPG_OSQP_Grad.K->p[index]; k < CPG_OSQP_Grad.K->p[index + 1] - 1; k++) {
-        i = CPG_OSQP_Grad.K->i[k];
-        CPG_OSQP_Grad.c[i] = CPG_OSQP_Grad.K->x[k];
+    for (k = $workspace$.K->p[index]; k < $workspace$.K->p[index + 1] - 1; k++) {
+        i = $workspace$.K->i[k];
+        $workspace$.c[i] = $workspace$.K->x[k];
         c_size++;
     }
 
     // solve L (Dl) = c
-    for (i = 0; i < index; i++) CPG_OSQP_Grad.l[i] = 0.0;
+    for (i = 0; i < index; i++) $workspace$.l[i] = 0.0;
     for (j = 0; j < index; j++) {
-        CPG_OSQP_Grad.l[j] += CPG_OSQP_Grad.c[j];
-        for (k = CPG_OSQP_Grad.L->p[j]; k < CPG_OSQP_Grad.L->p[j + 1]; k++) {
-            CPG_OSQP_Grad.l[CPG_OSQP_Grad.L->i[k]] -= CPG_OSQP_Grad.L->x[k] * CPG_OSQP_Grad.l[j];
+        $workspace$.l[j] += $workspace$.c[j];
+        for (k = $workspace$.L->p[j]; k < $workspace$.L->p[j + 1]; k++) {
+            $workspace$.l[$workspace$.L->i[k]] -= $workspace$.L->x[k] * $workspace$.l[j];
         }
     }
 
     // Solve Dl = l
     cpg_int l_size = 0;
     for (i = 0; i < index; i++) {
-        if (CPG_OSQP_Grad.l[i] != 0.0) {
-            CPG_OSQP_Grad.lx[l_size] = CPG_OSQP_Grad.l[i] / CPG_OSQP_Grad.D[i];
-            CPG_OSQP_Grad.li[l_size] = i;
+        if ($workspace$.l[i] != 0.0) {
+            $workspace$.lx[l_size] = $workspace$.l[i] / $workspace$.D[i];
+            $workspace$.li[l_size] = i;
             l_size++;
         }
     }
 
     // Udpate D and L, first part
     // get K[index, index]
-    CPG_OSQP_Grad.D[index] = CPG_OSQP_Grad.K->x[CPG_OSQP_Grad.K->p[index + 1] - 1];
+    $workspace$.D[index] = $workspace$.K->x[$workspace$.K->p[index + 1] - 1];
     for (k = 0; k < l_size; k++) {
-        CPG_OSQP_Grad.D[index] -= CPG_OSQP_Grad.lx[k] * CPG_OSQP_Grad.lx[k] * CPG_OSQP_Grad.D[CPG_OSQP_Grad.li[k]];
+        $workspace$.D[index] -= $workspace$.lx[k] * $workspace$.lx[k] * $workspace$.D[$workspace$.li[k]];
     }
-    CPG_OSQP_Grad.Dinv[index] = 1.0 / CPG_OSQP_Grad.D[index];
+    $workspace$.Dinv[index] = 1.0 / $workspace$.D[index];
     // fill index-th row of L with l
     for (k = 0; k < l_size; k++) {
-        insert_nonzero_and_value(CPG_OSQP_Grad.L, index, CPG_OSQP_Grad.li[k], CPG_OSQP_Grad.lx[k]);
+        insert_nonzero_and_value($workspace$.L, index, $workspace$.li[k], $workspace$.lx[k]);
     }
 
     // Use dense storage l to store values of l32, while l12 is still stored in sparse li and lx
-    for (i = 0; i < N; i++) CPG_OSQP_Grad.l[i] = 0.0;
+    for (i = 0; i < N; i++) $workspace$.l[i] = 0.0;
     for (j = index + 1; j < N; j++) {
-        for (k = CPG_OSQP_Grad.K->p[j]; k < CPG_OSQP_Grad.K->p[j + 1]; k++) {
-            i = CPG_OSQP_Grad.K->i[k];
+        for (k = $workspace$.K->p[j]; k < $workspace$.K->p[j + 1]; k++) {
+            i = $workspace$.K->i[k];
             if (i >= index) {
                 if (i == index) {
-                    CPG_OSQP_Grad.l[j - index - 1] = CPG_OSQP_Grad.K->x[k];
+                    $workspace$.l[j - index - 1] = $workspace$.K->x[k];
                 }
                 break;
             }
         }
     }
     for (r = 0; r < l_size; r++) {
-        for (k = CPG_OSQP_Grad.L->p[CPG_OSQP_Grad.li[r]]; k < CPG_OSQP_Grad.L->p[CPG_OSQP_Grad.li[r] + 1]; k++) {
-            i = CPG_OSQP_Grad.L->i[k];
+        for (k = $workspace$.L->p[$workspace$.li[r]]; k < $workspace$.L->p[$workspace$.li[r] + 1]; k++) {
+            i = $workspace$.L->i[k];
             if (i > index) {
-                CPG_OSQP_Grad.l[i - index - 1] -= CPG_OSQP_Grad.L->x[k] * CPG_OSQP_Grad.lx[r] * CPG_OSQP_Grad.D[CPG_OSQP_Grad.li[r]];
+                $workspace$.l[i - index - 1] -= $workspace$.L->x[k] * $workspace$.lx[r] * $workspace$.D[$workspace$.li[r]];
             }
         }
     }
@@ -290,33 +290,33 @@ void cpg_ldl_add(cpg_int index) {
     // overwrite l12 with l32 in lx and li
     l_size = 0;
     for (i = 0; i < N - index - 1; i++) {
-        if (CPG_OSQP_Grad.l[i] != 0.0) {
-            CPG_OSQP_Grad.lx[l_size] = CPG_OSQP_Grad.l[i] / CPG_OSQP_Grad.D[index];
-            CPG_OSQP_Grad.li[l_size] = i;
+        if ($workspace$.l[i] != 0.0) {
+            $workspace$.lx[l_size] = $workspace$.l[i] / $workspace$.D[index];
+            $workspace$.li[l_size] = i;
             l_size++;
         }
     }
 
     // fill l32 into L
     for (k = 0; k < l_size; k++) {
-        insert_nonzero_and_value(CPG_OSQP_Grad.L, CPG_OSQP_Grad.li[k] + index + 1, index, CPG_OSQP_Grad.lx[k]);
+        insert_nonzero_and_value($workspace$.L, $workspace$.li[k] + index + 1, index, $workspace$.lx[k]);
     }
 
     // Set w
     for (i = 0; i < N; i++) {
-        CPG_OSQP_Grad.w[i] = 0.0;
+        $workspace$.w[i] = 0.0;
     }
     cpg_int wsize = l_size;
     for (i = 0; i < wsize; i++) {
-        CPG_OSQP_Grad.wi[i] = CPG_OSQP_Grad.li[i]; // w indices are local
-        CPG_OSQP_Grad.w[index + 1 + CPG_OSQP_Grad.wi[i]] = CPG_OSQP_Grad.lx[i] * sqrt(-CPG_OSQP_Grad.D[index]);
+        $workspace$.wi[i] = $workspace$.li[i]; // w indices are local
+        $workspace$.w[index + 1 + $workspace$.wi[i]] = $workspace$.lx[i] * sqrt(-$workspace$.D[index]);
     }
 
     // Update D and L, second part
     cpg_rank_1_update(1, index + 1);
 
     // Perform symbolic update
-    //symbolic_ldl_downdate(CPG_OSQP_Grad.L, CPG_OSQP_Grad.wi, wsize, index + 1);
+    //symbolic_ldl_downdate($workspace$.L, $workspace$.wi, wsize, index + 1);
 
 }
 
@@ -324,10 +324,10 @@ void cpg_ldl_symbolic() {
 
     cpg_int nnz = QDLDL_etree(
         N,
-        CPG_OSQP_Grad.K->p, CPG_OSQP_Grad.K->i,
-        CPG_OSQP_Grad.iwork, CPG_OSQP_Grad.Lnz, CPG_OSQP_Grad.etree
+        $workspace$.K->p, $workspace$.K->i,
+        $workspace$.iwork, $workspace$.Lnz, $workspace$.etree
     );
-    CPG_OSQP_Grad.L->nnz = nnz;
+    $workspace$.L->nnz = nnz;
 
 }
 
@@ -335,10 +335,10 @@ void cpg_ldl_numeric() {
 
     QDLDL_factor(
         N,
-        CPG_OSQP_Grad.K->p, CPG_OSQP_Grad.K->i, CPG_OSQP_Grad.K->x,
-        CPG_OSQP_Grad.L->p, CPG_OSQP_Grad.L->i, CPG_OSQP_Grad.L->x,
-        CPG_OSQP_Grad.D, CPG_OSQP_Grad.Dinv,
-        CPG_OSQP_Grad.Lnz, CPG_OSQP_Grad.etree, CPG_OSQP_Grad.bwork, CPG_OSQP_Grad.iwork, CPG_OSQP_Grad.fwork
+        $workspace$.K->p, $workspace$.K->i, $workspace$.K->x,
+        $workspace$.L->p, $workspace$.L->i, $workspace$.L->x,
+        $workspace$.D, $workspace$.Dinv,
+        $workspace$.Lnz, $workspace$.etree, $workspace$.bwork, $workspace$.iwork, $workspace$.fwork
     );
 
 }
@@ -409,67 +409,67 @@ void cpg_osqp_gradient() {
     // Check active constraints
     for (i = 0; i < N - n; i++) {
         if (sol_y[i] < -1e-6) {
-            if (CPG_OSQP_Grad.a[i] == 0) {
+            if ($workspace$.a[i] == 0) {
                 cpg_ldl_add(n + i);
-                CPG_OSQP_Grad.a[i] = -1; // lower bound active
+                $workspace$.a[i] = -1; // lower bound active
             }
         } else if (sol_y[i] > 1e-6) {
-            if (CPG_OSQP_Grad.a[i] == 0) {
+            if ($workspace$.a[i] == 0) {
                 cpg_ldl_add(n + i);
-                CPG_OSQP_Grad.a[i] = 1; // upper bound active
+                $workspace$.a[i] = 1; // upper bound active
             }
         } else {
-            if (CPG_OSQP_Grad.a[i] != 0) {
+            if ($workspace$.a[i] != 0) {
                 cpg_ldl_delete(n + i);
-                CPG_OSQP_Grad.a[i] = 0; // no bound active
+                $workspace$.a[i] = 0; // no bound active
             }
         }
     }
 
     // Fill rhs of linear system and solve with QDLDL
     for (i = 0; i < n; i++) {
-        CPG_OSQP_Grad.r[i] = CPG_OSQP_Grad.dx[i];
+        $workspace$.r[i] = $workspace$.dx[i];
     }
     for (i = n; i < N; i++) {
-        CPG_OSQP_Grad.r[i] = 0.0;
+        $workspace$.r[i] = 0.0;
     }
-    QDLDL_solve(N, CPG_OSQP_Grad.L->p, CPG_OSQP_Grad.L->i, CPG_OSQP_Grad.L->x, CPG_OSQP_Grad.Dinv, CPG_OSQP_Grad.r);
+    QDLDL_solve(N, $workspace$.L->p, $workspace$.L->i, $workspace$.L->x, $workspace$.Dinv, $workspace$.r);
 
     // Fill gradient in q
     for (i = 0; i < n; i++) {
-        CPG_OSQP_Grad.dq[i] = - CPG_OSQP_Grad.r[i];
+        $workspace$.dq[i] = - $workspace$.r[i];
     }
 
     // Fill gradient in l and u
     for (i = 0; i < N - n; i++) {
-        if (CPG_OSQP_Grad.a[i] == -1) {
-            CPG_OSQP_Grad.dl[i] = CPG_OSQP_Grad.r[n + i];
-            CPG_OSQP_Grad.du[i] = 0.0;
-        } else if (CPG_OSQP_Grad.a[i] == 1) {
-            CPG_OSQP_Grad.dl[i] = 0.0;
-            CPG_OSQP_Grad.du[i] = CPG_OSQP_Grad.r[n + i];
+        if ($workspace$.a[i] == -1) {
+            $workspace$.dl[i] = $workspace$.r[n + i];
+            $workspace$.du[i] = 0.0;
+        } else if ($workspace$.a[i] == 1) {
+            $workspace$.dl[i] = 0.0;
+            $workspace$.du[i] = $workspace$.r[n + i];
         } else {
-            CPG_OSQP_Grad.dl[i] = 0.0;
-            CPG_OSQP_Grad.du[i] = 0.0;
+            $workspace$.dl[i] = 0.0;
+            $workspace$.du[i] = 0.0;
         }
     }
 
     // Fill gradient in P
     for (j = 0; j < n; j++) {
-        for (k = CPG_OSQP_Grad.dP->p[j]; k < CPG_OSQP_Grad.dP->p[j + 1]; k++) {
-            i = CPG_OSQP_Grad.dP->i[k];
-            CPG_OSQP_Grad.dP->x[k] = -0.5 * (CPG_OSQP_Grad.r[i] * sol_x[j] + sol_x[i] * CPG_OSQP_Grad.r[j]);
+        for (k = $workspace$.dP->p[j]; k < $workspace$.dP->p[j + 1]; k++) {
+            i = $workspace$.dP->i[k];
+            $workspace$.dP->x[k] = -0.5 * ($workspace$.r[i] * sol_x[j] + sol_x[i] * $workspace$.r[j]);
         }
     }
 
     // Fill gradient in A
     for (j = 0; j < n; j++) {
-        for (k = CPG_OSQP_Grad.dA->p[j]; k < CPG_OSQP_Grad.dA->p[j + 1]; k++) {
-            i = CPG_OSQP_Grad.dA->i[k];
-            if (CPG_OSQP_Grad.a[i] == 0) {
-                CPG_OSQP_Grad.dA->x[k] = 0.0;
+        for (k = $workspace$.dA->p[j]; k < $workspace$.dA->p[j + 1]; k++) {
+            i = $workspace$.dA->i[k];
+            if ($workspace$.a[i] == 0) {
+                $workspace$.dA->x[k] = 0.0;
             } else {
-                CPG_OSQP_Grad.dA->x[k] = - (CPG_OSQP_Grad.r[n + i] * sol_x[j] + sol_y[i] * CPG_OSQP_Grad.r[j]);
+                $workspace$.dA->x[k] = - ($workspace$.r[n + i] * sol_x[j] + sol_y[i] * $workspace$.r[j]);
             }
         }
     }

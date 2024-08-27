@@ -77,7 +77,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, solver_opts=None,
 
     cvxpygen_directory = os.path.dirname(os.path.realpath(__file__))
     solver_code_dir = os.path.join(code_dir, 'c', 'solver_code')
-    solver_interface.generate_code(code_dir, solver_code_dir, cvxpygen_directory, parameter_canon, gradient)
+    solver_interface.generate_code(code_dir, solver_code_dir, cvxpygen_directory, parameter_canon, gradient, configuration.prefix)
 
     parameter_canon.user_p_name_to_canon_outdated = {
         user_p_name: [canon_p_ids[j] for j in np.nonzero(adjacency[:, i])[0]]
@@ -345,12 +345,12 @@ def write_c_code(problem: cp.Problem, configuration: Configuration, variable_inf
     file_names = ['workspace', 'solve'] + (['gradient'] if configuration.gradient else [])
     for name in file_names:
         write_file(os.path.join(include_dir, f'cpg_{name}.h'), 'w', 
-                   getattr(utils, f'write_{name}_prot'),
+                   get_write_method(name, 'prot', solver_interface),
                    configuration, variable_info, dual_variable_info, 
                    parameter_info, parameter_canon, solver_interface)
         
         write_file(os.path.join(src_dir, f'cpg_{name}.c'), 'w', 
-                   getattr(utils, f'write_{name}_def'),
+                   get_write_method(name, 'def', solver_interface),
                    configuration, variable_info, dual_variable_info, 
                    parameter_info, parameter_canon, solver_interface)
     
@@ -399,6 +399,13 @@ def adjust_prefix(prefix):
     if prefix and not prefix[0].isalpha():
         prefix = '_' + prefix
     return prefix + '_' if prefix else prefix
+
+
+def get_write_method(name, typ, solver_interface):
+    if name == 'gradient':
+        return getattr(solver_interface, f'write_{name}_{typ}')
+    else:
+        return getattr(utils, f'write_{name}_{typ}')
 
 
 def get_configuration(code_dir, solver_name, unroll, prefix, gradient) -> Configuration:

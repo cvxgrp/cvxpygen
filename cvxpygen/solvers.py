@@ -6,10 +6,11 @@ from abc import ABC, abstractmethod
 from platform import system
 
 import numpy as np
-import scipy as sp
+import scipy.sparse as sp
 
 from cvxpygen.utils import write_file, read_write_file, write_struct_prot, write_struct_def, \
-    write_vec_prot, write_vec_def, write_gradient_workspace_def, multiple_replace, cut_from_expr
+    write_vec_prot, write_vec_def, multiple_replace, cut_from_expr, \
+    write_description, type_to_cast, write_mat_def, write_L_def, ones, zeros
 from cvxpygen.mappings import PrimalVariableInfo, DualVariableInfo, ConstraintInfo, AffineMap, \
     ParameterCanon, WorkspacePointerInfo, UpdatePendingLogic, ParameterUpdateLogic
 
@@ -166,13 +167,24 @@ class SolverInterface(ABC):
 
     @abstractmethod
     def generate_code(self, code_dir, solver_code_dir, cvxpygen_directory,
-                      parameter_canon: ParameterCanon, gradient) -> None:
+                      parameter_canon: ParameterCanon, gradient, prefix) -> None:
         pass
 
     def declare_workspace(self, f, prefix, parameter_canon) -> None:
         pass
 
     def define_workspace(self, f, prefix, parameter_canon) -> None:
+        pass
+    
+    def write_gradient_def(f, configuration, variable_info, dual_variable_info,
+                           parameter_info, parameter_canon, solver_interface) -> None:
+        pass
+    
+    def write_gradient_prot(f, configuration, variable_info, dual_variable_info,
+                            parameter_info, parameter_canon, solver_interface) -> None:
+        pass
+    
+    def write_gradient_workspace_def(f, prefix, parameter_canon) -> None:
         pass
 
 
@@ -295,9 +307,192 @@ class OSQPInterface(SolverInterface):
 
         super().__init__(self.solver_name, n_var, n_eq, n_ineq, indices_obj, indptr_obj, shape_obj,
                          indices_constr, indptr_constr, shape_constr, canon_constants, enable_settings)
+        
+    
+    def write_gradient_def(self, f, configuration, variable_info, dual_variable_info, parameter_info, parameter_canon, solver_interface):
+        """
+        Write parameter initialization function to file
+        """
+        
+        n = solver_interface.n_var
+        nl = solver_interface.n_eq
+        nu = solver_interface.n_eq + solver_interface.n_ineq
+        N = n + nu
+        NP = len(parameter_info.flat_usp)
+
+        write_description(f, 'c', 'Function definitions')
+        f.write('#include "cpg_gradient.h"\n')
+        f.write('#include "cpg_osqp_grad_workspace.h"\n')
+        f.write('#include "cpg_osqp_grad_compute.h"\n\n')
+
+        f.write('static cpg_int i, j, k;\n')
+        
+        f.write('\n// Update user-defined variable deltas\n')
+        for name, size in variable_info.name_to_size.items():
+            if size == 1:
+                f.write(f'void {configuration.prefix}cpg_update_d{name}(cpg_float val){{\n')
+                f.write(f'  {configuration.prefix}CPG_OSQP_Grad.dx[{variable_info.name_to_offset[name]}] = val;\n')
+            else:
+                f.write(f'void {configuration.prefix}cpg_update_d{name}(cpg_int idx, cpg_float val){{\n')
+                f.write(f'  {configuration.prefix}CPG_OSQP_Grad.dx[{variable_info.name_to_offset[name]}+idx] = val;\n')
+            f.write('}\n')
+        
+        f.write('\n// End-to-end gradient\n')
+        f.write(f'void {configuration.prefix}cpg_gradient(){{\n')
+        changing_matrices = []
+        for p_id, changes in parameter_canon.p_id_to_changes.items():
+            if p_id.isupper() and changes:
+                changing_matrices.append(p_id)
+                f.write(f'  if ({configuration.prefix}Canon_Outdated_Grad.{p_id}) {{\n')
+                f.write(f'    cpg_{p_id}_to_K({configuration.prefix}Canon_Params.{p_id}, {configuration.prefix}CPG_OSQP_Grad.K);\n')
+                f.write('  }\n')
+        f.write(f'  if ({configuration.prefix}CPG_OSQP_Grad.init) {{\n')
+        f.write('    cpg_ldl_symbolic();\n')
+        f.write('    cpg_ldl_numeric();\n')
+        f.write(f'    for (j=0; j<{N-1}; j++){{\n')
+        f.write(f'      for (k={configuration.prefix}CPG_OSQP_Grad.L->p[j]; k<{configuration.prefix}CPG_OSQP_Grad.L->p[j+1]; k++){{\n')
+        f.write(f'        i = {configuration.prefix}CPG_OSQP_Grad.L->i[k];\n')
+        f.write(f'        {configuration.prefix}CPG_OSQP_Grad.Lmask[({2*N-3}-j)*j/2+i-1] = 1;\n')
+        f.write('      }\n')
+        f.write('    }\n')
+        f.write(f'    {configuration.prefix}CPG_OSQP_Grad.init = 0;\n')
+        # If any of {configuration.prefix}Canon_Outdated_Grad.{p_id} with p_id in changing_matrices is true, then call cpg_ldl_numeric()
+        if len(changing_matrices) > 0:
+            f.write('  } else {\n')
+            f.write(f'    if ({f" || ".join([f"{configuration.prefix}Canon_Outdated_Grad.{p_id}" for p_id in changing_matrices])}) {{\n')
+            f.write(f'      cpg_ldl_numeric();\n')
+            # set all CPG_OSQP_Grad.a[i] to 1
+            f.write(f'      for(i=0; i<{N - n}; i++){{\n')
+            f.write(f'        {configuration.prefix}CPG_OSQP_Grad.a[i] = 1;\n')
+            f.write('      }\n')
+            f.write('    }\n')
+        f.write('  }\n')
+        f.write('  // Canonical gradient\n')
+        f.write(f'  cpg_osqp_gradient();\n')
+        f.write('  // Un-canonicalize\n')
+        f.write(f'  for(j=0; j<{NP}; j++){{\n')
+        f.write(f'      {configuration.prefix}cpg_dp[j] = 0.0;\n')
+        f.write('  }\n')
+        if parameter_canon.p_id_to_changes['q']:
+            f.write(f'  for(j=0; j<{n}; j++){{\n')
+            f.write(f'      for(k={configuration.prefix}canon_q_map.p[j]; k<{configuration.prefix}canon_q_map.p[j+1]; k++){{\n')
+            f.write(f'          {configuration.prefix}cpg_dp[{configuration.prefix}canon_q_map.i[k]] += {configuration.prefix}canon_q_map.x[k]*{configuration.prefix}CPG_OSQP_Grad.dq[j];\n')
+            f.write('      }\n')
+            f.write('  }\n')
+        if parameter_canon.p_id_to_changes['l']:
+            f.write(f'  for(j=0; j<{nl}; j++){{\n')
+            f.write(f'      for(k={configuration.prefix}canon_l_map.p[j]; k<{configuration.prefix}canon_l_map.p[j+1]; k++){{\n')
+            f.write(f'          {configuration.prefix}cpg_dp[{configuration.prefix}canon_l_map.i[k]] += {configuration.prefix}canon_l_map.x[k]*{configuration.prefix}CPG_OSQP_Grad.dl[j];\n')
+            f.write('      }\n')
+            f.write('  }\n')
+        if parameter_canon.p_id_to_changes['u']:
+            f.write(f'  for(j=0; j<{nu}; j++){{\n')
+            f.write(f'      for(k={configuration.prefix}canon_u_map.p[j]; k<{configuration.prefix}canon_u_map.p[j+1]; k++){{\n')
+            f.write(f'          {configuration.prefix}cpg_dp[{configuration.prefix}canon_u_map.i[k]] += {configuration.prefix}canon_u_map.x[k]*{configuration.prefix}CPG_OSQP_Grad.du[j];\n')
+            f.write('      }\n')
+            f.write('  }\n')
+        if parameter_canon.p_id_to_changes['P']:
+            f.write(f'  for(j=0; j<{parameter_canon.p["P"].nnz}; j++){{\n')
+            f.write(f'      for(k={configuration.prefix}canon_P_map.p[j]; k<{configuration.prefix}canon_P_map.p[j+1]; k++){{\n')
+            f.write(f'          {configuration.prefix}cpg_dp[{configuration.prefix}canon_P_map.i[k]] += {configuration.prefix}canon_P_map.x[k]*{configuration.prefix}CPG_OSQP_Grad.dP->x[j];\n')
+            f.write('      }\n')
+            f.write('  }\n')
+        if parameter_canon.p_id_to_changes['A']:
+            f.write(f'  for(j=0; j<{parameter_canon.p["A"].nnz}; j++){{\n')
+            f.write(f'      for(k={configuration.prefix}canon_A_map.p[j]; k<{configuration.prefix}canon_A_map.p[j+1]; k++){{\n')
+            f.write(f'          {configuration.prefix}cpg_dp[{configuration.prefix}canon_A_map.i[k]] += {configuration.prefix}canon_A_map.x[k]*{configuration.prefix}CPG_OSQP_Grad.dA->x[j];\n')
+            f.write('      }\n')
+            f.write('  }\n')
+        f.write('  // Reset dx\n')
+        f.write(f'  for(i=0; i<{n}; i++){{\n')
+        f.write(f'      {configuration.prefix}CPG_OSQP_Grad.dx[i] = 0.0;\n')
+        f.write('  }\n')
+        f.write('  // Reset flags for outdated canonical parameters\n')
+        for p_id, changes in parameter_canon.p_id_to_changes.items():
+            if p_id.isupper() and changes:
+                f.write(f'  {configuration.prefix}Canon_Outdated_Grad.{p_id} = 0;\n')
+        f.write('}\n\n')
+            
+            
+    def write_gradient_prot(self, f, configuration, variable_info, dual_variable_info, parameter_info, parameter_canon, solver_interface):
+        """
+        Write function declarations to file
+        """
+
+        write_description(f, 'c', 'Function declarations')
+        f.write('#include "cpg_workspace.h"\n')
+        f.write('#include "osqp_api_types.h"\n')
+        
+        f.write('\n// Un-retrieve\n')
+        for name, size in variable_info.name_to_size.items():
+            if size == 1:
+                f.write(f'extern void {configuration.prefix}cpg_update_d{name}(cpg_float val);\n')
+            else:
+                f.write(f'extern void {configuration.prefix}cpg_update_d{name}(cpg_int idx, cpg_float val);\n')
+        
+        f.write('\n// End-to-end gradient\n')
+        f.write(f'extern void {configuration.prefix}cpg_gradient();\n')
+        
+        
+    def write_gradient_workspace_def(self, f, prefix, parameter_canon):
+        """
+        Write canonical gradient workspace to file
+        """
+        
+        n = parameter_canon.p['P'].shape[0]
+        N = n + parameter_canon.p['A'].shape[0]
+        
+        K = sp.bmat([
+            [parameter_canon.p['P'] + 1e-6 * sp.eye(n), parameter_canon.p['A'].T],
+            [None, - 1e-6 * sp.eye(N-n)]
+        ], format='csc')
+        
+        write_description(f, 'c', 'Static workspace allocation for canonical gradient computation')
+        f.write('#include "cpg_osqp_grad_workspace.h"\n\n')
+        
+        workspace = [
+            ('a',       'int',      ones(N-n, dtype=int)),
+            ('etree',   'int',      zeros(N, dtype=int)),
+            ('Lnz',     'int',      zeros(N, dtype=int)),
+            ('iwork',   'int',      zeros(3*N, dtype=int)),
+            ('bwork',   'int',      zeros(N, dtype=int)),
+            ('fwork',   'float',    zeros(N)),
+            ('L',       'csc_L',    N),
+            ('Lmask',   'int',      zeros((N-1)*N//2, dtype=int)),
+            ('D',       'float',    ones(N)),
+            ('Dinv',    'float',    ones(N)),
+            ('K',       'csc',      K),
+            ('c',       'float',    zeros(N)),
+            ('w',       'float',    zeros(N)),
+            ('wi',      'int',      np.arange(N)),
+            ('l',       'float',    zeros(N)),
+            ('li',      'int',      np.arange(N)),
+            ('lx',      'float',    zeros(N)),
+            ('dx',      'float',    zeros(n)),
+            ('r',       'float',    zeros(N)),
+            ('dq',      'float',    zeros(n)),
+            ('dl',      'float',    zeros(N-n)),
+            ('du',      'float',    zeros(N-n)),
+            ('dP',      'csc',      0*parameter_canon.p['P']),
+            ('dA',      'csc',      0*parameter_canon.p['A'])
+        ]
+        
+        for name, typ, value in workspace:
+            if typ == 'csc':
+                write_mat_def(f, value, f'{prefix}cpg_osqp_grad_{name}')
+            elif typ == 'csc_L':
+                write_L_def(f, value, f'{prefix}cpg_osqp_grad_{name}')
+            else:
+                write_vec_def(f, value, f'{prefix}cpg_osqp_grad_{name}', 'cpg_' + typ)
+                    
+        OSQP_Grad_fiels = ['init'] + [w[0] for w in workspace]
+        OSQP_Grad_casts = [''] + [f'{type_to_cast(w[1])}&' for w in workspace]
+        OSQP_Grad_values = ['1'] + [f'{prefix}cpg_osqp_grad_{v}' for v in OSQP_Grad_fiels[1:]]
+        write_struct_def(f, OSQP_Grad_fiels, OSQP_Grad_casts, OSQP_Grad_values, f'{prefix}CPG_OSQP_Grad', 'CPG_OSQP_Grad_t')
+            
 
     def generate_code(self, code_dir, solver_code_dir, cvxpygen_directory,
-                  parameter_canon: ParameterCanon, gradient) -> None:
+                  parameter_canon: ParameterCanon, gradient, prefix) -> None:
         import osqp
 
         # OSQP codegen
@@ -312,14 +507,21 @@ class OSQPInterface(SolverInterface):
         if gradient:
             shutil.copy(os.path.join(cvxpygen_directory, 'template', 'grad', 'cpg_osqp_grad_compute.c'),
                         os.path.join(solver_code_dir, 'src'))
+            replacements = [
+                ('$n$', str(self.n_var)),
+                ('$N$', str(self.n_var + self.n_eq + self.n_ineq)),
+                ('$workspace$', f'{prefix}CPG_OSQP_Grad')
+            ]
             read_write_file(os.path.join(solver_code_dir, 'src', 'cpg_osqp_grad_compute.c'),
-                            lambda x: x.replace('$n$', str(self.n_var)).replace('$N$', str(self.n_var + self.n_eq + self.n_ineq)))
+                            lambda x: multiple_replace(x, replacements))
             for f in ['cpg_osqp_grad_compute.h', 'cpg_osqp_grad_workspace.h']:
                 shutil.copy(os.path.join(cvxpygen_directory, 'template', 'grad', f),
                             os.path.join(solver_code_dir, 'inc', 'private'))
+            read_write_file(os.path.join(solver_code_dir, 'inc', 'private', 'cpg_osqp_grad_workspace.h'),
+                            lambda x: x.replace('$workspace$', f'{prefix}CPG_OSQP_Grad'))
             write_file(os.path.join(solver_code_dir, 'src', 'cpg_osqp_grad_workspace.c'), 'w', 
-                       write_gradient_workspace_def, 
-                       code_dir, parameter_canon)
+                       self.write_gradient_workspace_def, 
+                       prefix, parameter_canon)
             
         # copy license files
         shutil.copyfile(os.path.join(cvxpygen_directory, 'solvers', 'osqp-python', 'LICENSE'),
@@ -524,7 +726,7 @@ class SCSInterface(SolverInterface):
                 'is not supported yet.')
 
     def generate_code(self, code_dir, solver_code_dir, cvxpygen_directory,
-                  parameter_canon: ParameterCanon, gradient) -> None:
+                  parameter_canon: ParameterCanon, gradient, prefix) -> None:
 
         # copy sources
         if os.path.isdir(solver_code_dir):
@@ -779,7 +981,7 @@ class ECOSInterface(SolverInterface):
         return True
 
     def generate_code(self, code_dir, solver_code_dir, cvxpygen_directory,
-                  parameter_canon: ParameterCanon, gradient) -> None:
+                  parameter_canon: ParameterCanon, gradient, prefix) -> None:
 
         # copy sources
         if os.path.isdir(solver_code_dir):
@@ -1004,7 +1206,7 @@ class ClarabelInterface(SolverInterface):
         return True
 
     def generate_code(self, code_dir, solver_code_dir, cvxpygen_directory,
-                    parameter_canon: ParameterCanon, gradient) -> None:
+                    parameter_canon: ParameterCanon, gradient, prefix) -> None:
 
         # check if sdp cones are present
         is_sdp = len(self.canon_constants['cone_dims_psd']) > 0
