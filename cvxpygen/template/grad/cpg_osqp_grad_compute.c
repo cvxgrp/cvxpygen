@@ -343,60 +343,84 @@ void cpg_ldl_numeric() {
 
 }
 
-void cpg_P_to_K(cpg_csc *P, cpg_csc *K) {
+void cpg_P_to_K(cpg_csc *P, cpg_csc *K, cpg_csc *K_true) {
 
     for (cpg_int col = 0; col < n; col++) {
-        cpg_int col_start = P->p[col];
-        cpg_int col_end = P->p[col + 1];
-        
-        for (cpg_int idx = col_start; idx < col_end; idx++) {
+
+        for (cpg_int idx = P->p[col]; idx < P->p[col + 1]; idx++) {
+
             cpg_int row = P->i[idx];
             cpg_float value = P->x[idx];
-            
-            // Upper left block insertion
-            cpg_int upper_left_row = row;
-            cpg_int upper_left_col = col;
-            for (cpg_int k_idx = K->p[upper_left_col]; k_idx < K->p[upper_left_col + 1]; k_idx++) {
-                if (K->i[k_idx] == upper_left_row) {
+
+            // Upper left block insertion into K
+            for (cpg_int k_idx = K->p[col]; k_idx < K->p[col + 1]; k_idx++) {
+                if (K->i[k_idx] == row) {
                     K->x[k_idx] = value;
-                    if (upper_left_row == upper_left_col) {
+                    if (row == col) {
                         K->x[k_idx] += 1e-6;
                     }
                     break;
                 }
             }
+
+            // Upper left block insertion into K_true
+            for (cpg_int k_idx = K_true->p[row]; k_idx < K_true->p[row + 1]; k_idx++) {
+                if (K_true->i[k_idx] == col) {
+                    K_true->x[k_idx] = value;
+                    break;
+                }
+            }
+
         }
+
     }
 
 }
 
-void cpg_A_to_K(cpg_csc *A, cpg_csc *K) {
+void cpg_A_to_K(cpg_csc *A, cpg_csc *K, cpg_csc *K_true) {
 
     // Fill A (csc format) into lower left block and transpose into upper right block of K (column-major)
     for (cpg_int col = 0; col < n; col++) {
-        // Get the start and end pointers for the column in A
-        cpg_int col_start = A->p[col];
-        cpg_int col_end = A->p[col + 1];
         
         // Iterate over each non-zero entry in the column
-        for (cpg_int idx = col_start; idx < col_end; idx++) {
+        for (cpg_int idx = A->p[col]; idx < A->p[col + 1]; idx++) {
             cpg_int row = A->i[idx];      // Row index in A
             cpg_float value = A->x[idx];  // Value in A
             
             // Compute indices for K            
             cpg_int upper_right_row = col;    // Upper right block: row in K
             cpg_int upper_right_col = n + row; // Upper right block: col in K
+
+            // Compute indices for lower left block
+            cpg_int lower_left_row = n + row;    // Lower left block: row in K
+            cpg_int lower_left_col = col;    // Lower left block: col in K
             
             // Find the position in K for upper right block
-            cpg_int k_upper_start = K->p[upper_right_col];
-            cpg_int k_upper_end = K->p[upper_right_col + 1];
-            for (cpg_int k_idx = k_upper_start; k_idx < k_upper_end; k_idx++) {
+            for (cpg_int k_idx = K->p[upper_right_col]; k_idx < K->p[upper_right_col + 1]; k_idx++) {
                 if (K->i[k_idx] == upper_right_row) {
                     K->x[k_idx] = value;
                     break;
                 }
             }
+
+            // Find the position in K_true (csr) for upper right block
+            for (cpg_int k_idx = K_true->p[upper_right_row]; k_idx < K_true->p[upper_right_row + 1]; k_idx++) {
+                if (K_true->i[k_idx] == upper_right_col) {
+                    K_true->x[k_idx] = value;
+                    break;
+                }
+            }
+
+            // Find the position in K_true (csr) for lower left block
+            for (cpg_int k_idx = K_true->p[lower_left_row]; k_idx < K_true->p[lower_left_row + 1]; k_idx++) {
+                if (K_true->i[k_idx] == lower_left_col) {
+                    K_true->x[k_idx] = value;
+                    break;
+                }
+            }
+
         }
+
     }
 
 }
@@ -404,7 +428,7 @@ void cpg_A_to_K(cpg_csc *A, cpg_csc *K) {
 
 void cpg_osqp_gradient() {
 
-    cpg_int i, j, k;
+    cpg_int i, j, k, l;
 
     // Check active constraints
     for (i = 0; i < N - n; i++) {
@@ -429,11 +453,38 @@ void cpg_osqp_gradient() {
     // Fill rhs of linear system and solve with QDLDL
     for (i = 0; i < n; i++) {
         $workspace$.r[i] = $workspace$.dx[i];
+        $workspace$.rhs[i] = $workspace$.dx[i];
     }
     for (i = n; i < N; i++) {
         $workspace$.r[i] = 0.0;
+        $workspace$.rhs[i] = 0.0;
     }
     QDLDL_solve(N, $workspace$.L->p, $workspace$.L->i, $workspace$.L->x, $workspace$.Dinv, $workspace$.r);
+    
+    // Three iterations of iterative refinement
+    for (l = 0; l < 3; l++) {
+        // Compute delta = rhs - K_true @ r
+        for (i = 0; i < N; i++) {
+            $workspace$.delta[i] = $workspace$.rhs[i];
+        }
+        for (i = 0; i < N; i++) {
+            if (i >= n && $workspace$.a[i - n] == 0) {
+                $workspace$.delta[i] = 0.0;
+                continue;
+            }
+            for (k = $workspace$.K_true->p[i]; k < $workspace$.K_true->p[i + 1]; k++) {
+                j = $workspace$.K_true->i[k];
+                if (j >= n && $workspace$.a[j - n] == 0) continue;
+                $workspace$.delta[i] -= $workspace$.K_true->x[k] * $workspace$.r[j];
+            }
+        }
+        // Solve K @ delta = rhs - K_true @ r
+        QDLDL_solve(N, $workspace$.L->p, $workspace$.L->i, $workspace$.L->x, $workspace$.Dinv, $workspace$.delta);
+        // Update r
+        for (i = 0; i < N; i++) {
+            $workspace$.r[i] += $workspace$.delta[i];
+        }
+    }
 
     // Fill gradient in q
     for (i = 0; i < n; i++) {

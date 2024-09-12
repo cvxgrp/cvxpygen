@@ -18,6 +18,9 @@ typedef struct {
   cpg_float    *D;         // Diagonal factor of K
   cpg_float    *Dinv;      // Inverse of D
   cpg_csc      *K;         // KKT matrix
+  cpg_csc      *K_true;    // Exact KKT matrix
+  cpg_float    *rhs;       // Right-hand-side
+  cpg_float    *delta;     // Vector for iterative refinement
   cpg_float    *c;         // Vector used in update
   cpg_float    *w;         // Vector used in update
   cpg_int      *wi;        // Sparse vector used in update

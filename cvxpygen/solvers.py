@@ -344,7 +344,7 @@ class OSQPInterface(SolverInterface):
             if p_id.isupper() and changes:
                 changing_matrices.append(p_id)
                 f.write(f'  if ({configuration.prefix}Canon_Outdated_Grad.{p_id}) {{\n')
-                f.write(f'    cpg_{p_id}_to_K({configuration.prefix}Canon_Params.{p_id}, {configuration.prefix}CPG_OSQP_Grad.K);\n')
+                f.write(f'    cpg_{p_id}_to_K({configuration.prefix}Canon_Params.{p_id}, {configuration.prefix}CPG_OSQP_Grad.K, {configuration.prefix}CPG_OSQP_Grad.K_true);\n')
                 f.write('  }\n')
         f.write(f'  if ({configuration.prefix}CPG_OSQP_Grad.init) {{\n')
         f.write('    cpg_ldl_symbolic();\n')
@@ -447,6 +447,11 @@ class OSQPInterface(SolverInterface):
             [None, - 1e-6 * sp.eye(N-n)]
         ], format='csc')
         
+        K_true = sp.bmat([
+            [parameter_canon.p['P'], parameter_canon.p['A'].T],
+            [parameter_canon.p['A'], None]
+        ], format='csr')
+        
         write_description(f, 'c', 'Static workspace allocation for canonical gradient computation')
         f.write('#include "cpg_osqp_grad_workspace.h"\n\n')
         
@@ -462,6 +467,9 @@ class OSQPInterface(SolverInterface):
             ('D',       'float',    ones(N)),
             ('Dinv',    'float',    ones(N)),
             ('K',       'csc',      K),
+            ('K_true',  'csc',      K_true),
+            ('rhs',     'float',    zeros(N)),
+            ('delta',   'float',    zeros(N)),
             ('c',       'float',    zeros(N)),
             ('w',       'float',    zeros(N)),
             ('wi',      'int',      np.arange(N)),
