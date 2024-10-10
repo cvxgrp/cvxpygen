@@ -118,7 +118,7 @@ import sys
 
 # import extension module and register custom CVXPY solve method
 from nonneg_LS.cpg_solver import cpg_solve
-problem.register_solve('cpg', cpg_solve)
+problem.register_solve('CPG', cpg_solve)
 
 # solve problem conventionally
 t0 = time.time()
@@ -131,7 +131,7 @@ sys.stdout.write('Objective function value: %.6f\n' % val)
 
 # solve problem with C code via python wrapper
 t0 = time.time()
-val = problem.solve(method='cpg', updated_params=['A', 'b'], verbose=False)
+val = problem.solve(method='CPG', updated_params=['A', 'b'], verbose=False)
 t1 = time.time()
 sys.stdout.write('\nCVXPYgen\nSolve time: %.3f ms\n' % (1000 * (t1 - t0)))
 sys.stdout.write('Primal solution: x = [%.6f, %.6f]\n' % tuple(x.value))
@@ -148,7 +148,7 @@ Here, we use `verbose=False` to suppress printing.
 The list of changeable settings differs by solver and is documented in `<code_dir>/README.html` after code generation.
 
 Comparing the standard and codegen methods for this example, both the solutions and objective values are close.
-Especially for smaller problems like this, the new solve method ``'cpg'`` is significantly faster than solving without code generation.
+Especially for smaller problems like this, the new solve method ``'CPG'`` is significantly faster than solving without code generation.
 
 ### 3. Executable
 
