@@ -125,8 +125,8 @@ def test(name, solver, style, seed):
     with open('test_%s_%s_%s/problem.pickle' % (name, solver, style), 'rb') as f:
         prob = pickle.load(f)
 
-    module = importlib.import_module('test_%s_%s_%s.cpg_solver' % (name, solver, style))
-    prob.register_solve('CPG', module.cpg_solve)
+    #module = importlib.import_module('test_%s_%s_%s.cpg_solver' % (name, solver, style))
+    #prob.register_solve('CPG', module.cpg_solve)
 
     prob = assign_data(prob, name, seed)
 

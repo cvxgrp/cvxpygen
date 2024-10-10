@@ -16,6 +16,7 @@ import sys
 import shutil
 import pickle
 import warnings
+import importlib
 
 from cvxpygen import utils
 from cvxpygen.utils import write_file, read_write_file, write_example_def, write_module_prot, write_module_def, \
@@ -89,6 +90,9 @@ def generate_code(problem, code_dir='CPG_code', solver=None, solver_opts=None,
     
     if wrapper:
         compile_python_module(code_dir)
+        module = importlib.import_module(f'{code_dir}.cpg_solver')
+        cpg_solve = getattr(module, 'cpg_solve')
+        problem.register_solve('CPG', cpg_solve)
 
 
 def get_quad_obj(problem, solver_type, solver_opts, solver_class) -> bool:
