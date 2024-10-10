@@ -6,7 +6,7 @@ This generated solver is specific to the problem family and accepts different pa
 In particular, this solver is suitable for deployment on embedded systems.
 In addition, CVXPYgen creates a Python wrapper for prototyping and desktop (non-embedded) applications.
 
-An overview of CVXPYgen can be found in our [manuscript](https://web.stanford.edu/~boyd/papers/cvxpygen.html).
+An overview of CVXPYgen can be found in our [slides and manuscript](https://web.stanford.edu/~boyd/papers/cvxpygen.html).
 
 CVXPYgen accepts CVXPY problems that are compliant with [Disciplined Convex Programming (DCP)](https://www.cvxpy.org/tutorial/dcp/index.html).
 DCP is a system for constructing mathematical expressions with known curvature from a given library of base functions. 

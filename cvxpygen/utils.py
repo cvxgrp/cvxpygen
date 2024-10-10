@@ -41,6 +41,7 @@ def write_vec_def(f, vec, name, typ):
     """
     Write vector to file
     """
+    vec = replace_inf(vec)
     f.write(f'{typ} {name}[{len(vec)}] = {{\n')
 
     # Write vector components
@@ -260,7 +261,7 @@ def write_param_def(f, param, name, prefix, suffix):
         if name.isupper():
             write_mat_def(f, param, f'{prefix}canon_{name}{suffix}')
         elif name == 'd':
-            f.write(f'cpg_float {prefix}canon_d{suffix} = %.20f;\n' % param[0])
+            f.write(f'cpg_float {prefix}canon_d{suffix} = %.20f;\n' % replace_inf(param[0]))
         else:
             write_vec_def(f, param, f'{prefix}canon_{name}{suffix}', 'cpg_float')
         f.write('\n')
@@ -463,9 +464,9 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
         if p_id == 'd':
             canon_casts.append('')
         else:
-            write_param_def(f, replace_inf(p), p_id, configuration.prefix, '')
+            write_param_def(f, p, p_id, configuration.prefix, '')
             if solver_interface.inmemory_preconditioning:
-                write_param_def(f, replace_inf(p), p_id, configuration.prefix, '_conditioning')
+                write_param_def(f, p, p_id, configuration.prefix, '_conditioning')
             if p_id.isupper():
                 canon_casts.append('')
             else:
