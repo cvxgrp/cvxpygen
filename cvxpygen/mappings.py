@@ -12,6 +12,7 @@ class Configuration:
     unroll: bool
     prefix: str
     gradient: bool
+    gradient_two_stage: bool
 
 
 @dataclass
@@ -107,3 +108,11 @@ class UpdatePendingLogic:
 class ParameterUpdateLogic:
     update_pending_logic: UpdatePendingLogic
     function_call: str
+
+
+@dataclass
+class Canon:
+    prim_variable_info: PrimalVariableInfo
+    dual_variable_info: DualVariableInfo
+    parameter_info: ParameterInfo
+    parameter_canon: ParameterCanon

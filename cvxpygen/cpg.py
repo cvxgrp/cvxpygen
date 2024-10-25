@@ -16,12 +16,13 @@ import sys
 import shutil
 import pickle
 import warnings
+import copy
 
 from cvxpygen import utils
 from cvxpygen.utils import write_file, read_write_file, write_example_def, write_module_prot, write_module_def, \
     write_canon_cmake, write_method, replace_cmake_data, replace_setup_data, replace_html_data
 from cvxpygen.mappings import Configuration, PrimalVariableInfo, DualVariableInfo, ConstraintInfo, \
-    ParameterCanon, ParameterInfo
+    ParameterCanon, ParameterInfo, Canon
 from cvxpygen.solvers import get_interface_class
 import cvxpy as cp
 import numpy as np
@@ -40,9 +41,46 @@ def generate_code(problem, code_dir='CPG_code', solver=None, solver_opts=None,
     sys.stdout.write('Generating code with CVXPYgen ...\n')
     
     create_folder_structure(code_dir)
+    
+    gradient_two_stage = gradient and solver != 'OSQP'
 
+    # extract canonicalization
+    if gradient_two_stage:
+        # first-stage canonicalization from user problem to OSQP problem
+        canon_gradient, gradient_interface = extract_canonicalization(problem, 'OSQP', None, [])
+        # create parametrized OSQP problem
+        osqp_problem = get_osqp_problem(canon_gradient)
+        # second-stage canonicalization from OSQP problem to solver problem
+        canon_solver, solver_interface = extract_canonicalization(osqp_problem, solver, solver_opts, enable_settings)
+        # chain two stages of canonicalization into one for solving
+        canon = merge_canonicalizations(canon_gradient, canon_solver, solver_interface)
+    else:
+        # default behavior, single canonicalization
+        canon_gradient, canon_solver = None, None
+        canon, solver_interface = extract_canonicalization(problem, solver, solver_opts, enable_settings)
+        gradient_interface = solver_interface
+
+    configuration = get_configuration(code_dir, solver, unroll, prefix, gradient, gradient_two_stage)
+    cvxpygen_directory = os.path.dirname(os.path.realpath(__file__))
+    solver_code_dir = os.path.join(code_dir, 'c', 'solver_code')
+    osqp_code_dir = os.path.join(code_dir, 'c', 'osqp_code')
+    if gradient and solver != 'OSQP':
+        solver_interface.generate_code(configuration, code_dir, solver_code_dir, cvxpygen_directory, canon.parameter_canon, False, configuration.prefix)
+        gradient_interface.generate_code(configuration, code_dir, osqp_code_dir, cvxpygen_directory, canon_gradient.parameter_canon, True, f'gradient_{configuration.prefix}')
+    else:
+        solver_interface.generate_code(configuration, code_dir, solver_code_dir, cvxpygen_directory, canon.parameter_canon, gradient, configuration.prefix)
+    write_c_code(problem, configuration, canon, canon_gradient, canon_solver, solver_interface, gradient_interface)
+
+    sys.stdout.write('CVXPYgen finished generating code.\n')
+    
+    if wrapper:
+        compile_python_module(code_dir)
+        
+        
+def extract_canonicalization(problem, solver, solver_opts, enable_settings) -> Canon:
+    
     # problem data
-    data, solving_chain, inverse_data = problem.get_problem_data(
+    data, _, inverse_data = problem.get_problem_data(
         solver=solver,
         gp=False,
         enforce_dpp=True,
@@ -50,11 +88,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, solver_opts=None,
         solver_opts=solver_opts
     )
     param_prob = data['param_prob']
-    solver_name = solving_chain.solver.name()
-    interface_class, cvxpy_interface_class = get_interface_class(solver_name)
-
-    # configuration
-    configuration = get_configuration(code_dir, solver_name, unroll, prefix, gradient)
+    interface_class, cvxpy_interface_class = get_interface_class(solver)
 
     # cone problems check
     if hasattr(param_prob, 'cone_dims'):
@@ -64,9 +98,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, solver_opts=None,
     handle_sparsity(param_prob)
 
     solver_interface = interface_class(data, param_prob, enable_settings)  # noqa
-    if gradient and not solver_interface.supports_gradient:
-        raise ValueError(f'Problem gradients not supported with {solver_name}!')
-    variable_info = get_variable_info(problem, inverse_data)
+    prim_variable_info = get_primal_variable_info(problem, inverse_data)
     dual_variable_info = get_dual_variable_info(inverse_data, solver_interface, cvxpy_interface_class)
     parameter_info = get_parameter_info(param_prob)
     constraint_info = get_constraint_info(solver_interface)
@@ -75,22 +107,99 @@ def generate_code(problem, code_dir='CPG_code', solver=None, solver_opts=None,
         constraint_info, param_prob, parameter_info, solver_interface, solver_opts, problem, cvxpy_interface_class
     )
 
-    cvxpygen_directory = os.path.dirname(os.path.realpath(__file__))
-    solver_code_dir = os.path.join(code_dir, 'c', 'solver_code')
-    solver_interface.generate_code(code_dir, solver_code_dir, cvxpygen_directory, parameter_canon, gradient, configuration.prefix)
-
     parameter_canon.user_p_name_to_canon_outdated = {
         user_p_name: [canon_p_ids[j] for j in np.nonzero(adjacency[:, i])[0]]
         for i, user_p_name in enumerate(parameter_info.names)
     }
-
-    write_c_code(problem, configuration, variable_info, dual_variable_info,
-                 parameter_info, parameter_canon, solver_interface)
-
-    sys.stdout.write('CVXPYgen finished generating code.\n')
     
-    if wrapper:
-        compile_python_module(code_dir)
+    return Canon(prim_variable_info, dual_variable_info, parameter_info, parameter_canon), solver_interface
+    
+
+def get_osqp_problem(canon_osqp) -> cp.Problem:
+    
+    p = canon_osqp.parameter_canon.p
+    n_eq = canon_osqp.parameter_canon.p_id_to_size['l']
+    
+    # assert that quadratic form is not parametric
+    if canon_osqp.parameter_canon.p_id_to_changes['P']:
+        raise ValueError('Problem does not follow extended DPP rules for differentiation with general solvers (other than OSQP). '
+                         'Quadratics cannot be multiplied with parameters.')
+    
+    # assert that P is diagonal
+    row, col = p['P'].nonzero()
+    assert all(row == col)
+    
+    osqp_x = cp.Variable(p['q'].shape, name='osqp_x')
+    
+    osqp_q = cp.Parameter(p['q'].shape, name='osqp_q')
+    osqp_A_rows, osqp_A_cols = p['A'].nonzero()
+    osqp_A = cp.Parameter(p['A'].shape, name='osqp_A', sparsity=list(zip(osqp_A_rows, osqp_A_cols)))
+    osqp_l = cp.Parameter((n_eq,), name='osqp_l')
+    osqp_u = cp.Parameter(p['u'].shape, name='osqp_u')
+    
+    osqp_P_diag_sqrt = np.sqrt(np.diag(p['P'].todense()))
+    
+    osqp_problem = cp.Problem(
+        cp.Minimize(0.5 * cp.sum_squares(cp.multiply(osqp_x, osqp_P_diag_sqrt)) + osqp_q @ osqp_x),
+        [osqp_l <= osqp_A[:n_eq, :] @ osqp_x, osqp_A @ osqp_x <= osqp_u]
+    )
+    
+    return osqp_problem
+
+
+def merge_canonicalizations(canon_first, canon_second, solver_interface) -> Canon:
+    
+    pc_first = canon_first.parameter_canon
+    pc_second = canon_second.parameter_canon
+    
+    n_user_param = canon_first.parameter_info.flat_usp.size    
+    ret_prim_func_needed = solver_interface.ret_prim_func_exists(canon_second.prim_variable_info)
+    
+    pc = ParameterCanon()
+    
+    pc.is_maximization = pc_first.is_maximization
+    pc.nonzero_d = pc_first.nonzero_d
+    pc.quad_obj = pc_second.quad_obj
+    
+    pc.p = pc_second.p
+    pc.p_csc = pc_second.p_csc
+    pc.p_id_to_size = pc_second.p_id_to_size
+    pc.p_id_to_changes = pc_second.p_id_to_changes # TODO: consider cases where q, A, l, or u do not change
+    
+    # figure out in which order q, A, l, u are flattened and concatenated, for example (flat(A), q, l, u)
+    # for very pc_second.p_id_to_mapping[p_id], multiply with [pc_first.p_id_to_mapping['A']; ...]
+    pc.p_id_to_mapping = {}
+    map_first = []
+    for col in sorted(canon_second.parameter_info.col_to_name_usp):
+        name = canon_second.parameter_info.col_to_name_usp[col][5:]
+        map_first.append(pc_first.p_id_to_mapping[name])
+    map_first.append(create_constant_map(1, n_user_param, 1.))
+    map_first = sparse.vstack(map_first)
+    for p_id, map_second in pc_second.p_id_to_mapping.items():
+        pc.p_id_to_mapping[p_id] = map_second @ map_first
+    
+    pc.user_p_name_to_canon_outdated = {}
+    for user_p_name, canon_p_ids in pc_first.user_p_name_to_canon_outdated.items():
+        canon_outdated = []
+        for p_id in canon_p_ids:
+            canon_outdated.extend(pc_second.user_p_name_to_canon_outdated[f'osqp_{p_id}'])
+        pc.user_p_name_to_canon_outdated[user_p_name] = list(set(canon_outdated))
+        
+    pvi = copy.deepcopy(canon_first.prim_variable_info)
+    if not ret_prim_func_needed:
+        offset_second = canon_second.prim_variable_info.name_to_offset['osqp_x']
+        for name in pvi.name_to_offset.keys():
+            pvi.name_to_offset[name] += offset_second
+            pvi.name_to_indices[name] += offset_second
+    
+    return Canon(pvi, canon_first.dual_variable_info, canon_first.parameter_info, pc)
+    
+
+def create_constant_map(n, m, val):
+    data = np.full(n, val)
+    rows = np.arange(n)
+    cols = np.full(n, m-1)
+    return sparse.csc_matrix((data, (rows, cols)), shape=(n, m))
 
 
 def get_quad_obj(problem, solver_type, solver_opts, solver_class) -> bool:
@@ -205,7 +314,7 @@ def set_default_values(affine_map, p_id, parameter_canon, parameter_info, solver
     return affine_map, parameter_canon
 
 
-def get_variable_info(problem, inverse_data) -> PrimalVariableInfo:
+def get_primal_variable_info(problem, inverse_data) -> PrimalVariableInfo:
     variables = problem.variables()
     var_names = [var.name() for var in variables]
     var_ids = [var.id for var in variables]
@@ -233,10 +342,10 @@ def get_variable_info(problem, inverse_data) -> PrimalVariableInfo:
         else:
             var_name_to_init[var.name()] = np.zeros(shape=var.shape)
 
-    variable_info = PrimalVariableInfo(var_name_to_offset, var_name_to_indices, var_name_to_size,
-                                       var_sizes, var_name_to_shape, var_name_to_init,
-                                       var_name_to_sym, var_sym)
-    return variable_info
+    prim_variable_info = PrimalVariableInfo(var_name_to_offset, var_name_to_indices, var_name_to_size,
+                                            var_sizes, var_name_to_shape, var_name_to_init,
+                                            var_name_to_sym, var_sym)
+    return prim_variable_info
 
 
 def get_dual_variable_info(inverse_data, solver_interface, cvxpy_interface_class) -> DualVariableInfo:
@@ -330,9 +439,14 @@ def update_adjacency_matrix(adjacency, i, parameter_info, mapping) -> np.ndarray
     return adjacency
 
 
-def write_c_code(problem: cp.Problem, configuration: Configuration, variable_info: DualVariableInfo, 
-                 dual_variable_info: DualVariableInfo, parameter_info: ParameterInfo, 
-                 parameter_canon: ParameterCanon, solver_interface) -> None:
+def write_c_code(problem: cp.Problem, configuration: Configuration,
+                 canon: Canon, canon_first: Canon, canon_second: Canon,
+                 solver_interface, gradient_interface) -> None:
+
+    prim_variable_info = canon.prim_variable_info
+    dual_variable_info = canon.dual_variable_info
+    parameter_info = canon.parameter_info
+    parameter_canon = canon.parameter_canon
 
     # Simplified directory and file access
     c_dir = os.path.join(configuration.code_dir, 'c')
@@ -340,41 +454,114 @@ def write_c_code(problem: cp.Problem, configuration: Configuration, variable_inf
     include_dir = os.path.join(c_dir, 'include')
     src_dir = os.path.join(c_dir, 'src')
     solver_code_dir = os.path.join(c_dir, 'solver_code')
+    osqp_code_dir = os.path.join(c_dir, 'osqp_code')
     
     # write files
-    file_names = ['workspace', 'solve'] + (['gradient'] if configuration.gradient else [])
-    for name in file_names:
-        write_file(os.path.join(include_dir, f'cpg_{name}.h'), 'w', 
-                   get_write_method(name, 'prot', solver_interface),
-                   configuration, variable_info, dual_variable_info, 
-                   parameter_info, parameter_canon, solver_interface)
-        
-        write_file(os.path.join(src_dir, f'cpg_{name}.c'), 'w', 
-                   get_write_method(name, 'def', solver_interface),
-                   configuration, variable_info, dual_variable_info, 
-                   parameter_info, parameter_canon, solver_interface)
+    # if two-stage gradient is used, write main workspace and solve files without gradient stuff
+    if configuration.gradient_two_stage:
+        primal_solution_ptr = solver_interface.ws_ptrs.primal_solution
+        dual_solution_ptr = solver_interface.ws_ptrs.dual_solution
+        # poin to intermediate primal solution if it needs to be computed in second stage
+        if solver_interface.ret_prim_func_exists(canon_second.prim_variable_info):
+            solver_interface.ws_ptrs.primal_solution = f'gradient_{configuration.prefix}sol_x'
+        # always point to intermediate dual solution because it is always computed (summed to osqp's y) in second stage
+        solver_interface.ws_ptrs.dual_solution = f'gradient_{configuration.prefix}sol_y'
+        parameter_canon_gradient = canon_first.parameter_canon
+    else:
+        parameter_canon_gradient = None
+    write_file(os.path.join(include_dir, f'cpg_workspace.h'), 'w', 
+                getattr(utils, f'write_workspace_prot'),
+                configuration, prim_variable_info, dual_variable_info, 
+                parameter_info, parameter_canon, solver_interface, True)
+    
+    write_file(os.path.join(src_dir, f'cpg_workspace.c'), 'w', 
+                getattr(utils, f'write_workspace_def'),
+                configuration, prim_variable_info, dual_variable_info, 
+                parameter_info, parameter_canon, solver_interface, True)
+    write_file(os.path.join(include_dir, f'cpg_solve.h'), 'w', 
+                getattr(utils, f'write_solve_prot'),
+                configuration, prim_variable_info, dual_variable_info, 
+                parameter_info, parameter_canon, solver_interface, parameter_canon_gradient)
+    
+    write_file(os.path.join(src_dir, f'cpg_solve.c'), 'w', 
+                getattr(utils, f'write_solve_def'),
+                configuration, prim_variable_info, dual_variable_info, 
+                parameter_info, parameter_canon, solver_interface, parameter_canon_gradient)
+    if configuration.gradient_two_stage:
+        # switch back to second-stage pointer for remainder of code generation
+        solver_interface.ws_ptrs.primal_solution = primal_solution_ptr
+        solver_interface.ws_ptrs.dual_solution = dual_solution_ptr
+    
+    if configuration.gradient:
+        if configuration.gradient_two_stage:
+            # write extra workspace files for gradient
+            write_file(os.path.join(include_dir, 'cpg_gradient_workspace.h'), 'w', 
+                    getattr(utils, 'write_workspace_prot'),
+                    configuration, canon_first.prim_variable_info, canon_first.dual_variable_info, 
+                    canon_first.parameter_info, canon_first.parameter_canon, gradient_interface, False)
+            
+            write_file(os.path.join(src_dir, 'cpg_gradient_workspace.c'), 'w', 
+                    getattr(utils, 'write_workspace_def'),
+                    configuration, canon_first.prim_variable_info, canon_first.dual_variable_info, 
+                    canon_first.parameter_info, canon_first.parameter_canon, gradient_interface, False)
+            
+            # write gradient files
+            write_file(os.path.join(include_dir, 'cpg_gradient.h'), 'w', 
+                    getattr(gradient_interface, 'write_gradient_prot'),
+                    configuration, canon_first.prim_variable_info, canon_first.dual_variable_info,
+                    canon_second.prim_variable_info, canon_second.dual_variable_info,
+                    canon_first.parameter_info, canon_first.parameter_canon, solver_interface)
+            
+            write_file(os.path.join(src_dir, 'cpg_gradient.c'), 'w', 
+                    getattr(gradient_interface, 'write_gradient_def'),
+                    configuration, canon_first.prim_variable_info, canon_first.dual_variable_info,
+                    canon_second.prim_variable_info, canon_second.dual_variable_info,
+                    canon_first.parameter_info, canon_first.parameter_canon, solver_interface)
+        else:
+            write_file(os.path.join(include_dir, 'cpg_gradient.h'), 'w', 
+                    getattr(solver_interface, 'write_gradient_prot'),
+                    configuration, prim_variable_info, dual_variable_info,
+                    None, None,
+                    parameter_info, parameter_canon, solver_interface)
+            
+            write_file(os.path.join(src_dir, 'cpg_gradient.c'), 'w', 
+                    getattr(solver_interface, 'write_gradient_def'),
+                    configuration, prim_variable_info, dual_variable_info,
+                    None, None,
+                    parameter_info, parameter_canon, solver_interface)
     
     write_file(os.path.join(src_dir, 'cpg_example.c'), 'w', 
                write_example_def, 
-               configuration, variable_info, dual_variable_info, parameter_info)
+               configuration, prim_variable_info, dual_variable_info, parameter_info)
     
     write_file(os.path.join(cpp_dir, 'include', 'cpg_module.hpp'), 'w',
                write_module_prot,
-               configuration, parameter_info, variable_info, 
+               configuration, parameter_info, prim_variable_info, 
                dual_variable_info, solver_interface)
 
     write_file(os.path.join(cpp_dir, 'src', 'cpg_module.cpp'), 'w',
                write_module_def,
-               configuration, variable_info, dual_variable_info, 
+               configuration, prim_variable_info, dual_variable_info, 
                parameter_info, solver_interface)
 
     write_file(os.path.join(solver_code_dir, 'CMakeLists.txt'), 'a',
                write_canon_cmake,
-               configuration, solver_interface)
+               'solver', solver_interface)
+    
+    if configuration.gradient_two_stage:
+        read_write_file(os.path.join(osqp_code_dir, 'CMakeLists.txt'),
+                        lambda x: x.replace(
+                            '${CMAKE_CURRENT_SOURCE_DIR}/src/*.c',
+                            '${CMAKE_CURRENT_SOURCE_DIR}/src/qdldl*.c\n'
+                            ), 
+                        )
+        write_file(os.path.join(osqp_code_dir, 'CMakeLists.txt'), 'a',
+                   write_canon_cmake,
+                   'osqp', gradient_interface)
 
     write_file(os.path.join(configuration.code_dir, 'cpg_solver.py'), 'w',
                write_method,
-               configuration, variable_info, dual_variable_info, 
+               configuration, prim_variable_info, dual_variable_info, 
                parameter_info, solver_interface)
 
     write_file(os.path.join(configuration.code_dir, 'problem.pickle'), 'wb',
@@ -391,7 +578,7 @@ def write_c_code(problem: cp.Problem, configuration: Configuration, variable_inf
 
     read_write_file(os.path.join(configuration.code_dir, 'README.html'),
                     replace_html_data,
-                    configuration, variable_info, dual_variable_info, 
+                    configuration, prim_variable_info, dual_variable_info, 
                     parameter_info, solver_interface)
     
 
@@ -401,15 +588,8 @@ def adjust_prefix(prefix):
     return prefix + '_' if prefix else prefix
 
 
-def get_write_method(name, typ, solver_interface):
-    if name == 'gradient':
-        return getattr(solver_interface, f'write_{name}_{typ}')
-    else:
-        return getattr(utils, f'write_{name}_{typ}')
-
-
-def get_configuration(code_dir, solver_name, unroll, prefix, gradient) -> Configuration:
-    return Configuration(code_dir, solver_name, unroll, adjust_prefix(prefix), gradient)
+def get_configuration(code_dir, solver_name, unroll, prefix, gradient, gradient_two_stage) -> Configuration:
+    return Configuration(code_dir, solver_name, unroll, adjust_prefix(prefix), gradient, gradient_two_stage)
 
 
 def get_parameter_info(p_prob) -> ParameterInfo:

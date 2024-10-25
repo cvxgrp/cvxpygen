@@ -3,22 +3,22 @@
 #include "qdldl.h"
 #include "cpg_osqp_grad_workspace.h"
 
-const cpg_int n = $n$;
-const cpg_int N = $N$;
-cpg_float cpg_grad_a, cpg_grad_a_bar, cpg_grad_gamma;
+const cpg_grad_int n = $n$;
+const cpg_grad_int N = $N$;
+cpg_grad_float cpg_grad_a, cpg_grad_a_bar, cpg_grad_gamma;
 
 
 // Function to insert a non-zero entry into the sparse matrix
-void insert_nonzero(cpg_csc *L, cpg_int row, cpg_int col) {
+void insert_nonzero(cpg_grad_csc *L, cpg_grad_int row, cpg_grad_int col) {
     if (row < col) return; // Ensure lower triangular property
 
-    cpg_int start = L->p[col];
-    cpg_int end = L->p[col + 1];
-    cpg_int insert_pos = end;
+    cpg_grad_int start = L->p[col];
+    cpg_grad_int end = L->p[col + 1];
+    cpg_grad_int insert_pos = end;
     
     // Binary search for the row within the column
     while (start < end) {
-        cpg_int mid = start + (end - start) / 2;
+        cpg_grad_int mid = start + (end - start) / 2;
         if (L->i[mid] == row) {
             return; // Non-zero already exists, no need to insert
         } else if (L->i[mid] < row) {
@@ -33,7 +33,7 @@ void insert_nonzero(cpg_csc *L, cpg_int row, cpg_int col) {
     L->nnz++;
 
     // Move existing elements one step forward to make space for the new one
-    for (cpg_int p = L->nnz - 1; p > insert_pos; p--) {
+    for (cpg_grad_int p = L->nnz - 1; p > insert_pos; p--) {
         L->i[p] = L->i[p - 1];
         L->x[p] = L->x[p - 1];
     }
@@ -43,22 +43,22 @@ void insert_nonzero(cpg_csc *L, cpg_int row, cpg_int col) {
     L->x[insert_pos] = 0.0;
 
     // Update the column pointers
-    for (cpg_int j = col + 1; j <= N; j++) {
+    for (cpg_grad_int j = col + 1; j <= N; j++) {
         L->p[j]++;
     }
 }
 
 // Function to insert a non-zero entry into the sparse matrix
-void insert_nonzero_and_value(cpg_csc *L, cpg_int row, cpg_int col, cpg_float value) {
+void insert_nonzero_and_value(cpg_grad_csc *L, cpg_grad_int row, cpg_grad_int col, cpg_grad_float value) {
     if (row < col) return; // Ensure lower triangular property
 
-    cpg_int start = L->p[col];
-    cpg_int end = L->p[col + 1];
-    cpg_int insert_pos = end;
+    cpg_grad_int start = L->p[col];
+    cpg_grad_int end = L->p[col + 1];
+    cpg_grad_int insert_pos = end;
     
     // Binary search for the row within the column
     while (start < end) {
-        cpg_int mid = start + (end - start) / 2;
+        cpg_grad_int mid = start + (end - start) / 2;
         if (L->i[mid] == row) {
             L->x[mid] = value;
             return; // Non-zero already exists, no need to insert
@@ -74,7 +74,7 @@ void insert_nonzero_and_value(cpg_csc *L, cpg_int row, cpg_int col, cpg_float va
     L->nnz++;
 
     // Move existing elements one step forward to make space for the new one
-    for (cpg_int p = L->nnz - 1; p > insert_pos; p--) {
+    for (cpg_grad_int p = L->nnz - 1; p > insert_pos; p--) {
         L->i[p] = L->i[p - 1];
         L->x[p] = L->x[p - 1];
     }
@@ -84,18 +84,18 @@ void insert_nonzero_and_value(cpg_csc *L, cpg_int row, cpg_int col, cpg_float va
     L->x[insert_pos] = value;
 
     // Update the column pointers
-    for (cpg_int j = col + 1; j <= N; j++) {
+    for (cpg_grad_int j = col + 1; j <= N; j++) {
         L->p[j]++;
     }
 }
 
 // Function to remove a non-zero entry from the sparse matrix
-void remove_nonzero(cpg_csc *L, cpg_int row, cpg_int col) {
+void remove_nonzero(cpg_grad_csc *L, cpg_grad_int row, cpg_grad_int col) {
     if (row < col) return; // Ensure lower triangular property
 
     // Check if the entry exists and find its position
-    cpg_int remove_pos = -1;
-    for (cpg_int p = L->p[col]; p < L->p[col + 1]; p++) {
+    cpg_grad_int remove_pos = -1;
+    for (cpg_grad_int p = L->p[col]; p < L->p[col + 1]; p++) {
         if (L->i[p] == row) {
             if (fabs(L->x[p]) > 1e-6) {
                 return; // Entry is numerically non-zero, do not remove
@@ -110,7 +110,7 @@ void remove_nonzero(cpg_csc *L, cpg_int row, cpg_int col) {
     }
 
     // Shift elements to remove the entry
-    for (cpg_int p = remove_pos; p < L->nnz - 1; p++) {
+    for (cpg_grad_int p = remove_pos; p < L->nnz - 1; p++) {
         L->i[p] = L->i[p + 1];
         L->x[p] = L->x[p + 1];
     }
@@ -119,18 +119,18 @@ void remove_nonzero(cpg_csc *L, cpg_int row, cpg_int col) {
     L->nnz--;
 
     // Update the column pointers
-    for (cpg_int j = col + 1; j <= N; j++) {
+    for (cpg_grad_int j = col + 1; j <= N; j++) {
         L->p[j]--;
     }
 }
 
 // Function to perform symbolic update
-void symbolic_ldl_update(cpg_csc *L, cpg_int *w_indices, cpg_int w_size, cpg_int offset) {
-    for (cpg_int k = 0; k < w_size; k++) {
-        cpg_int col = w_indices[k] + offset;
-        for (cpg_int j = k + 1; j < w_size; j++) {
-            cpg_int row = w_indices[j] + offset;
-            cpg_int ind = (2*N-3-col)*col/2+row-1;
+void symbolic_ldl_update(cpg_grad_csc *L, cpg_grad_int *w_indices, cpg_grad_int w_size, cpg_grad_int offset) {
+    for (cpg_grad_int k = 0; k < w_size; k++) {
+        cpg_grad_int col = w_indices[k] + offset;
+        for (cpg_grad_int j = k + 1; j < w_size; j++) {
+            cpg_grad_int row = w_indices[j] + offset;
+            cpg_grad_int ind = (2*N-3-col)*col/2+row-1;
             if ($workspace$.Lmask[ind] == 0) {
                 $workspace$.Lmask[ind] = 1;
                 insert_nonzero(L, row, col);
@@ -140,20 +140,20 @@ void symbolic_ldl_update(cpg_csc *L, cpg_int *w_indices, cpg_int w_size, cpg_int
 }
 
 // Function to perform symbolic downdate
-void symbolic_ldl_downdate(cpg_csc *L, cpg_int *w_indices, cpg_int w_size, cpg_int offset) {
-    for (cpg_int k = 0; k < w_size; k++) {
-        cpg_int col = w_indices[k] + offset;
-        for (cpg_int j = k + 1; j < w_size; j++) {
-            cpg_int row = w_indices[j] + offset;
+void symbolic_ldl_downdate(cpg_grad_csc *L, cpg_grad_int *w_indices, cpg_grad_int w_size, cpg_grad_int offset) {
+    for (cpg_grad_int k = 0; k < w_size; k++) {
+        cpg_grad_int col = w_indices[k] + offset;
+        for (cpg_grad_int j = k + 1; j < w_size; j++) {
+            cpg_grad_int row = w_indices[j] + offset;
             remove_nonzero(L, row, col);
         }
     }
 }
 
 
-void cpg_rank_1_update(cpg_int sigma, cpg_int offset) {
+void cpg_rank_1_update(cpg_grad_int sigma, cpg_grad_int offset) {
     
-    cpg_int i, j, k;
+    cpg_grad_int i, j, k;
     
     cpg_grad_a = 1.0;
 
@@ -176,15 +176,15 @@ void cpg_rank_1_update(cpg_int sigma, cpg_int offset) {
 }
 
 
-void cpg_ldl_delete(cpg_int index) {
+void cpg_ldl_delete(cpg_grad_int index) {
 
-    cpg_int i, j, k;
+    cpg_grad_int i, j, k;
 
     // Set w
     for (i = 0; i < N; i++) {
         $workspace$.w[i] = 0.0;
     }
-    cpg_int wsize = $workspace$.L->p[index + 1] - $workspace$.L->p[index];
+    cpg_grad_int wsize = $workspace$.L->p[index + 1] - $workspace$.L->p[index];
     for (i = 0; i < wsize; i++) {
         $workspace$.wi[i] = $workspace$.L->i[$workspace$.L->p[index] + i] - index - 1; // w indices are local
         $workspace$.w[index + 1 + $workspace$.wi[i]] = $workspace$.L->x[$workspace$.L->p[index] + i] * sqrt(-$workspace$.D[index]);
@@ -219,15 +219,15 @@ void cpg_ldl_delete(cpg_int index) {
 }
 
 
-void cpg_ldl_add(cpg_int index) {
+void cpg_ldl_add(cpg_grad_int index) {
 
-    cpg_int i, j, k, r;
+    cpg_grad_int i, j, k, r;
 
     // Solve upper left triangular system
 
     // fill index-th (partial) column of K (starting from 0 to index-1) into c
     for (i = 0; i < N; i++) $workspace$.c[i] = 0.0;
-    cpg_int c_size = 0;
+    cpg_grad_int c_size = 0;
     for (k = $workspace$.K->p[index]; k < $workspace$.K->p[index + 1] - 1; k++) {
         i = $workspace$.K->i[k];
         $workspace$.c[i] = $workspace$.K->x[k];
@@ -244,7 +244,7 @@ void cpg_ldl_add(cpg_int index) {
     }
 
     // Solve Dl = l
-    cpg_int l_size = 0;
+    cpg_grad_int l_size = 0;
     for (i = 0; i < index; i++) {
         if ($workspace$.l[i] != 0.0) {
             $workspace$.lx[l_size] = $workspace$.l[i] / $workspace$.D[i];
@@ -306,7 +306,7 @@ void cpg_ldl_add(cpg_int index) {
     for (i = 0; i < N; i++) {
         $workspace$.w[i] = 0.0;
     }
-    cpg_int wsize = l_size;
+    cpg_grad_int wsize = l_size;
     for (i = 0; i < wsize; i++) {
         $workspace$.wi[i] = $workspace$.li[i]; // w indices are local
         $workspace$.w[index + 1 + $workspace$.wi[i]] = $workspace$.lx[i] * sqrt(-$workspace$.D[index]);
@@ -322,7 +322,7 @@ void cpg_ldl_add(cpg_int index) {
 
 void cpg_ldl_symbolic() {
 
-    cpg_int nnz = QDLDL_etree(
+    cpg_grad_int nnz = QDLDL_etree(
         N,
         $workspace$.K->p, $workspace$.K->i,
         $workspace$.iwork, $workspace$.Lnz, $workspace$.etree
@@ -343,17 +343,17 @@ void cpg_ldl_numeric() {
 
 }
 
-void cpg_P_to_K(cpg_csc *P, cpg_csc *K, cpg_csc *K_true) {
+void cpg_P_to_K(cpg_grad_csc *P, cpg_grad_csc *K, cpg_grad_csc *K_true) {
 
-    for (cpg_int col = 0; col < n; col++) {
+    for (cpg_grad_int col = 0; col < n; col++) {
 
-        for (cpg_int idx = P->p[col]; idx < P->p[col + 1]; idx++) {
+        for (cpg_grad_int idx = P->p[col]; idx < P->p[col + 1]; idx++) {
 
-            cpg_int row = P->i[idx];
-            cpg_float value = P->x[idx];
+            cpg_grad_int row = P->i[idx];
+            cpg_grad_float value = P->x[idx];
 
             // Upper left block insertion into K
-            for (cpg_int k_idx = K->p[col]; k_idx < K->p[col + 1]; k_idx++) {
+            for (cpg_grad_int k_idx = K->p[col]; k_idx < K->p[col + 1]; k_idx++) {
                 if (K->i[k_idx] == row) {
                     K->x[k_idx] = value;
                     if (row == col) {
@@ -364,7 +364,7 @@ void cpg_P_to_K(cpg_csc *P, cpg_csc *K, cpg_csc *K_true) {
             }
 
             // Upper left block insertion into K_true
-            for (cpg_int k_idx = K_true->p[row]; k_idx < K_true->p[row + 1]; k_idx++) {
+            for (cpg_grad_int k_idx = K_true->p[row]; k_idx < K_true->p[row + 1]; k_idx++) {
                 if (K_true->i[k_idx] == col) {
                     K_true->x[k_idx] = value;
                     break;
@@ -377,26 +377,26 @@ void cpg_P_to_K(cpg_csc *P, cpg_csc *K, cpg_csc *K_true) {
 
 }
 
-void cpg_A_to_K(cpg_csc *A, cpg_csc *K, cpg_csc *K_true) {
+void cpg_A_to_K(cpg_grad_csc *A, cpg_grad_csc *K, cpg_grad_csc *K_true) {
 
     // Fill A (csc format) into lower left block and transpose into upper right block of K (column-major)
-    for (cpg_int col = 0; col < n; col++) {
+    for (cpg_grad_int col = 0; col < n; col++) {
         
         // Iterate over each non-zero entry in the column
-        for (cpg_int idx = A->p[col]; idx < A->p[col + 1]; idx++) {
-            cpg_int row = A->i[idx];      // Row index in A
-            cpg_float value = A->x[idx];  // Value in A
+        for (cpg_grad_int idx = A->p[col]; idx < A->p[col + 1]; idx++) {
+            cpg_grad_int row = A->i[idx];      // Row index in A
+            cpg_grad_float value = A->x[idx];  // Value in A
             
             // Compute indices for K            
-            cpg_int upper_right_row = col;    // Upper right block: row in K
-            cpg_int upper_right_col = n + row; // Upper right block: col in K
+            cpg_grad_int upper_right_row = col;    // Upper right block: row in K
+            cpg_grad_int upper_right_col = n + row; // Upper right block: col in K
 
             // Compute indices for lower left block
-            cpg_int lower_left_row = n + row;    // Lower left block: row in K
-            cpg_int lower_left_col = col;    // Lower left block: col in K
+            cpg_grad_int lower_left_row = n + row;    // Lower left block: row in K
+            cpg_grad_int lower_left_col = col;    // Lower left block: col in K
             
             // Find the position in K for upper right block
-            for (cpg_int k_idx = K->p[upper_right_col]; k_idx < K->p[upper_right_col + 1]; k_idx++) {
+            for (cpg_grad_int k_idx = K->p[upper_right_col]; k_idx < K->p[upper_right_col + 1]; k_idx++) {
                 if (K->i[k_idx] == upper_right_row) {
                     K->x[k_idx] = value;
                     break;
@@ -404,7 +404,7 @@ void cpg_A_to_K(cpg_csc *A, cpg_csc *K, cpg_csc *K_true) {
             }
 
             // Find the position in K_true (csr) for upper right block
-            for (cpg_int k_idx = K_true->p[upper_right_row]; k_idx < K_true->p[upper_right_row + 1]; k_idx++) {
+            for (cpg_grad_int k_idx = K_true->p[upper_right_row]; k_idx < K_true->p[upper_right_row + 1]; k_idx++) {
                 if (K_true->i[k_idx] == upper_right_col) {
                     K_true->x[k_idx] = value;
                     break;
@@ -412,7 +412,7 @@ void cpg_A_to_K(cpg_csc *A, cpg_csc *K, cpg_csc *K_true) {
             }
 
             // Find the position in K_true (csr) for lower left block
-            for (cpg_int k_idx = K_true->p[lower_left_row]; k_idx < K_true->p[lower_left_row + 1]; k_idx++) {
+            for (cpg_grad_int k_idx = K_true->p[lower_left_row]; k_idx < K_true->p[lower_left_row + 1]; k_idx++) {
                 if (K_true->i[k_idx] == lower_left_col) {
                     K_true->x[k_idx] = value;
                     break;
@@ -428,7 +428,7 @@ void cpg_A_to_K(cpg_csc *A, cpg_csc *K, cpg_csc *K_true) {
 
 void cpg_osqp_gradient() {
 
-    cpg_int i, j, k, l;
+    cpg_grad_int i, j, k, l;
 
     // Check active constraints
     for (i = 0; i < N - n; i++) {
