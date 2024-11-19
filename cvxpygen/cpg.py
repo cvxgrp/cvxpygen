@@ -30,7 +30,7 @@ from scipy import sparse
 from subprocess import call
 from cvxpy.problems.objective import Maximize
 from cvxpy.cvxcore.python import canonInterface as cI
-from cvxpy.expressions.variable import upper_tri_to_full
+from cvxpy.atoms.affine.upper_tri import upper_tri_to_full
 
 
 def generate_code(problem, code_dir='CPG_code', solver=None, solver_opts=None,
