@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 MAJOR = 0
 MINOR = 3
-MICRO = 6
+MICRO = 7
 VERSION = '%d.%d.%d' % (MAJOR, MINOR, MICRO)
 
 
@@ -39,7 +39,7 @@ setup(
     include_package_data=True,
     install_requires=[
         'cmake >= 3.5',
-        'cvxpy >= 1.4.1',
+        'cvxpy >= 1.6.0',
         'pybind11 >= 2.8',
         'osqp >= 0.6.2, < 1.0.0',
         'clarabel >= 0.6.0',
