@@ -6,7 +6,7 @@ This generated solver is specific to the problem family and accepts different pa
 In particular, this solver is suitable for deployment on embedded systems.
 In addition, CVXPYgen creates a Python wrapper for prototyping and desktop (non-embedded) applications.
 
-An overview of CVXPYgen can be found in our [manuscript](https://web.stanford.edu/~boyd/papers/cvxpygen.html).
+An overview of CVXPYgen can be found in our [slides and manuscript](https://web.stanford.edu/~boyd/papers/cvxpygen.html).
 
 CVXPYgen accepts CVXPY problems that are compliant with [Disciplined Convex Programming (DCP)](https://www.cvxpy.org/tutorial/dcp/index.html).
 DCP is a system for constructing mathematical expressions with known curvature from a given library of base functions. 
@@ -62,13 +62,13 @@ import cvxpy as cp
 
 m, n = 3, 2
 x = cp.Variable(n, name='x')
-A = cp.Parameter((m, n), name='A', sparsity=[(0, 0), (0, 1), (1, 1)])
+A = cp.Parameter((m, n), name='A', sparsity=((0, 0, 1), (0, 1, 1)))
 b = cp.Parameter(m, name='b')
 problem = cp.Problem(cp.Minimize(cp.sum_squares(A @ x - b)), [x >= 0])
 ```
 
 Specify the `name` attribute for variables and parameters to recognize them after generating code.
-The attribute `sparsity` is a list of 2-tuples that indicate the coordinates of nonzero entries of matrix `A`.
+The attribute `sparsity` is a tuple of row and column indices of the nonzero entries of matrix `A`.
 Parameter sparsity is only taken into account for matrices.
 
 Assign parameter values and test-solve.
@@ -118,7 +118,7 @@ import sys
 
 # import extension module and register custom CVXPY solve method
 from nonneg_LS.cpg_solver import cpg_solve
-problem.register_solve('cpg', cpg_solve)
+problem.register_solve('CPG', cpg_solve)
 
 # solve problem conventionally
 t0 = time.time()
@@ -131,7 +131,7 @@ sys.stdout.write('Objective function value: %.6f\n' % val)
 
 # solve problem with C code via python wrapper
 t0 = time.time()
-val = problem.solve(method='cpg', updated_params=['A', 'b'], verbose=False)
+val = problem.solve(method='CPG', updated_params=['A', 'b'], verbose=False)
 t1 = time.time()
 sys.stdout.write('\nCVXPYgen\nSolve time: %.3f ms\n' % (1000 * (t1 - t0)))
 sys.stdout.write('Primal solution: x = [%.6f, %.6f]\n' % tuple(x.value))
@@ -148,7 +148,7 @@ Here, we use `verbose=False` to suppress printing.
 The list of changeable settings differs by solver and is documented in `<code_dir>/README.html` after code generation.
 
 Comparing the standard and codegen methods for this example, both the solutions and objective values are close.
-Especially for smaller problems like this, the new solve method ``'cpg'`` is significantly faster than solving without code generation.
+Especially for smaller problems like this, the new solve method ``'CPG'`` is significantly faster than solving without code generation.
 
 ### 3. Executable
 

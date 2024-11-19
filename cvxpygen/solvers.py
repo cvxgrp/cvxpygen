@@ -3,7 +3,7 @@ import sys
 import shutil
 import warnings
 from abc import ABC, abstractmethod
-from platform import system
+import platform
 
 import numpy as np
 import scipy.sparse as sp
@@ -21,7 +21,7 @@ from cvxpy.reductions.solvers.conic_solvers.clarabel_conif import CLARABEL
 
 
 def get_interface_class(solver_name: str) -> "SolverInterface":
-    if system() == 'Windows' and solver_name.upper() == 'CLARABEL':
+    if platform.system() == 'Windows' and solver_name.upper() == 'CLARABEL':
         raise ValueError(f'Clarabel solver currently unsupported on Windows.')
     mapping = {
         'OSQP': (OSQPInterface, OSQP),
@@ -1366,10 +1366,26 @@ class ClarabelInterface(SolverInterface):
             read_write_file(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'),
                             lambda x: x.replace('set(CLARABEL_FEATURE_SDP "none"', 'set(CLARABEL_FEATURE_SDP "sdp-openblas"'))
 
-        # adjust paths in Clarabel.cpp/rust_wrapper/CMakeLists.txt
+        # adjust Clarabel.cpp/rust_wrapper/CMakeLists.txt
         replacements = [
             ('${CMAKE_SOURCE_DIR}/', '${CMAKE_SOURCE_DIR}/solver_code/'),
-            ('/libclarabel_c.lib', '/clarabel_c.lib')  # until fixed on Clarabel side
+            ('/libclarabel_c.lib', '/clarabel_c.lib'),  # until fixed on Clarabel side
+            (
+                'set(clarabel_c_output_directory "${CMAKE_SOURCE_DIR}/solver_code/rust_wrapper/target/release")',
+                'if (ARM64)\n'
+                '        message(STATUS "ARM64 detected")\n'
+                '        set(clarabel_c_output_directory "${CMAKE_SOURCE_DIR}/solver_code/rust_wrapper/target/aarch64-apple-darwin/release")\n'
+                '    else()\n'
+                '        set(clarabel_c_output_directory "${CMAKE_SOURCE_DIR}/solver_code/rust_wrapper/target/release")\n'
+                '    endif()'
+            ),
+            (
+                '# Add the cargo project as a custom target',
+                '# Add the cargo project as a custom target\n'
+                'if(ARM64)\n'
+                '   set(clarabel_c_build_flags "${clarabel_c_build_flags};--target;aarch64-apple-darwin")\n'
+                'endif()'
+            )
         ]
         read_write_file(os.path.join(code_dir, 'c', 'solver_code', 'rust_wrapper', 'CMakeLists.txt'),
                         lambda x: multiple_replace(x, replacements))
@@ -1379,9 +1395,10 @@ class ClarabelInterface(SolverInterface):
                         lambda x: x.replace('cpp/', 'c/'))
 
         # adjust setup.py
+        release_dir = "'aarch64-apple-darwin/release'" if platform.system() == "Darwin" and platform.machine() == "arm64" else "'release'"
         read_write_file(os.path.join(code_dir, 'setup.py'),
                         lambda x: x.replace("extra_objects=[cpg_lib])",
-                                            "extra_objects=[cpg_lib, os.path.join(cpg_dir, 'solver_code', 'rust_wrapper', 'target', 'release', 'libclarabel_c.a')])"))
+                                            f"extra_objects=[cpg_lib, os.path.join(cpg_dir, 'solver_code', 'rust_wrapper', 'target', {release_dir}, 'libclarabel_c.a')])"))
 
     
     def declare_workspace(self, f, prefix, parameter_canon) -> None:

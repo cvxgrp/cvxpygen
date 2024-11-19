@@ -14,7 +14,7 @@ if __name__ == "__main__":
     # define CVXPY problem
     m, n = 3, 2
     x = cp.Variable(n, name='x')
-    A = cp.Parameter((m, n), name='A', sparsity=[(0, 0), (0, 1), (1, 1)])
+    A = cp.Parameter((m, n), name='A', sparsity=((0, 0, 1), (0, 1, 1)))
     b = cp.Parameter(m, name='b')
     problem = cp.Problem(cp.Minimize(cp.sum_squares(A @ x - b)), [x >= 0])
 
@@ -34,10 +34,6 @@ if __name__ == "__main__":
     2. Solve & Compare
     '''
 
-    # import extension module and register custom CVXPY solve method
-    from nonneg_LS.cpg_solver import cpg_solve
-    problem.register_solve('cpg', cpg_solve)
-
     # solve problem conventionally
     t0 = time.time()
     val = problem.solve(solver='SCS')
@@ -49,7 +45,7 @@ if __name__ == "__main__":
 
     # solve problem with C code via python wrapper
     t0 = time.time()
-    val = problem.solve(method='cpg', updated_params=['A', 'b'], verbose=False)
+    val = problem.solve(method='CPG', updated_params=['A', 'b'], verbose=False)
     t1 = time.time()
     sys.stdout.write('\nCVXPYgen\nSolve time: %.3f ms\n' % (1000 * (t1 - t0)))
     sys.stdout.write('Primal solution: x = [%.6f, %.6f]\n' % tuple(x.value))
