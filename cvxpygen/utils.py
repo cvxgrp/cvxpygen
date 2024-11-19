@@ -1681,16 +1681,14 @@ def write_method(f, configuration, variable_info, dual_variable_info, parameter_
     for name, shape in parameter_info.name_to_shape.items():
         if name in parameter_info.name_to_sparsity.keys():
             if parameter_info.name_to_sparsity_type[name] == 'diag':
-                f.write(f'    {name}_coordinates_i = np.arange(n)\n')
-                f.write(f'    {name}_coordinates_j = np.arange(n)\n')
+                f.write(f'    {name}_sparsity = (np.arange(n), np.arange(n))\n')
             else:
-                f.write(f'    {name}_coordinates_i = [c[0] for c in prob.param_dict["{name}"].attributes["sparsity"]]\n')
-                f.write(f'    {name}_coordinates_j = [c[1] for c in prob.param_dict["{name}"].attributes["sparsity"]]\n')
+                f.write(f'    {name}_sparsity = prob.param_dict["{name}"].attributes["sparsity"]\n')
             f.write(f'    prob.param_dict["{name}"].gradient = np.zeros(prob.param_dict["{name}"].shape)\n')
-            f.write(f'    prob.param_dict["{name}"].gradient[{name}_coordinates_i, {name}_coordinates_j] = pdelta.{name}\n')
+            f.write(f'    prob.param_dict["{name}"].gradient[{name}_sparsity] = pdelta.{name}\n')
         else:
             if len(shape) == 2:
-                f.write(f'    prob.param_dict[\'{name}\'].gradient = np.array(pdelta.{name}).reshape(({shape[0]}, {shape[1]}), order=\'F\')\n')
+                f.write(f'    prob.param_dict[\'{name}\'].gradient = np.array(pdelta.{name}).reshape({shape}, order=\'F\')\n')
             elif len(shape) == 1:
                 f.write(f'    prob.param_dict[\'{name}\'].gradient = np.array(pdelta.{name}).reshape({shape[0]})\n')
             else:
