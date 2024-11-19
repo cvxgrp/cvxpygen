@@ -1303,8 +1303,8 @@ def write_method(f, configuration, variable_info, dual_variable_info, parameter_
             if parameter_info.name_to_sparsity_type[name] == 'diag':
                 f.write(f'    {name}_coordinates = np.arange(0, n**2, n+1)\n')
             else:
-                f.write(f'    {name}_coordinates = np.unique([coord[0]+coord[1]*n for coord in '
-                        f'param_dict["{name}"].attributes["sparsity"]])\n')
+                f.write(f'    {name}_coordinates = np.unique([r+c*n for r, c in '
+                        f'zip(*param_dict["{name}"].attributes["sparsity"])])\n')
             if size == 1:
                 f.write(f'    par.{name} = param_dict["{name}"].value[{name}_coordinates]\n')
             else:

@@ -55,8 +55,10 @@ def MPC_problem():
     Psqrt = cp.Parameter((n, n), name='Psqrt', diag=True)
     Qsqrt = cp.Parameter((n, n), name='Qsqrt', diag=True)
     Rsqrt = cp.Parameter((m, m), name='Rsqrt', diag=True)
-    A = cp.Parameter((n, n), name='A', sparsity=[(i, i) for i in range(n)] + [(i, 3+i) for i in range(n // 2)])
-    B = cp.Parameter((n, m), name='B', sparsity=[(3+i, i) for i in range(n // 2)])
+    nonzeros_A = [(i, i) for i in range(n)] + [(i, 3+i) for i in range(n // 2)]
+    A = cp.Parameter((n, n), name='A', sparsity=tuple(zip(*nonzeros_A)))
+    nonzeros_B = [(3+i, i) for i in range(n // 2)]
+    B = cp.Parameter((n, m), name='B', sparsity=tuple(zip(*nonzeros_B)))
     x_init = cp.Parameter(n, name='x_init')
 
     # define objective

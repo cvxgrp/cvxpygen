@@ -423,10 +423,10 @@ def get_parameter_info(p_prob) -> ParameterInfo:
     user_p_name_to_sparsity_type = {}
     user_p_sparsity_mask = np.ones(user_p_total_size + 1, dtype=bool)
     for p in p_prob.parameters:
-        if p.attributes['sparsity'] is not None:
-            user_p_name_to_size_usp[p.name()] = len(p.attributes['sparsity'])
-            user_p_name_to_sparsity[p.name()] = np.sort([coord[0] + p.shape[0] * coord[1]
-                                                         for coord in p.attributes['sparsity']])
+        if p.attributes['sparsity']:
+            user_p_name_to_size_usp[p.name()] = len(p.attributes['sparsity'][0])
+            user_p_name_to_sparsity[p.name()] = np.sort([r + p.shape[0] * c
+                                                         for r, c in zip(*p.attributes['sparsity'])])
             if p.attributes['diag']:
                 user_p_name_to_sparsity_type[p.name()] = 'diag'
             else:
@@ -477,32 +477,32 @@ def get_parameter_info(p_prob) -> ParameterInfo:
 
 def handle_sparsity(p_prob: cp.Problem) -> None:
     for param in p_prob.parameters:
-        sparsity = param.attributes['sparsity']
-
         # Check and warn about inappropriate sparsity for scalar and vector
-        if sparsity is not None:
+        if param.attributes['sparsity']:
             if param.size == 1 or max(param.shape) == param.size:
                 param_type = 'scalar' if param.size == 1 else 'vector'
                 warnings.warn(f'Ignoring sparsity pattern for {param_type} parameter {param.name()}!')
                 param.attributes['sparsity'] = None
             else:
                 invalid_sparsity = False
-                for coord in sparsity:
-                    if coord[0] < 0 or coord[1] < 0 or coord[0] >= param.shape[0] or coord[1] >= param.shape[1]:
+                for r, c in zip(*param.attributes['sparsity']):
+                    if r < 0 or c < 0 or r >= param.shape[0] or c >= param.shape[1]:
                         warnings.warn(f'Invalid sparsity pattern for parameter {param.name()} - out of range! Ignoring sparsity pattern.')
                         param.attributes['sparsity'] = None
                         invalid_sparsity = True
                         break
                 if not invalid_sparsity:
-                    param.attributes['sparsity'] = list(set(param.attributes['sparsity']))
+                    coordinates_unique = set(zip(*param.attributes['sparsity']))
+                    param.attributes['sparsity'] = tuple(zip(*coordinates_unique))
         elif param.attributes['diag']:
-            param.attributes['sparsity'] = [(i, i) for i in range(param.shape[0])]
+            size = param.shape[0]
+            param.attributes['sparsity'] = (np.arange(size), np.arange(size))
 
         # Zero out non-sparse values
-        if param.attributes['sparsity'] is not None and param.value is not None:
+        if param.attributes['sparsity'] and param.value is not None:
             for i in range(param.shape[0]):
                 for j in range(param.shape[1]):
-                    if (i, j) not in param.attributes['sparsity'] and param.value[i, j] != 0:
+                    if (i, j) not in zip(*param.attributes['sparsity']) and param.value[i, j] != 0:
                         warnings.warn(f'Ignoring nonzero value outside of sparsity pattern for parameter {param.name()}!')
                         param.value[i, j] = 0
 
