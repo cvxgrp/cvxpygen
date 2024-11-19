@@ -1674,7 +1674,7 @@ def write_method(f, configuration, variable_info, dual_variable_info, parameter_
     f.write(f'    vdelta = cpg_module.{configuration.prefix}cpg_vdelta()\n')
     for name, size in variable_info.name_to_size.items():
         if size == 1:
-            f.write(f'    vdelta.{name} = prob.var_dict["{name}"].gradient\n')
+            f.write(f'    vdelta.{name} = squeeze_scalar(prob.var_dict["{name}"].gradient)\n')
         else:
             f.write(f'    vdelta.{name} = list(prob.var_dict["{name}"].gradient.flatten(order="F"))\n')
     f.write('    pdelta = cpg_module.gradient(vdelta)\n')
