@@ -185,6 +185,17 @@ def is_mathematical_scalar(x):
     return True if np.isscalar(x) else x.size == 1
 
 
+def squeeze_scalar(val):
+    """
+    Turn size-1 numpy arrays into scalars
+    """
+    if isinstance(val, np.ndarray):
+        val = val.squeeze()
+        if val.shape == ():
+            return val.item()
+    return val
+
+
 def write_problem_summary(name_to_shape, name_to_size):
     """
     Create html code for param / variables table entries
@@ -487,9 +498,9 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
             if solver_interface.inmemory_preconditioning:
                 struct_values_conditioning.append('0')
         elif p_id=='d':
-            struct_values.append('%.20f' % p)
+            struct_values.append('%.20f' % squeeze_scalar(p))
             if solver_interface.inmemory_preconditioning:
-                struct_values_conditioning.append('%.20f' % p)
+                struct_values_conditioning.append('%.20f' % squeeze_scalar(p))
         else:
             struct_values.append(f'&{configuration.prefix}canon_{p_id}')
             if solver_interface.inmemory_preconditioning:
@@ -982,7 +993,7 @@ def write_example_def(f, configuration, variable_info, dual_variable_info, param
     f.write('  // Update first entry of every user-defined parameter\n')
     for name, value in parameter_info.writable.items():
         if is_mathematical_scalar(value):
-            f.write(f'  {configuration.prefix}cpg_update_{name}(%.20f);\n' % value)
+            f.write(f'  {configuration.prefix}cpg_update_{name}(%.20f);\n' % squeeze_scalar(value))
         else:
             f.write(f'  {configuration.prefix}cpg_update_{name}(0, %.20f);\n' % value[0])
 
@@ -1273,6 +1284,13 @@ def write_method(f, configuration, variable_info, dual_variable_info, parameter_
     f.write('from %s import cpg_module\n\n\n' % configuration.code_dir.replace('/', '.').replace('\\', '.'))
 
     f.write('standard_settings_names = {"max_iters": "maxit"}\n\n\n')
+    
+    f.write('def squeeze_scalar(val):\n')
+    f.write('    if isinstance(val, np.ndarray):\n')
+    f.write('        val = val.squeeze()\n')
+    f.write('        if val.shape == ():\n')
+    f.write('            return val.item()\n')
+    f.write('    return val\n\n\n')
 
     f.write('def cpg_solve(prob, updated_params=None, **kwargs):\n\n')
     f.write('    # set flags for updated parameters\n')
@@ -1319,7 +1337,7 @@ def write_method(f, configuration, variable_info, dual_variable_info, parameter_
                 f.write(f'    par.{name} = list({name}_value)\n')
         else:
             if size == 1:
-                f.write(f'    par.{name} = param_dict["{name}"].value\n')
+                f.write(f'    par.{name} = squeeze_scalar(param_dict["{name}"].value)\n')
             else:
                 f.write(f'    par.{name} = list(param_dict["{name}"].value.flatten(order="F"))\n')
 
