@@ -541,12 +541,12 @@ def write_c_code(problem: cp.Problem, configuration: Configuration,
     write_file(os.path.join(cpp_dir, 'include', 'cpg_module.hpp'), 'w',
                write_module_prot,
                configuration, parameter_info, prim_variable_info, 
-               dual_variable_info, solver_interface)
+               dual_variable_info, solver_interface, gradient_interface)
 
     write_file(os.path.join(cpp_dir, 'src', 'cpg_module.cpp'), 'w',
                write_module_def,
                configuration, prim_variable_info, dual_variable_info, 
-               parameter_info, solver_interface)
+               parameter_info, solver_interface, gradient_interface)
 
     write_file(os.path.join(solver_code_dir, 'CMakeLists.txt'), 'a',
                write_canon_cmake,
@@ -566,7 +566,7 @@ def write_c_code(problem: cp.Problem, configuration: Configuration,
     write_file(os.path.join(configuration.code_dir, 'cpg_solver.py'), 'w',
                write_method,
                configuration, prim_variable_info, dual_variable_info, 
-               parameter_info, solver_interface)
+               parameter_info, solver_interface, gradient_interface)
 
     write_file(os.path.join(configuration.code_dir, 'problem.pickle'), 'wb',
                lambda x, y: pickle.dump(y, x),
