@@ -1748,7 +1748,7 @@ def write_method(f, configuration, variable_info, dual_variable_info, parameter_
                 f.write(f'    prob.param_dict[\'{name}\'].gradient = np.array(pdelta.{name})\n')
     f.write('\n\n')
                 
-    f.write('def cvxpylayers_solve(params, context):\n\n')
+    f.write('def forward(params, context):\n\n')
     f.write('    info = {}\n')
     f.write('    kwargs = context.solver_args.copy()\n')
     f.write('    prob = kwargs.pop("problem")\n')
@@ -1761,7 +1761,7 @@ def write_method(f, configuration, variable_info, dual_variable_info, parameter_
     f.write('    vars = prob.variables()\n')
     f.write('    return [next(v for v in vars if v.id == variable.id).value for variable in context.variables], info\n\n\n')
     
-    f.write('def cvxpylayers_gradient(dvars, context):\n\n')
+    f.write('def backward(dvars, context):\n\n')
     f.write('    prob = context.info["prob"]\n')
     f.write('    vars = prob.variables()\n')
     f.write('    for variable, dv in zip(context.variables, dvars):\n')
