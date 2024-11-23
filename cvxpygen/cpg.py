@@ -34,7 +34,7 @@ from cvxpy.cvxcore.python import canonInterface as cI
 from cvxpy.atoms.affine.upper_tri import upper_tri_to_full
 
 
-def generate_code(problem, code_dir='cpg_code', solver=None, solver_opts=None,
+def generate_code(problem, code_dir='CPG_code', solver=None, solver_opts=None,
                   enable_settings=[], unroll=False, prefix='', wrapper=True, gradient=False):
     """
     Generate C code to solve a CVXPY problem
