@@ -26,6 +26,7 @@ from cvxpygen.mappings import Configuration, PrimalVariableInfo, DualVariableInf
 from cvxpygen.solvers import get_interface_class
 import cvxpy as cp
 import numpy as np
+from pdaqp import MPQP
 from scipy import sparse
 from subprocess import call
 from cvxpy.problems.objective import Maximize
@@ -41,6 +42,15 @@ def generate_code(problem, code_dir='CPG_code', solver=None, solver_opts=None,
     sys.stdout.write('Generating code with CVXPYgen ...\n')
     
     create_folder_structure(code_dir)
+    
+    # get solver and explicit flag
+    solver, explicit = get_solver_and_explicit_flag(solver)
+    
+    # in explicit mode, check that problem parameters are initialized
+    if explicit:
+        for param in problem.parameters():
+            if param.value is None:
+                raise ValueError(f'Explicit mode: Parameter {param.name()} is not initialized!')
 
     # problem data
     data, solving_chain, inverse_data = problem.get_problem_data(
@@ -55,7 +65,7 @@ def generate_code(problem, code_dir='CPG_code', solver=None, solver_opts=None,
     interface_class, cvxpy_interface_class = get_interface_class(solver_name)
 
     # configuration
-    configuration = get_configuration(code_dir, solver_name, unroll, prefix)
+    configuration = get_configuration(code_dir, solver_name, unroll, prefix, explicit)
 
     # cone problems check
     if hasattr(param_prob, 'cone_dims'):
@@ -76,7 +86,85 @@ def generate_code(problem, code_dir='CPG_code', solver=None, solver_opts=None,
 
     cvxpygen_directory = os.path.dirname(os.path.realpath(__file__))
     solver_code_dir = os.path.join(code_dir, 'c', 'solver_code')
-    solver_interface.generate_code(code_dir, solver_code_dir, cvxpygen_directory, parameter_canon)
+    
+    if explicit:
+        
+        # check that P and A are constants
+        for p_id in ['P', 'A']:
+            if parameter_canon.p_id_to_changes[p_id]:
+                raise ValueError(f'Explicit mode: Matrices are not constant!')
+            
+        A_tilde = parameter_canon.p_csc['A'].toarray()
+        m, n = A_tilde.shape
+        
+        H = parameter_canon.p_csc['P'].toarray() + 1e-6 * np.eye(n)  # check
+        A = np.vstack([-A_tilde, A_tilde])
+    
+        f = parameter_canon.p['q']
+        F = np.hstack([np.eye(n), np.zeros((n, 2 * m))])
+        
+        b = np.hstack([-parameter_canon.p['l'], parameter_canon.p['u']])
+        B = np.hstack([np.zeros((2 * m, n)), np.vstack([-np.eye(m), np.zeros((m, m))]), np.vstack([np.zeros((m, m)), np.eye(m)])])
+        
+        # remove any infty values from b and corresponding rows of A and rows/columns of B and F
+        b_mask = b < 1e19
+        qlu_mask = np.concatenate([np.ones(n, dtype=bool), b_mask])
+        b = b[b_mask]
+        A = A[b_mask, :]
+        B = B[b_mask, :]
+        B = B[:, qlu_mask]
+        F = F[:, qlu_mask]
+        
+        # remove any zero rows from A and corresponding rows of b and B
+        A_mask = np.any(A != 0, axis=1)
+        A = A[A_mask, :]
+        b = b[A_mask]
+        B = B[A_mask, :]
+        
+        # extract bounds on theta
+        thmin, thmax = get_parameter_delta_bounds(problem, parameter_info, parameter_canon)
+        
+        # eliminate theta components that are fixed
+        th_mask = thmin != thmax
+        f += F[:, ~th_mask] @ thmin[~th_mask]
+        b += B[:, ~th_mask] @ thmin[~th_mask]
+        F = F[:, th_mask]
+        B = B[:, th_mask]
+        thmin, thmax = thmin[th_mask], thmax[th_mask]
+        
+        # pickle H, f, F, A, b, B, thmin, thmax
+        #with open('data.pickle', 'wb') as fl:
+        #    pickle.dump((H, f, F, A, b, B, thmin, thmax), fl)
+            
+        # load data from pickle
+        #with open('data.pickle', 'rb') as fl:
+        #    H, f, F, A, b, B, thmin, thmax = pickle.load(fl)
+
+        # offline-solve MPQP and generate code
+        mpqp = MPQP(H, f, F, A, b, B, thmin, thmax)
+        mpqp.solve()
+        mpqp.codegen(dir=solver_code_dir)
+        
+        # create solver_code_dir/include and solver_code_dir/src directories and copy all generated .h files into include and .c files into src
+        # the two subdirectories don't exist yet
+        include_dir = os.path.join(solver_code_dir, 'include')
+        src_dir = os.path.join(solver_code_dir, 'src')
+        os.makedirs(include_dir, exist_ok=True)
+        os.makedirs(src_dir, exist_ok=True)
+        shutil.move(os.path.join(solver_code_dir, 'pdaqp.c'), os.path.join(src_dir, 'pdaqp.c'))
+        shutil.move(os.path.join(solver_code_dir, 'pdaqp.h'), os.path.join(include_dir, 'pdaqp.h'))
+                
+        # create solver_code_dir/CMakeLists.txt
+        with open(os.path.join(solver_code_dir, 'CMakeLists.txt'), 'w') as fl:
+            fl.write('list (APPEND pdaqp_src ${CMAKE_CURRENT_SOURCE_DIR}/src/pdaqp.c)\n')
+            fl.write('list (APPEND pdaqp_head ${CMAKE_CURRENT_SOURCE_DIR}/include/pdaqp.h)\n')
+            fl.write('set (solver_src ${pdaqp_src} PARENT_SCOPE)\n')
+            fl.write('set (solver_head ${pdaqp_head} PARENT_SCOPE)\n')
+        
+        parameter_canon.th_mask = th_mask
+                
+    else:
+        solver_interface.generate_code(code_dir, solver_code_dir, cvxpygen_directory, parameter_canon)
 
     parameter_canon.user_p_name_to_canon_outdated = {
         user_p_name: [canon_p_ids[j] for j in np.nonzero(adjacency[:, i])[0]]
@@ -93,6 +181,37 @@ def generate_code(problem, code_dir='CPG_code', solver=None, solver_opts=None,
         module = importlib.import_module(f'{code_dir}.cpg_solver')
         cpg_solve = getattr(module, 'cpg_solve')
         problem.register_solve('CPG', cpg_solve)
+        
+        
+def get_solver_and_explicit_flag(solver):
+    if solver is None:
+        return None, False
+    elif solver.lower() == 'explicit':
+        return 'OSQP', True
+    else:
+        return solver, False
+    
+    
+def get_parameter_delta_bounds(problem, parameter_info, parameter_canon):
+    # extract bounds on user-defined parameter deltas
+    lower = np.zeros(parameter_info.flat_usp.size)
+    upper = np.zeros(parameter_info.flat_usp.size)
+    for constraint in problem.constraints:
+        if not constraint.variables() and constraint.parameters():
+            lhs, rhs = constraint.args
+            if isinstance(lhs, cp.Parameter) and isinstance(rhs, cp.Constant):
+                col = parameter_info.id_to_col[lhs.id]
+                upper[col:col + lhs.size] = rhs.value - lhs.value
+            elif isinstance(lhs, cp.Constant) and isinstance(rhs, cp.Parameter):
+                col = parameter_info.id_to_col[rhs.id]
+                lower[col:col + rhs.size] = lhs.value - rhs.value
+            else:
+                raise ValueError('Explicit mode: Parameter constraints must be simple bounds!')
+    # map to Delta (q, l, u)
+    id_to_mapping = parameter_canon.p_id_to_mapping
+    C_qlu = sparse.vstack([id_to_mapping['q'], id_to_mapping['l'], id_to_mapping['u']])
+    lower_mapped, upper_mapped = C_qlu @ lower, C_qlu @ upper
+    return np.minimum(lower_mapped, upper_mapped), np.maximum(lower_mapped, upper_mapped)
 
 
 def get_quad_obj(problem, solver_type, solver_opts, solver_class) -> bool:
@@ -370,9 +489,10 @@ def write_c_code(problem: cp.Problem, configuration: Configuration, variable_inf
                configuration, variable_info, dual_variable_info, 
                parameter_info, solver_interface)
 
-    write_file(os.path.join(solver_code_dir, 'CMakeLists.txt'), 'a',
-               write_canon_cmake,
-               configuration, solver_interface)
+    if not configuration.explicit:
+        write_file(os.path.join(solver_code_dir, 'CMakeLists.txt'), 'a',
+                write_canon_cmake,
+                configuration, solver_interface)
 
     write_file(os.path.join(configuration.code_dir, 'cpg_solver.py'), 'w',
                write_method,
@@ -403,8 +523,8 @@ def adjust_prefix(prefix):
     return prefix + '_' if prefix else prefix
 
 
-def get_configuration(code_dir, solver_name, unroll, prefix) -> Configuration:
-    return Configuration(code_dir, solver_name, unroll, adjust_prefix(prefix))
+def get_configuration(code_dir, solver_name, unroll, prefix, explicit) -> Configuration:
+    return Configuration(code_dir, solver_name, unroll, adjust_prefix(prefix), explicit)
 
 
 def get_parameter_info(p_prob) -> ParameterInfo:
