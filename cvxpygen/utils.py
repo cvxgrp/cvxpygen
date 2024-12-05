@@ -571,7 +571,7 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
                 
     if configuration.explicit:
         write_vec_def(f, np.zeros(np.sum(parameter_canon.th_mask).astype(int)), f'{configuration.prefix}cpg_theta', 'cpg_float')
-        write_vec_def(f, np.zeros(solver_interface.n_var), 'xsolution', 'cpg_float')
+        write_vec_def(f, np.zeros(solver_interface.n_var), 'sol_x', 'cpg_float')
 
     f.write('// Struct containing canonical parameters\n')
 
@@ -751,7 +751,10 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
         f.write('\n#ifndef CPG_TYPES_H\n')
         f.write('# define CPG_TYPES_H\n\n')
 
-        f.write(f'typedef {solver_interface.numeric_types["float"]} cpg_float;\n')
+        if configuration.explicit:
+            f.write(f'typedef float cpg_float;\n')
+        else:
+            f.write(f'typedef {solver_interface.numeric_types["float"]} cpg_float;\n')
         f.write(f'typedef {solver_interface.numeric_types["int"]} cpg_int;\n\n')
 
         # struct definitions
@@ -875,7 +878,7 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
                 
     if configuration.explicit:
         write_vec_prot(f, np.zeros(np.sum(parameter_canon.th_mask).astype(int)), f'{prefix}cpg_theta', 'cpg_float')
-        write_vec_prot(f, np.zeros(solver_interface.n_var), 'xsolution', 'cpg_float')
+        write_vec_prot(f, np.zeros(solver_interface.n_var), 'sol_x', 'cpg_float')
 
     f.write('\n// Struct containing canonical parameters\n')
     write_struct_prot(f, f'{prefix}Canon_Params', f'Canon_Params_{"" if full else "Gradient_"}t')
@@ -1099,7 +1102,7 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
 
     if configuration.explicit:
         f.write(f'  // Solve with PDAQP explicit solver\n')
-        f.write(f'  pdaqp_evaluate({configuration.prefix}cpg_theta, xsolution);\n')
+        f.write(f'  pdaqp_evaluate({configuration.prefix}cpg_theta, sol_x);\n')
     else:
         f.write(f'  // Solve with {configuration.solver_name}\n')
         f.write(f'  {solver_interface.solve_function_call.format(prefix=configuration.prefix)};\n')
@@ -1109,7 +1112,8 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
         f.write(f'  {configuration.prefix}cpg_retrieve_prim();\n')
     if solver_interface.ret_dual_func_exists(dual_variable_info) or configuration.gradient_two_stage:
         f.write(f'  {configuration.prefix}cpg_retrieve_dual();\n')
-    f.write(f'  {configuration.prefix}cpg_retrieve_info();\n')
+    if not configuration.explicit:  # TODO: explicit case
+        f.write(f'  {configuration.prefix}cpg_retrieve_info();\n')
 
     f.write('  // Reset flags for outdated canonical parameters\n')
     for p_id, changes in parameter_canon.p_id_to_changes.items():

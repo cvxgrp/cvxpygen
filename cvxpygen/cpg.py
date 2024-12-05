@@ -49,6 +49,8 @@ def generate_code(problem, code_dir='cpg_code', solver=None, solver_opts=None,
     
     # in explicit mode, check that problem parameters are initialized
     if explicit:
+        if gradient:
+            raise ValueError('Explicit mode: Gradient computation is not supported!')
         for param in problem.parameters():
             if param.value is None:
                 raise ValueError(f'Explicit mode: Parameter {param.name()} is not initialized!')
@@ -113,10 +115,10 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir):
         if canon.parameter_canon.p_id_to_changes[p_id]:
             raise ValueError(f'Explicit mode: Matrices are not constant!')
         
-    A_tilde = canon.parameter_canon.p_csc['A'].toarray()
+    A_tilde = canon.parameter_canon.p['A'].toarray()
     m, n = A_tilde.shape
     
-    H = canon.parameter_canon.p_csc['P'].toarray() + 1e-6 * np.eye(n)  # check
+    H = canon.parameter_canon.p['P'].toarray() + 1e-6 * np.eye(n)  # check
     A = np.vstack([-A_tilde, A_tilde])
 
     f = canon.parameter_canon.p['q']

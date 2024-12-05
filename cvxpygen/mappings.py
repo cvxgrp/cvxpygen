@@ -11,9 +11,9 @@ class Configuration:
     solver_name: str
     unroll: bool
     prefix: str
-    explicit: bool
     gradient: bool
     gradient_two_stage: bool
+    explicit: bool
 
 
 @dataclass
