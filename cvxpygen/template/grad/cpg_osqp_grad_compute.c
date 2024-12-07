@@ -432,12 +432,12 @@ void cpg_osqp_gradient() {
 
     // Check active constraints
     for (i = 0; i < N - n; i++) {
-        if (sol_y[i] < -1e-6) {
+        if (sol_y[i] < -1e-12) {
             if ($workspace$.a[i] == 0) {
                 cpg_ldl_add(n + i);
                 $workspace$.a[i] = -1; // lower bound active
             }
-        } else if (sol_y[i] > 1e-6) {
+        } else if (sol_y[i] > 1e-12) {
             if ($workspace$.a[i] == 0) {
                 cpg_ldl_add(n + i);
                 $workspace$.a[i] = 1; // upper bound active
