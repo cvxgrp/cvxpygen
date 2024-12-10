@@ -117,24 +117,16 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir):
         
     A_tilde = canon.parameter_canon.p['A'].toarray()
     m, n = A_tilde.shape
+    m_eq = canon.parameter_canon.p_id_to_size['l']
     
     H = canon.parameter_canon.p['P'].toarray() + 1e-6 * np.eye(n)  # check
-    A = np.vstack([-A_tilde, A_tilde])
+    A = np.vstack([-A_tilde[:m_eq], A_tilde])
 
     f = canon.parameter_canon.p['q']
-    F = np.hstack([np.eye(n), np.zeros((n, 2 * m))])
+    F = np.hstack([np.eye(n), np.zeros((n, m))])
     
-    b = np.hstack([-canon.parameter_canon.p['l'], canon.parameter_canon.p['u']])
-    B = np.hstack([np.zeros((2 * m, n)), np.vstack([-np.eye(m), np.zeros((m, m))]), np.vstack([np.zeros((m, m)), np.eye(m)])])
-    
-    # remove any infty values from b and corresponding rows of A and rows/columns of B and F
-    b_mask = b < 1e19
-    qlu_mask = np.concatenate([np.ones(n, dtype=bool), b_mask])
-    b = b[b_mask]
-    A = A[b_mask, :]
-    B = B[b_mask, :]
-    B = B[:, qlu_mask]
-    F = F[:, qlu_mask]
+    b = np.hstack([-canon.parameter_canon.p['l'][:m_eq], canon.parameter_canon.p['u']])
+    B = np.hstack([np.zeros((m_eq + m, n)), np.vstack([-np.eye(m)[:m_eq], np.eye(m)])])
     
     # remove any zero rows from A and corresponding rows of b and B
     A_mask = np.any(A != 0, axis=1)
@@ -203,8 +195,8 @@ def get_parameter_delta_bounds(problem, parameter_info, parameter_canon):
                 raise ValueError('Explicit mode: Parameter constraints must be simple bounds!')
     # map to Delta (q, l, u)
     id_to_mapping = parameter_canon.p_id_to_mapping
-    C_qlu = sparse.vstack([id_to_mapping['q'], id_to_mapping['l'], id_to_mapping['u']])
-    lower_mapped, upper_mapped = C_qlu @ lower, C_qlu @ upper
+    C_qu = sparse.vstack([id_to_mapping['q'], id_to_mapping['u']])
+    lower_mapped, upper_mapped = C_qu @ lower, C_qu @ upper
     return np.minimum(lower_mapped, upper_mapped), np.maximum(lower_mapped, upper_mapped)
         
         

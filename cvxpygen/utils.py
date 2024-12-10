@@ -1085,11 +1085,8 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
                 if i < solver_interface.n_var:
                     idx = i
                     f.write(f'  {configuration.prefix}cpg_theta[{k}] = {configuration.prefix}Canon_Params.q[{idx}] - {parameter_canon.p["q"][idx]};\n')
-                elif i < solver_interface.n_var + solver_interface.n_eq:
-                    idx = i - solver_interface.n_var
-                    f.write(f'  {configuration.prefix}cpg_theta[{k}] = {configuration.prefix}Canon_Params.l[{idx}] - {parameter_canon.p["l"][idx]};\n')
                 else:
-                    idx = i - solver_interface.n_var - solver_interface.n_eq
+                    idx = i - solver_interface.n_var
                     f.write(f'  {configuration.prefix}cpg_theta[{k}] = {configuration.prefix}Canon_Params.u[{idx}] - {parameter_canon.p["u"][idx]};\n')
                 k += 1
     else:
