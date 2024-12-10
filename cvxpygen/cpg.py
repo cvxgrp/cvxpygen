@@ -152,6 +152,15 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir):
     F = F[:, th_mask]
     B = B[:, th_mask]
     thmin, thmax = thmin[th_mask], thmax[th_mask]
+    
+    # eliminate theta components that are multiplied with zero
+    th_mask_multiplied_nonzero = np.any(F != 0, axis=0) | np.any(B != 0, axis=0)
+    F = F[:, th_mask_multiplied_nonzero]
+    B = B[:, th_mask_multiplied_nonzero]
+    thmin, thmax = thmin[th_mask_multiplied_nonzero], thmax[th_mask_multiplied_nonzero]
+    
+    th_mask_resulting = th_mask.copy()
+    th_mask_resulting[th_mask] = th_mask_multiplied_nonzero
 
     # offline-solve MPQP and generate code
     mpqp = MPQP(H, f, F, A, b, B, thmin, thmax)
@@ -174,7 +183,7 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir):
         fl.write('set (solver_src ${pdaqp_src} PARENT_SCOPE)\n')
         fl.write('set (solver_head ${pdaqp_head} PARENT_SCOPE)\n')
         
-    canon.parameter_canon.th_mask = th_mask
+    canon.parameter_canon.th_mask = th_mask_resulting
     
     
 def get_parameter_delta_bounds(problem, parameter_info, parameter_canon):
