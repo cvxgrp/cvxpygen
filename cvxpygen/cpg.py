@@ -115,18 +115,16 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir):
         if canon.parameter_canon.p_id_to_changes[p_id]:
             raise ValueError(f'Explicit mode: Matrices are not constant!')
         
-    A_tilde = canon.parameter_canon.p['A'].toarray()
-    m, n = A_tilde.shape
-    m_eq = canon.parameter_canon.p_id_to_size['l']
+    A = canon.parameter_canon.p['A'].toarray()
+    m, n = A.shape
     
     H = canon.parameter_canon.p['P'].toarray() + 1e-6 * np.eye(n)  # check
-    A = np.vstack([-A_tilde[:m_eq], A_tilde])
 
     f = canon.parameter_canon.p['q']
     F = np.hstack([np.eye(n), np.zeros((n, m))])
     
-    b = np.hstack([-canon.parameter_canon.p['l'][:m_eq], canon.parameter_canon.p['u']])
-    B = np.hstack([np.zeros((m_eq + m, n)), np.vstack([-np.eye(m)[:m_eq], np.eye(m)])])
+    b = canon.parameter_canon.p['u']
+    B = np.hstack([np.zeros((m, n)), np.eye(m)])
     
     # remove any zero rows from A and corresponding rows of b and B
     A_mask = np.any(A != 0, axis=1)
@@ -155,7 +153,9 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir):
     th_mask_resulting[th_mask] = th_mask_multiplied_nonzero
 
     # offline-solve MPQP and generate code
-    mpqp = MPQP(H, f, F, A, b, B, thmin, thmax)
+    eq_m = canon.parameter_canon.p_id_to_size['l']
+    eq_inds = np.arange(eq_m)[A_mask[:eq_m]]
+    mpqp = MPQP(H, f, F, A, b, B, thmin, thmax, eq_inds=eq_inds)
     mpqp.solve()
     mpqp.codegen(dir=solver_code_dir)
     
@@ -193,7 +193,7 @@ def get_parameter_delta_bounds(problem, parameter_info, parameter_canon):
                 lower[col:col + rhs.size] = lhs.value - rhs.value
             else:
                 raise ValueError('Explicit mode: Parameter constraints must be simple bounds!')
-    # map to Delta (q, l, u)
+    # map to Delta (q, u)
     id_to_mapping = parameter_canon.p_id_to_mapping
     C_qu = sparse.vstack([id_to_mapping['q'], id_to_mapping['u']])
     lower_mapped, upper_mapped = C_qu @ lower, C_qu @ upper
