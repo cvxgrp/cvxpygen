@@ -45,6 +45,8 @@ setup(
         'clarabel >= 0.6.0',
         'scipy >= 1.1.0, <1.12.0',
         'numpy >= 1.15, <1.28.0',
+        'torch >= 2.0',
+        'jax >= 0.5'
     ],
     extras_require={
         'dev': [
