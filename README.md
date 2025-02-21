@@ -25,7 +25,7 @@ under the [GNU General Public License v3.0](https://github.com/embotech/ecos/blo
 
 ## Installation
 
-1. Install `cvxpygen` (on Windows preferably with **Python 3.9**).
+1. Install `cvxpygen`.
     ```
     pip install cvxpygen
     ```
@@ -62,13 +62,13 @@ import cvxpy as cp
 
 m, n = 3, 2
 x = cp.Variable(n, name='x')
-A = cp.Parameter((m, n), name='A', sparsity=[(0, 0), (0, 1), (1, 1)])
+A = cp.Parameter((m, n), name='A', sparsity=((0, 0, 1), (0, 1, 1)))
 b = cp.Parameter(m, name='b')
 problem = cp.Problem(cp.Minimize(cp.sum_squares(A @ x - b)), [x >= 0])
 ```
 
 Specify the `name` attribute for variables and parameters to recognize them after generating code.
-The attribute `sparsity` is a list of 2-tuples that indicate the coordinates of nonzero entries of matrix `A`.
+The attribute `sparsity` is a tuple of row and column indices of the nonzero entries of matrix `A`.
 Parameter sparsity is only taken into account for matrices.
 
 Assign parameter values and test-solve.

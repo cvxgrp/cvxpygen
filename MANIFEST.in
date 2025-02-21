@@ -1,6 +1,7 @@
 include *.yml
 include LICENSE
 include cvxpygen/template/*
+include cvxpygen/template/grad/*
 include cvxpygen/solvers/osqp-python/LICENSE
 include cvxpygen/solvers/scs/*
 include cvxpygen/solvers/scs/cmake/*.cmake

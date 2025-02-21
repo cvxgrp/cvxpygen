@@ -14,7 +14,7 @@ if __name__ == "__main__":
     # define CVXPY problem
     m, n = 3, 2
     x = cp.Variable(n, name='x')
-    A = cp.Parameter((m, n), name='A', sparsity=[(0, 0), (0, 1), (1, 1)])
+    A = cp.Parameter((m, n), name='A', sparsity=((0, 0, 1), (0, 1, 1)))
     b = cp.Parameter(m, name='b')
     problem = cp.Problem(cp.Minimize(cp.sum_squares(A @ x - b)), [x >= 0])
 

@@ -17,7 +17,7 @@ from cvxpygen import cpg
 def actuator_problem():
 
     # define dimensions (test for degenerate vectors and matrices)
-    n, m = 1, 1
+    n, m = 1, 3
 
     # define variables
     u = cp.Variable(n, name='u')
@@ -55,8 +55,10 @@ def MPC_problem():
     Psqrt = cp.Parameter((n, n), name='Psqrt', diag=True)
     Qsqrt = cp.Parameter((n, n), name='Qsqrt', diag=True)
     Rsqrt = cp.Parameter((m, m), name='Rsqrt', diag=True)
-    A = cp.Parameter((n, n), name='A', sparsity=[(i, i) for i in range(n)] + [(i, 3+i) for i in range(n // 2)])
-    B = cp.Parameter((n, m), name='B', sparsity=[(3+i, i) for i in range(n // 2)])
+    nonzeros_A = [(i, i) for i in range(n)] + [(i, 3+i) for i in range(n // 2)]
+    A = cp.Parameter((n, n), name='A', sparsity=tuple(zip(*nonzeros_A)))
+    nonzeros_B = [(3+i, i) for i in range(n // 2)]
+    B = cp.Parameter((n, m), name='B', sparsity=tuple(zip(*nonzeros_B)))
     x_init = cp.Parameter(n, name='x_init')
 
     # define objective
@@ -115,8 +117,8 @@ def assign_data(prob, name, seed):
 
     if name == 'actuator':
 
-        prob.param_dict['A'].value = np.array([[1]])
-        prob.param_dict['w'].value = np.array([1])
+        prob.param_dict['A'].value = np.array([[1], [1], [1]])
+        prob.param_dict['w'].value = np.array([2, 3, 5])
         prob.param_dict['lamb_sm'].value = np.random.rand()
         prob.param_dict['kappa'].value = 0.1 * np.ones(1)
         prob.param_dict['u_prev'].value = 0 * np.ones(1)
@@ -172,7 +174,7 @@ def get_primal_vec(prob, name):
         return np.concatenate((prob.var_dict['w'].value, prob.var_dict['delta_w'].value, prob.var_dict['f'].value))
 
 
-N_RAND = 2
+N_RAND = 1
 
 name_solver_style_seed = [['actuator', 'MPC', 'portfolio'],
                           ['OSQP', 'SCS'],

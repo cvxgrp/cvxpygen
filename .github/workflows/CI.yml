@@ -39,18 +39,21 @@ jobs:
       run: |
         sudo apt install libeigen3-dev
         python setup.py install
+        pip install cvxpylayers torch jax
 
     - name: Install dependencies (macOS)
       if: runner.os == 'macOS'
       run: |
         brew install eigen
         python setup.py install
+        pip install cvxpylayers torch jax
 
     - name: Install dependencies (Windows)
       if: runner.os == 'Windows'
       run: |
         vcpkg install eigen3:x64-windows
         python setup.py install
+        pip install cvxpylayers torch jax
 
     - name: Test with pytest (Linux)
       if: runner.os == 'Linux'

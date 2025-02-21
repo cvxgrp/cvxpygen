@@ -12,6 +12,12 @@ if (NOT ${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
     set (CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -g")
     set (CMAKE_C_STANDARD_LIBRARIES "${CMAKE_C_STANDARD_LIBRARIES} -lm")
 endif()
+if(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin" AND ${CMAKE_SYSTEM_PROCESSOR} STREQUAL "arm64")
+    message(STATUS "Apple Silicon detected: Configuring build for arm64")
+    set(ARM64 TRUE)
+else()
+    set(ARM64 FALSE)
+endif()
 set (CMAKE_POSITION_INDEPENDENT_CODE ON)  # -fPIC
 set (LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/out)
 
