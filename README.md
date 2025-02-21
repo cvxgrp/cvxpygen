@@ -25,7 +25,7 @@ under the [GNU General Public License v3.0](https://github.com/embotech/ecos/blo
 
 ## Installation
 
-1. Install `cvxpygen` (on Windows preferably with **Python 3.9**).
+1. Install `cvxpygen`.
     ```
     pip install cvxpygen
     ```
