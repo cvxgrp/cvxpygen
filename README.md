@@ -105,6 +105,7 @@ Next to the positional argument `problem`, all keyword arguments for the `genera
 | `unroll`         | unroll loops in canonicalization code                              | Bool            | `False`       |
 | `prefix`         | prefix for unique code symbols when dealing with multiple problems | String          | `''`          |
 | `wrapper`        | compile Python wrapper for CVXPY interface                         | Bool            | `True`        |
+| `gradient`       | enable differentiation (works for linear and quadratic programs)   | Bool            | `False`       |
 
 You can find an overview of the code generation result in `nonneg_LS/README.html`.
 
@@ -175,6 +176,21 @@ cd nonneg_LS\c\build
 cmake ..
 cmake --build . --target cpg_example --config release
 Release\cpg_example
+```
+
+## Differentiating through problems
+
+CVXPYgen supports differentiating through linear and quadratic programs.
+To enable this feature, set `gradient=True` when generating code.
+You can use the generated code together with [CVXPYlayers](https://github.com/cvxgrp/cvxpylayers) as
+
+```python
+cpg.generate_code(problem, code_dir='code_diff', gradient=True, wrapper=True)
+
+from code_diff.cpg_solver import forward, backward
+from cvxpylayers.torch import CvxpyLayer
+
+layer = CvxpyLayer(problem, parameters=[A, b], variables=[x], custom_method=(forward, backward))
 ```
 
 ## Tests
