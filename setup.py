@@ -44,8 +44,8 @@ setup(
         'osqp >= 1.0.0b3',
         'ecos >= 2.0.14',
         'clarabel >= 0.6.0',
-        'scipy >= 1.1.0, <1.12.0',
-        'numpy >= 1.15, <1.28.0',
+        'scipy >= 1.15.0',
+        'numpy >= 1.26.0, < 2.0',
     ],
     extras_require={
         'dev': [
