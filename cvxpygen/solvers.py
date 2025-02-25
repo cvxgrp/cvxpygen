@@ -106,7 +106,7 @@ class SolverInterface(ABC):
         elif p_id in ['q', 'c']:
             affine_map.mapping = param_prob.c[:-1]
         elif p_id == 'd':
-            affine_map.mapping = param_prob.c[-1]
+            affine_map.mapping = param_prob.c[[-1], :]
         elif p_id == 'A':
             affine_map.mapping_rows = constraint_info.mapping_rows_eq[
                 constraint_info.mapping_rows_eq < constraint_info.n_data_constr_mat]
@@ -689,7 +689,7 @@ class OSQPInterface(SolverInterface):
         elif p_id == 'q':
             affine_map.mapping = param_prob.q[:-1]
         elif p_id == 'd':
-            affine_map.mapping = param_prob.q[-1]
+            affine_map.mapping = param_prob.q[[-1], :]
         elif p_id == 'A':
             affine_map.mapping = param_prob.reduced_A.reduced_mat[
                                  :constraint_info.n_data_constr_mat]
