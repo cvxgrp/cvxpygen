@@ -637,7 +637,7 @@ def get_parameter_info(p_prob) -> ParameterInfo:
     for p_name, p in zip(user_p_names, p_prob.parameters):
         if p.value is None:
             p.project_and_assign(np.random.randn(*p.shape))
-            if type(p.value) is sparse.dia_array:
+            if type(p.value) in [sparse.dia_matrix, sparse.dia_array]:
                 p.value = p.value.toarray()
         if len(p.shape) < 2:
             # dealing with scalar or vector
