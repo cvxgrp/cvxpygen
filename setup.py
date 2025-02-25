@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 MAJOR = 0
 MINOR = 4
-MICRO = 1
+MICRO = 2
 VERSION = '%d.%d.%d' % (MAJOR, MINOR, MICRO)
 
 
@@ -44,7 +44,7 @@ setup(
         'osqp >= 1.0.0b3',
         'ecos >= 2.0.14',
         'clarabel >= 0.6.0',
-        'scipy >= 1.15.0',
+        'scipy >= 1.13.0',
         'numpy >= 1.26.0, < 2.0',
     ],
     extras_require={
