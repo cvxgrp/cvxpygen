@@ -239,6 +239,11 @@ def process_canonical_parameters(
         if affine_map:
             if p_id in solver_interface.canon_p_ids_constr_vec:
                 affine_map = update_to_dense_mapping(affine_map, param_prob)
+            
+            if len(affine_map.mapping.shape) < 2:
+                affine_map.mapping = affine_map.mapping.reshape(1, -1)
+            affine_map.mapping = affine_map.mapping.tocsr()
+            
             if p_id == 'd':
                 parameter_canon.nonzero_d = affine_map.mapping.nnz > 0
 
@@ -273,7 +278,7 @@ def update_to_dense_mapping(affine_map, param_prob):
         mapping_to_dense[affine_map.indices[i_data], :] = sparse_row
 
     # Convert to Compressed Sparse Column format and update mapping
-    affine_map.mapping = sparse.csc_matrix(mapping_to_dense)
+    affine_map.mapping = sparse.csr_matrix(mapping_to_dense)
     
     return affine_map
 
@@ -632,7 +637,7 @@ def get_parameter_info(p_prob) -> ParameterInfo:
     for p_name, p in zip(user_p_names, p_prob.parameters):
         if p.value is None:
             p.project_and_assign(np.random.randn(*p.shape))
-            if type(p.value) is sparse.dia_matrix:
+            if type(p.value) is sparse.dia_array:
                 p.value = p.value.toarray()
         if len(p.shape) < 2:
             # dealing with scalar or vector
