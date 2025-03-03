@@ -1704,7 +1704,7 @@ def write_method(f, configuration, variable_info, dual_variable_info, parameter_
     f.write('    results_dict = {\'solver_specific_stats\': solver_specific_stats,\n')
     f.write('                    \'num_iters\': res.cpg_info.iter,\n')
     f.write('                    \'solve_time\': t1 - t0}\n')
-    f.write(f'    prob._solver_stats = SolverStats(results_dict, \'{configuration.solver_name}\')\n\n')
+    f.write(f'    prob._solver_stats = SolverStats.from_dict(results_dict, \'{configuration.solver_name}\')\n\n')
     f.write(f'    return prob.value{", res.cpg_info.gradient_primal, res.cpg_info.gradient_dual" if configuration.gradient else ""}\n\n\n')
     
     if configuration.gradient:
