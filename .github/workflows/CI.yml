@@ -52,7 +52,6 @@ jobs:
       run: |
         vcpkg install eigen3:x64-windows
         python setup.py install
-        pip install cvxpylayers torch==2.3 jax
 
     - name: Test with pytest (Linux)
       if: runner.os == 'Linux'
