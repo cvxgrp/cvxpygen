@@ -115,7 +115,7 @@ def extract_canonicalization(problem, solver, solver_opts, enable_settings) -> C
         user_p_name: [canon_p_ids[j] for j in np.nonzero(adjacency[:, i])[0]]
         for i, user_p_name in enumerate(parameter_info.names)
     }
-    
+
     return Canon(prim_variable_info, dual_variable_info, parameter_info, parameter_canon), solver_interface
     
 
@@ -299,10 +299,9 @@ def set_default_values(affine_map, p_id, parameter_canon, parameter_info, solver
                         affine_map.indptr[c + 1:] += 1
                         break
         else:
-            if p_id == 'P':
-                affine_map.indptr = solver_interface.indptr_obj
-            elif p_id == 'A':
+            if p_id == 'A':
                 affine_map.indptr = solver_interface.indptr_constr[:-1] # leave out part for rhs
+        affine_map.indptr = solver_interface.indptr_obj
         # compute 'indices_usp' and 'indptr_usp' (usp = user-defined sparsity)
         indices_usp = affine_map.indices[canon_p_data_nonzero]
         indptr_usp = 0 * affine_map.indptr
