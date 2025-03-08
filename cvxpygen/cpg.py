@@ -291,17 +291,21 @@ def set_default_values(affine_map, p_id, parameter_canon, parameter_info, solver
         canon_p_data = affine_map.mapping @ parameter_info.flat_usp
         # compute 'indptr' to construct sparse matrix from 'canon_p_data' and 'indices'
         if solver_interface.dual_var_split: # by equality and inequality
-            indptr_original = solver_interface.indptr_constr[:-1]
-            affine_map.indptr = 0 * indptr_original # rebuild 'indptr' by considering only 'mapping_rows' (corresponds to either equality or inequality)
+            if p_id == 'P':
+                affine_map.indptr = solver_interface.indptr_obj
+            else:
+                indptr_original = solver_interface.indptr_constr[:-1]
+                affine_map.indptr = 0 * indptr_original # rebuild 'indptr' by considering only 'mapping_rows' (corresponds to either equality or inequality)
             for r in affine_map.mapping_rows:
                 for c in range(affine_map.shape[1]): # shape of matrix re-shaped from flat param vector resulting from mapping
                     if indptr_original[c] <= r < indptr_original[c + 1]:
                         affine_map.indptr[c + 1:] += 1
                         break
         else:
-            if p_id == 'A':
+            if p_id == 'P':
+                affine_map.indptr = solver_interface.indptr_obj
+            elif p_id == 'A':
                 affine_map.indptr = solver_interface.indptr_constr[:-1] # leave out part for rhs
-        affine_map.indptr = solver_interface.indptr_obj
         # compute 'indices_usp' and 'indptr_usp' (usp = user-defined sparsity)
         indices_usp = affine_map.indices[canon_p_data_nonzero]
         indptr_usp = 0 * affine_map.indptr

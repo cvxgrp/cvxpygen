@@ -1485,7 +1485,6 @@ class QOCOGENInterface(SolverInterface):
     docu = 'https://qoco-org.github.io/qoco/codegen/index.html'
 
     def __init__(self, data, p_prob, enable_settings):
-        breakpoint()
         n_var = p_prob.x.size
         n_eq = p_prob.cone_dims.zero
         n_ineq = data['G'].shape[0]
@@ -1537,7 +1536,6 @@ class QOCOGENInterface(SolverInterface):
                   parameter_canon: ParameterCanon, gradient, prefix) -> None:
         import qocogen
 
-        # breakpoint()
         # Generate qoco_custom
         qocogen.generate_solver(self.canon_constants['n'], self.canon_constants['m'], self.canon_constants['p'], parameter_canon.p['P'], 
                                 parameter_canon.p['c'], parameter_canon.p['A'], parameter_canon.p['b'], parameter_canon.p['G'], parameter_canon.p['h'],
