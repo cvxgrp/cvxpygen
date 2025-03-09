@@ -1497,14 +1497,16 @@ class QOCOGENInterface(SolverInterface):
                            'nsoc': len(p_prob.cone_dims.soc),
                            'q': q}
 
+        # Need this to solve linear objective problems.
+        if indices_obj is None:
+            update_after_init = ['c', 'A', 'b', 'G', 'h']
+        else:
+            update_after_init = ['P', 'c', 'A', 'b', 'G', 'h']
+
         self.parameter_update_structure = {
             'init': ParameterUpdateLogic(
-                update_pending_logic=UpdatePendingLogic([], extra_condition='{prefix}qoco_custom_workspace.n <= 0', functions_if_false=None),
+                update_pending_logic=UpdatePendingLogic([], extra_condition='{prefix}qoco_custom_workspace.n <= 0', functions_if_false=update_after_init),
                 function_call=f'load_data(&{{prefix}}qoco_custom_workspace);\n    set_default_settings(&{{prefix}}qoco_custom_workspace)'
-            ),
-            'P': ParameterUpdateLogic(
-                update_pending_logic = UpdatePendingLogic(['P']),
-                function_call = 'update_P(&{prefix}qoco_custom_workspace, {prefix}Canon_Params.P->x)'
             ),
             'A': ParameterUpdateLogic(
                 update_pending_logic = UpdatePendingLogic(['A']),
@@ -1527,6 +1529,12 @@ class QOCOGENInterface(SolverInterface):
                 function_call = 'update_h(&{prefix}qoco_custom_workspace, {prefix}Canon_Params.h)'
             ),
         }
+        if indices_obj is not None:
+            self.parameter_update_structure['P'] = ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['P']),
+                function_call = 'update_P(&{prefix}qoco_custom_workspace, {prefix}Canon_Params.P->x)'
+            )
+
         super().__init__(self.solver_name, n_var, n_eq, n_ineq, indices_obj, indptr_obj, shape_obj,
                          indices_constr, indptr_constr, shape_constr, canon_constants, enable_settings)
 
@@ -1548,8 +1556,11 @@ class QOCOGENInterface(SolverInterface):
                   parameter_canon: ParameterCanon, gradient, prefix) -> None:
         import qocogen
 
+        # Need to check if problem has quadratic objective.
+        P = parameter_canon.p['P'] if 'P' in parameter_canon.p.keys() else None
+
         # Generate qoco_custom
-        qocogen.generate_solver(self.canon_constants['n'], self.canon_constants['m'], self.canon_constants['p'], parameter_canon.p['P'], 
+        qocogen.generate_solver(self.canon_constants['n'], self.canon_constants['m'], self.canon_constants['p'], P, 
                                 parameter_canon.p['c'], parameter_canon.p['A'], parameter_canon.p['b'], parameter_canon.p['G'], parameter_canon.p['h'],
                                 self.canon_constants['l'], self.canon_constants['nsoc'], self.canon_constants['q'],
                                 os.path.join(code_dir, 'c'), "solver_code")

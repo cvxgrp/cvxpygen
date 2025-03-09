@@ -99,7 +99,7 @@ def get_primal_vec(prob, name):
 N_RAND = 2
 
 name_solver_style_seed = [['network', 'resource'],
-                          ['ECOS'],
+                          ['ECOS', 'QOCO'],
                           ['loops'],
                           list(np.arange(N_RAND))]
 
