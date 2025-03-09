@@ -115,7 +115,7 @@ def extract_canonicalization(problem, solver, solver_opts, enable_settings) -> C
         user_p_name: [canon_p_ids[j] for j in np.nonzero(adjacency[:, i])[0]]
         for i, user_p_name in enumerate(parameter_info.names)
     }
-    
+
     return Canon(prim_variable_info, dual_variable_info, parameter_info, parameter_canon), solver_interface
     
 
@@ -291,8 +291,11 @@ def set_default_values(affine_map, p_id, parameter_canon, parameter_info, solver
         canon_p_data = affine_map.mapping @ parameter_info.flat_usp
         # compute 'indptr' to construct sparse matrix from 'canon_p_data' and 'indices'
         if solver_interface.dual_var_split: # by equality and inequality
-            indptr_original = solver_interface.indptr_constr[:-1]
-            affine_map.indptr = 0 * indptr_original # rebuild 'indptr' by considering only 'mapping_rows' (corresponds to either equality or inequality)
+            if p_id == 'P':
+                affine_map.indptr = solver_interface.indptr_obj
+            else:
+                indptr_original = solver_interface.indptr_constr[:-1]
+                affine_map.indptr = 0 * indptr_original # rebuild 'indptr' by considering only 'mapping_rows' (corresponds to either equality or inequality)
             for r in affine_map.mapping_rows:
                 for c in range(affine_map.shape[1]): # shape of matrix re-shaped from flat param vector resulting from mapping
                     if indptr_original[c] <= r < indptr_original[c + 1]:
@@ -387,14 +390,16 @@ def get_dual_variable_info(inverse_data, solver_interface, cvxpy_interface_class
     d_canon_offsets = np.cumsum([0] + [c.args[0].size for c in con_canon[:-1]])
     if solver_interface.dual_var_split:
         n_split = len(inverse_data[-1][cvxpy_interface_class.EQ_CONSTR])
-        d_vectors = [solver_interface.dual_var_names[0]] * n_split + [solver_interface.dual_var_names[1]] * (len(d_canon_offsets) - n_split)
+        d_canon_vectors = [solver_interface.dual_var_names[0]] * n_split + [solver_interface.dual_var_names[1]] * (len(d_canon_offsets) - n_split)
         d_canon_offsets[n_split:] -= d_canon_offsets[n_split]
     else:
-        d_vectors = solver_interface.dual_var_names * len(d_canon_offsets)
+        d_canon_vectors = solver_interface.dual_var_names * len(d_canon_offsets)
     d_canon_offsets_dict = {c.id: off for c, off in zip(con_canon, d_canon_offsets)}
+    d_canon_vectors_dict = {c.id: v for c, v in zip(con_canon, d_canon_vectors)}
     
     # select for user-defined constraints
     d_offsets = [d_canon_offsets_dict[i] for i in dual_ids]
+    d_vectors = [d_canon_vectors_dict[i] for i in dual_ids]
     d_sizes = [con_canon_dict[i].size for i in dual_ids]
     d_shapes = [con_canon_dict[i].shape for i in dual_ids]
     d_names = [f'd{i}' for i in range(len(dual_ids))]
