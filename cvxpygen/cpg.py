@@ -390,14 +390,16 @@ def get_dual_variable_info(inverse_data, solver_interface, cvxpy_interface_class
     d_canon_offsets = np.cumsum([0] + [c.args[0].size for c in con_canon[:-1]])
     if solver_interface.dual_var_split:
         n_split = len(inverse_data[-1][cvxpy_interface_class.EQ_CONSTR])
-        d_vectors = [solver_interface.dual_var_names[0]] * n_split + [solver_interface.dual_var_names[1]] * (len(d_canon_offsets) - n_split)
+        d_canon_vectors = [solver_interface.dual_var_names[0]] * n_split + [solver_interface.dual_var_names[1]] * (len(d_canon_offsets) - n_split)
         d_canon_offsets[n_split:] -= d_canon_offsets[n_split]
     else:
-        d_vectors = solver_interface.dual_var_names * len(d_canon_offsets)
+        d_canon_vectors = solver_interface.dual_var_names * len(d_canon_offsets)
     d_canon_offsets_dict = {c.id: off for c, off in zip(con_canon, d_canon_offsets)}
+    d_canon_vectors_dict = {c.id: v for c, v in zip(con_canon, d_canon_vectors)}
     
     # select for user-defined constraints
     d_offsets = [d_canon_offsets_dict[i] for i in dual_ids]
+    d_vectors = [d_canon_vectors_dict[i] for i in dual_ids]
     d_sizes = [con_canon_dict[i].size for i in dual_ids]
     d_shapes = [con_canon_dict[i].shape for i in dual_ids]
     d_names = [f'd{i}' for i in range(len(dual_ids))]
