@@ -177,7 +177,7 @@ def get_primal_vec(prob, name):
 N_RAND = 1
 
 name_solver_style_seed = [['actuator', 'MPC', 'portfolio'],
-                          ['OSQP', 'SCS'],
+                          ['OSQP', 'SCS', 'QOCO'],
                           ['loops'],
                           list(np.arange(N_RAND))]
 

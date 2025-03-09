@@ -1469,9 +1469,9 @@ class QOCOGENInterface(SolverInterface):
     # solver settings
     stgs_dynamically_allocated = False
     stgs_requires_extra_struct_type = False
-    stgs_direct_write_ptr = '(&(qoco_custom_workspace.settings))'
+    stgs_direct_write_ptr = '(&({prefix}qoco_custom_workspace.settings))'
     stgs_translation = "{}"
-    stgs_reset_function = {'name': 'set_default_settings', 'ptr': '&qoco_custom_workspace'}
+    stgs_reset_function = {'name': 'set_default_settings', 'ptr': '&{prefix}qoco_custom_workspace'}
     stgs_names = ['max_iters', 'bisect_iters', 'iter_ref_iters', 'kkt_static_reg', 'kkt_dynamic_reg',
                       'abstol', 'reltol', 'abstol_inacc', 'reltol_inacc', 'verbose']
     stgs_types = ['cpg_int', 'cpg_int', 'cpg_int', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_int']
@@ -1502,18 +1502,30 @@ class QOCOGENInterface(SolverInterface):
                 update_pending_logic=UpdatePendingLogic([], extra_condition='{prefix}qoco_custom_workspace.n <= 0', functions_if_false=None),
                 function_call=f'load_data(&{{prefix}}qoco_custom_workspace);\n    set_default_settings(&{{prefix}}qoco_custom_workspace)'
             ),
-            # 'P': ParameterUpdateLogic(
-            #     update_pending_logic = UpdatePendingLogic(['P']),
-            #     function_call = 'update_P(&{prefix}qoco_custom_workspace, {prefix}Canon_Params.P->x)'
-            # ),
-            # 'A': ParameterUpdateLogic(
-            #     update_pending_logic = UpdatePendingLogic(['A']),
-            #     function_call=''
-            # ),
-            # 'b': ParameterUpdateLogic(
-            #     update_pending_logic = UpdatePendingLogic(['b']),
-            #     function_call = 'update_b(&{prefix}qoco_custom_workspace, {prefix}Canon_Params.b);\n    update_h(&{prefix}qoco_custom_workspace, {prefix}Canon_Params.b + ' + str(n_eq) + ')'
-            # ),
+            'P': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['P']),
+                function_call = 'update_P(&{prefix}qoco_custom_workspace, {prefix}Canon_Params.P->x)'
+            ),
+            'A': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['A']),
+                function_call='update_A(&{prefix}qoco_custom_workspace, {prefix}Canon_Params.A->x)'
+            ),
+            'G': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['A']),
+                function_call='update_G(&{prefix}qoco_custom_workspace, {prefix}Canon_Params.G->x)'
+            ),
+            'c': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['c']),
+                function_call = 'update_c(&{prefix}qoco_custom_workspace, {prefix}Canon_Params.c)'
+            ),
+            'b': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['b']),
+                function_call = 'update_b(&{prefix}qoco_custom_workspace, {prefix}Canon_Params.b)'
+            ),
+            'h': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['b']),
+                function_call = 'update_h(&{prefix}qoco_custom_workspace, {prefix}Canon_Params.h)'
+            ),
         }
         super().__init__(self.solver_name, n_var, n_eq, n_ineq, indices_obj, indptr_obj, shape_obj,
                          indices_constr, indptr_constr, shape_constr, canon_constants, enable_settings)
