@@ -1513,7 +1513,7 @@ class QOCOGENInterface(SolverInterface):
                 function_call='update_A(&{prefix}qoco_custom_workspace, {prefix}Canon_Params.A->x)'
             ),
             'G': ParameterUpdateLogic(
-                update_pending_logic = UpdatePendingLogic(['A']),
+                update_pending_logic = UpdatePendingLogic(['G']),
                 function_call='update_G(&{prefix}qoco_custom_workspace, {prefix}Canon_Params.G->x)'
             ),
             'c': ParameterUpdateLogic(
@@ -1525,7 +1525,7 @@ class QOCOGENInterface(SolverInterface):
                 function_call = 'update_b(&{prefix}qoco_custom_workspace, {prefix}Canon_Params.b)'
             ),
             'h': ParameterUpdateLogic(
-                update_pending_logic = UpdatePendingLogic(['b']),
+                update_pending_logic = UpdatePendingLogic(['h']),
                 function_call = 'update_h(&{prefix}qoco_custom_workspace, {prefix}Canon_Params.h)'
             ),
         }
