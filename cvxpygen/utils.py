@@ -483,6 +483,10 @@ def write_update_structure(f, configuration, parameter_canon, pus, functions, fu
     if write_else:
         f.write(' else {\n')
 
+    if 'init' in functions:
+        functions.remove('init')
+        functions = ['init'] + list(functions)
+
     for function in functions:
 
         logic = pus[function]
