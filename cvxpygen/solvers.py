@@ -1505,7 +1505,7 @@ class QOCOGENInterface(SolverInterface):
 
         self.parameter_update_structure = {
             'init': ParameterUpdateLogic(
-                update_pending_logic=UpdatePendingLogic([], extra_condition='{prefix}qoco_custom_workspace.n <= 0', functions_if_false=update_after_init),
+                update_pending_logic=UpdatePendingLogic([], extra_condition='{prefix}qoco_custom_workspace.n <= 0'),
                 function_call=f'load_data(&{{prefix}}qoco_custom_workspace);\n    set_default_settings(&{{prefix}}qoco_custom_workspace)'
             ),
             'A': ParameterUpdateLogic(
