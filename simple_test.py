@@ -33,7 +33,7 @@ sys.stdout.write('Objective function value: %.6f\n' % val)
 
 # solve problem with C code via python wrapper
 t0 = time.time()
-val = problem.solve(method='CPG', updated_params=['A', 'b'])
+val = problem.solve(method='CPG', updated_params=['A', 'b'], verbose=True)
 t1 = time.time()
 sys.stdout.write('\nCVXPYgen\nSolve time: %.3f ms\n' % (1000 * (t1 - t0)))
 sys.stdout.write('Primal solution: x = [%.6f, %.6f]\n' % tuple(x.value))

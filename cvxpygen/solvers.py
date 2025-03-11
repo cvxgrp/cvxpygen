@@ -1497,12 +1497,6 @@ class QOCOGENInterface(SolverInterface):
                            'nsoc': len(p_prob.cone_dims.soc),
                            'q': q}
 
-        # Need this to solve linear objective problems.
-        if indices_obj is None:
-            update_after_init = ['c', 'A', 'b', 'G', 'h']
-        else:
-            update_after_init = ['P', 'c', 'A', 'b', 'G', 'h']
-
         self.parameter_update_structure = {
             'init': ParameterUpdateLogic(
                 update_pending_logic=UpdatePendingLogic([], extra_condition='{prefix}qoco_custom_workspace.n <= 0'),
