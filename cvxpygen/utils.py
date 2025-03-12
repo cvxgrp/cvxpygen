@@ -485,6 +485,10 @@ def write_update_structure(f, configuration, parameter_canon, pus, functions, fu
     if write_else:
         f.write(' else {\n')
 
+    if 'init' in functions:
+        functions.remove('init')
+        functions = ['init'] + list(functions)
+
     for function in functions:
 
         logic = pus[function]
@@ -1082,7 +1086,7 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
     f.write('// Update solver settings\n')
     f.write(f'void {configuration.prefix}cpg_set_solver_default_settings(){{\n')
     if solver_interface.stgs_reset_function is not None:
-        f.write(f'  {solver_interface.stgs_reset_function["name"]}({solver_interface.stgs_reset_function["ptr"] if solver_interface.stgs_reset_function["ptr"] is not None else "&" + configuration.prefix + "Canon_Settings"});\n')
+        f.write(f'  {solver_interface.stgs_reset_function["name"]}({solver_interface.stgs_reset_function["ptr"].format(prefix=configuration.prefix) if solver_interface.stgs_reset_function["ptr"] is not None else "&" + configuration.prefix + "Canon_Settings"});\n')
     else:
         for name, value in solver_interface.stgs_names_to_default.items():
             f.write(f'  {configuration.prefix}Canon_Settings.{name} = {value};\n')
@@ -1090,7 +1094,7 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
     for name, typ in solver_interface.stgs_names_to_type.items():
         f.write(f'\nvoid {configuration.prefix}cpg_set_solver_{name}({typ} {name}_new){{\n')
         if solver_interface.stgs_direct_write_ptr is not None:
-            f.write(f'  {solver_interface.stgs_direct_write_ptr}->{name} = {name}_new;\n')
+            f.write(f'  {solver_interface.stgs_direct_write_ptr.format(prefix=configuration.prefix)}->{name} = {name}_new;\n')
         else:
             f.write(f'  {configuration.prefix}Canon_Settings.{name} = {name}_new;\n')
         f.write('}\n')

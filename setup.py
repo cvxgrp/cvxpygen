@@ -46,6 +46,7 @@ setup(
         'clarabel >= 0.6.0',
         'scipy >= 1.13.1',
         'numpy >= 1.26.0',
+        'qocogen >= 0.1.4'
     ],
     extras_require={
         'dev': [
