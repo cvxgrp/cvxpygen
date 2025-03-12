@@ -331,11 +331,13 @@ def write_canonicalize(f, canon_name, s, mapping, prefix, prefix_params=None):
     
     if prefix_params is None:
         prefix_params = prefix
+        
+    indexing = '' if canon_name == 'd' else '[i]'
 
     f.write(f'  for(i=0; i<{mapping.shape[0]}; i++){{\n')
-    f.write(f'    {prefix}Canon_Params.{canon_name}{s}[i] = 0;\n')
+    f.write(f'    {prefix}Canon_Params.{canon_name}{s}{indexing} = 0;\n')
     f.write(f'    for(j={prefix}canon_{canon_name}_map.p[i]; j<{prefix}canon_{canon_name}_map.p[i+1]; j++){{\n')
-    f.write(f'      {prefix}Canon_Params.{canon_name}{s}[i] += {prefix}canon_{canon_name}_map.x[j]*{prefix_params}cpg_params_vec[{prefix}canon_{canon_name}_map.i[j]];\n')
+    f.write(f'      {prefix}Canon_Params.{canon_name}{s}{indexing} += {prefix}canon_{canon_name}_map.x[j]*{prefix_params}cpg_params_vec[{prefix}canon_{canon_name}_map.i[j]];\n')
     f.write(f'    }}\n')
     f.write(f'  }}\n')
 
