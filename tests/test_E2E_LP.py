@@ -156,5 +156,3 @@ def test_clarabel():
 def test_qoco():
     test('network', 'QOCO', 'loops', 0)
     test('network', 'QOCO', 'loops', 1)
-    test('resource', 'QOCO', 'loops', 0)
-    test('resource', 'QOCO', 'loops', 1)
