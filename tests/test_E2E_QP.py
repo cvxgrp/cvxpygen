@@ -261,3 +261,11 @@ def test_OSQP_verbose():
 def test_clarabel():
     test('actuator', 'CLARABEL', 'loops', 0)
     test('actuator', 'CLARABEL', 'loops', 1)
+
+def test_qoco():
+    test('actuator', 'QOCO', 'loops', 0)
+    test('actuator', 'QOCO', 'loops', 1)
+    test('MPC', 'QOCO', 'loops', 0)
+    test('MPC', 'QOCO', 'loops', 1)
+    test('portfolio', 'QOCO', 'loops', 0)
+    test('portfolio', 'QOCO', 'loops', 1)
