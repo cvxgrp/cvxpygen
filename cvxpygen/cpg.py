@@ -83,6 +83,9 @@ def generate_code(problem, code_dir='cpg_code', solver=None, solver_opts=None,
         
 def extract_canonicalization(problem, solver, solver_opts, enable_settings) -> Canon:
     
+    # interface class
+    interface_class, cvxpy_interface_class = get_interface_class(solver)
+    
     # problem data
     data, _, inverse_data = problem.get_problem_data(
         solver=solver,
@@ -92,7 +95,6 @@ def extract_canonicalization(problem, solver, solver_opts, enable_settings) -> C
         solver_opts=solver_opts
     )
     param_prob = data['param_prob']
-    interface_class, cvxpy_interface_class = get_interface_class(solver)
 
     # cone problems check
     if hasattr(param_prob, 'cone_dims'):
