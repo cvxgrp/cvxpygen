@@ -21,11 +21,12 @@ from cvxpy.reductions.solvers.conic_solvers.clarabel_conif import CLARABEL
 from cvxpy.reductions.solvers.conic_solvers.qoco_conif import QOCO
 
 
+UNSUPPORTED_ON_WINDOWS = ['CLARABEL', 'QOCO']
+
+
 def get_interface_class(solver_name: str) -> "SolverInterface":
-    if platform.system() == 'Windows' and solver_name.upper() == 'CLARABEL':
-        raise ValueError(f'Clarabel solver currently unsupported on Windows.')
-    if platform.system() == 'Windows' and solver_name.upper() == 'QOCO':
-        raise ValueError(f'QOCO solver currently unsupported on Windows.')
+    if platform.system() == 'Windows' and solver_name.upper() in UNSUPPORTED_ON_WINDOWS:
+        raise ValueError(f'{solver_name} solver currently not supported on Windows.')
     mapping = {
         'OSQP': (OSQPInterface, OSQP),
         'SCS': (SCSInterface, SCS),

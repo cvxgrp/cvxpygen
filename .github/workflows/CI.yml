@@ -74,3 +74,4 @@ jobs:
         pip install pytest
         cd tests
         pytest test_E2E_LP.py::test test_E2E_QP.py::test test_E2E_QP.py::test_OSQP_verbose test_E2E_SOCP.py::test
+        pytest test_unsupported_solvers.py
