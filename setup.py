@@ -39,7 +39,7 @@ setup(
     include_package_data=True,
     install_requires=[
         'cmake >= 3.5',
-        'cvxpy >= 1.6.1',
+        'cvxpy >= 1.6.4',
         'pybind11 >= 2.8',
         'osqp >= 1.0.0b3',
         'ecos >= 2.0.14',
