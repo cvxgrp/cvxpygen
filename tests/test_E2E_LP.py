@@ -99,7 +99,7 @@ def get_primal_vec(prob, name):
 N_RAND = 2
 
 name_solver_style_seed = [['network', 'resource'],
-                          ['ECOS', 'QOCO'],
+                          ['ECOS'],
                           ['loops'],
                           list(np.arange(N_RAND))]
 
@@ -152,3 +152,9 @@ def test(name, solver, style, seed):
 def test_clarabel():
     test('network', 'CLARABEL', 'loops', 0)
     test('network', 'CLARABEL', 'loops', 1)
+
+def test_qoco():
+    test('network', 'QOCO', 'loops', 0)
+    test('network', 'QOCO', 'loops', 1)
+    test('resource', 'QOCO', 'loops', 0)
+    test('resource', 'QOCO', 'loops', 1)

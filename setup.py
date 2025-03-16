@@ -47,7 +47,6 @@ setup(
         'scipy >= 1.13.1',
         'numpy >= 1.26.0',
         'qocogen >= 0.1.4',
-        'qoco >= 0.1.3'
     ],
     extras_require={
         'dev': [
