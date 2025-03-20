@@ -21,7 +21,7 @@ from cvxpy.reductions.solvers.conic_solvers.clarabel_conif import CLARABEL
 from cvxpy.reductions.solvers.conic_solvers.qoco_conif import QOCO
 
 
-UNSUPPORTED_ON_WINDOWS = ['CLARABEL', 'QOCO']
+UNSUPPORTED_ON_WINDOWS = ['CLARABEL']
 
 
 def get_interface_class(solver_name: str) -> "SolverInterface":
