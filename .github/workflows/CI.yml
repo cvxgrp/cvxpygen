@@ -72,4 +72,4 @@ jobs:
       run: |
         pip install pytest
         cd tests
-        pytest test_E2E_LP.py::test test_E2E_QP.py::test test_E2E_QP.py::test_OSQP_verbose test_E2E_SOCP.py::test test_E2E_LP.py::test_qoco test_E2E_QP.py::test_qoco test_E2E_SOCP.py::test_qoco test_unsupported_solvers.py
+        python -m pytest test_E2E_LP.py::test test_E2E_QP.py::test test_E2E_QP.py::test_OSQP_verbose test_E2E_SOCP.py::test test_E2E_LP.py::test_qoco test_E2E_QP.py::test_qoco test_E2E_SOCP.py::test_qoco test_unsupported_solvers.py
