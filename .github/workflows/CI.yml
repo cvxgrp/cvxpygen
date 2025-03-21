@@ -39,18 +39,20 @@ jobs:
       run: |
         sudo apt install libeigen3-dev
         python setup.py install
-        pip install cvxpylayers torch==2.3 jax
+        pip install cvxpylayers torch==2.3 jax git+https://github.com/qoco-org/qocogen@main 
 
     - name: Install dependencies (macOS)
       if: runner.os == 'macOS'
       run: |
         brew install eigen
+        pip install git+https://github.com/qoco-org/qocogen@main
         python setup.py install
 
     - name: Install dependencies (Windows)
       if: runner.os == 'Windows'
       run: |
         vcpkg install eigen3:x64-windows
+        pip install git+https://github.com/qoco-org/qocogen@main
         python setup.py install
 
     - name: Test with pytest (Linux)
