@@ -75,7 +75,7 @@ def get_primal_vec(prob, name):
 N_RAND = 2
 
 name_solver_style_seed = [['ADP'],
-                          ['SCS', 'ECOS'],
+                          ['SCS', 'ECOS', 'QOCO'],
                           ['unroll', 'loops'],
                           list(np.arange(N_RAND))]
 
@@ -128,7 +128,3 @@ def test(name, solver, style, seed):
 def test_clarabel():
     test('ADP', 'CLARABEL', 'loops', 0)
     test('ADP', 'CLARABEL', 'loops', 1)
-
-def test_qoco():
-    test('ADP', 'QOCO', 'loops', 0)
-    test('ADP', 'QOCO', 'loops', 1)

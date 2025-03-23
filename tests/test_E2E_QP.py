@@ -174,10 +174,10 @@ def get_primal_vec(prob, name):
         return np.concatenate((prob.var_dict['w'].value, prob.var_dict['delta_w'].value, prob.var_dict['f'].value))
 
 
-N_RAND = 1
+N_RAND = 2
 
 name_solver_style_seed = [['actuator', 'MPC', 'portfolio'],
-                          ['OSQP', 'SCS'],
+                          ['OSQP', 'SCS', 'QOCO'],
                           ['loops'],
                           list(np.arange(N_RAND))]
 
@@ -261,11 +261,3 @@ def test_OSQP_verbose():
 def test_clarabel():
     test('actuator', 'CLARABEL', 'loops', 0)
     test('actuator', 'CLARABEL', 'loops', 1)
-
-def test_qoco():
-    test('actuator', 'QOCO', 'loops', 0)
-    test('actuator', 'QOCO', 'loops', 1)
-    test('MPC', 'QOCO', 'loops', 0)
-    test('MPC', 'QOCO', 'loops', 1)
-    test('portfolio', 'QOCO', 'loops', 0)
-    test('portfolio', 'QOCO', 'loops', 1)
