@@ -246,7 +246,7 @@ def test_OSQP_verbose():
     module = importlib.import_module('test_actuator_OSQP_verbose.cpg_solver')
     prob.register_solve('CPG', module.cpg_solve)
 
-    prob = assign_data(prob, 'actuaor', 0)
+    prob = assign_data(prob, 'actuator', 0)
 
     verbose_output = io.StringIO()
     sys.stdout = verbose_output
