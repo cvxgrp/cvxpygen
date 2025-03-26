@@ -32,7 +32,7 @@ def get_interface_class(solver_name: str) -> "SolverInterface":
         'SCS': (SCSInterface, SCS),
         'ECOS': (ECOSInterface, ECOS),
         'CLARABEL': (ClarabelInterface, CLARABEL),
-        'QOCO': (QOCOGENInterface, QOCO),
+        'QOCOGEN': (QOCOGENInterface, QOCO),
     }
     interface = mapping.get(solver_name.upper(), None)
     if interface is None:
@@ -1539,7 +1539,7 @@ class QOCOGENInterface(SolverInterface):
     def check_unsupported_cones(cone_dims: "ConeDims") -> None:
         if cone_dims.exp > 0:
             raise ValueError(
-                'Code generation with ECOS and exponential cones is not supported yet.')
+                'Exponential cones is not supported for QOCOGEN.')
 
     @staticmethod
     def ret_prim_func_exists(variable_info: PrimalVariableInfo) -> bool:

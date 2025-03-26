@@ -153,6 +153,6 @@ def test_clarabel():
     test('network', 'CLARABEL', 'loops', 0)
     test('network', 'CLARABEL', 'loops', 1)
 
-def test_qoco():
-    test('network', 'QOCO', 'loops', 0)
-    test('network', 'QOCO', 'loops', 1)
+def test_qocogen():
+    test('network', 'QOCOGEN', 'loops', 0)
+    test('network', 'QOCOGEN', 'loops', 1)
