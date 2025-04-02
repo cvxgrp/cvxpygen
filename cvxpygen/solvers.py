@@ -32,6 +32,7 @@ def get_interface_class(solver_name: str) -> "SolverInterface":
         'SCS': (SCSInterface, SCS),
         'ECOS': (ECOSInterface, ECOS),
         'CLARABEL': (ClarabelInterface, CLARABEL),
+        'QOCO': (QOCOInterface, QOCO),
         'QOCOGEN': (QOCOGENInterface, QOCO),
     }
     interface = mapping.get(solver_name.upper(), None)
@@ -1485,7 +1486,7 @@ class QOCOGENInterface(SolverInterface):
     dual_var_names = ['y', 'z']
 
     # docu
-    docu = 'https://qoco-org.github.io/qoco/codegen/index.html'
+    docu = 'https://qoco-org.github.io/qoco/'
 
     def __init__(self, data, p_prob, enable_settings):
         n_var = p_prob.x.size
@@ -1571,7 +1572,6 @@ class QOCOGENInterface(SolverInterface):
         read_write_file(os.path.join(code_dir, 'c', 'CMakeLists.txt'),
                         lambda x: multiple_replace(x, cmake_replacements))
 
-
         # adjust setup.py
         setup_replacements = [
             ("os.path.join('c', 'solver_code', 'include'),",
@@ -1599,3 +1599,184 @@ class QOCOGENInterface(SolverInterface):
         f.write(f'Workspace {prefix}qoco_custom_workspace;\n')
         f.write('\n// qoco_custom exit flag\n')
         f.write(f'cpg_int {prefix}qoco_custom_flag = -99;\n')
+
+class QOCOInterface(SolverInterface):
+    solver_name = 'QOCO'
+    solver_type = 'conic'
+    canon_p_ids = ['P', 'c', 'd', 'A', 'b', 'G', 'h']
+    canon_p_ids_constr_vec = ['b', 'h']
+    supports_gradient = False
+    solve_function_call = '{prefix}qoco_solve = qoco_solve({prefix}qoco_solver)'
+
+    # header files
+    header_files = ['"qoco.h"']
+    cmake_headers = ['${qoco_headers}']
+    cmake_sources = ['${qoco_sources}']
+
+    # preconditioning of problem data happening in-memory
+    inmemory_preconditioning = True
+
+    # workspace
+    ws_statically_allocated_in_solver_code = False
+    ws_ptrs = WorkspacePointerInfo(
+        objective_value = 'qoco_solver->sol->obj',
+        iterations = 'qoco_solver->sol->iters',
+        status = 'qoco_solver->sol->status',
+        primal_residual = 'qoco_solver->sol->pres',
+        dual_residual = 'qoco_solver->sol->dres',
+        primal_solution = 'qoco_solver->sol->x',
+        dual_solution = 'qoco_solver->{dual_var_name}',
+        settings = 'qoco_solver->settings->{setting_name}'
+    )
+
+    # solution vectors statically allocated
+    sol_statically_allocated = False
+
+    # solver status as integer vs. string
+    status_is_int = True
+
+    # float and integer types
+    numeric_types = {'float': 'QOCOFloat', 'int': 'QOCOInt'}
+
+    # solver settings
+    stgs_dynamically_allocated = True
+    stgs_requires_extra_struct_type = True
+    stgs_direct_write_ptr = 'qoco_solver->settings'
+    stgs_reset_function = None
+    stgs_names = ['feastol', 'abstol', 'reltol', 'feastol_inacc', 'abstol_inacc',
+                      'reltol_inacc', 'maxit']
+    stgs_translation = "{}"
+    stgs_names = ['max_iters', 'bisect_iters', 'iter_ref_iters', 'kkt_static_reg', 'kkt_dynamic_reg',
+                      'abstol', 'reltol', 'abstol_inacc', 'reltol_inacc', 'verbose']
+    stgs_types = ['cpg_int', 'cpg_int', 'cpg_int', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_int']
+    stgs_enabled = [True, True, True, True, True, True, True, True, True, True]
+    stgs_defaults = ['200', '5', '1', '1e-8', '1e-8', '1e-7', '1e-7', '1e-5', '1e-5', '0']
+
+    # dual variables split into y and z vectors
+    dual_var_split = True
+    dual_var_names = ['y', 'z']
+
+    # docu
+    docu = 'https://qoco-org.github.io/qoco/'
+
+    def __init__(self, data, p_prob, enable_settings):
+        n_var = p_prob.x.size
+        n_eq = p_prob.cone_dims.zero
+        n_ineq = data['G'].shape[0]
+        q = np.array(p_prob.cone_dims.soc)
+        indices_obj, indptr_obj, shape_obj = self.get_problem_data_index(p_prob.reduced_P)
+        indices_constr, indptr_constr, shape_constr = self.get_problem_data_index(p_prob.reduced_A)
+
+        canon_constants = {'n': n_var, 'm': n_ineq, 'p': n_eq,
+                           'l': p_prob.cone_dims.nonneg,
+                           'nsoc': len(p_prob.cone_dims.soc),
+                           'q': q}
+
+        self.parameter_update_structure = {
+            # 'init': ParameterUpdateLogic(
+            #     update_pending_logic=UpdatePendingLogic([], extra_condition='!{prefix}ecos_workspace', functions_if_false=['AbcGh']),
+            #     function_call=f'{{prefix}}cpg_copy_all();\n'
+            #                 f'    {{prefix}}ecos_workspace = ECOS_setup({canon_constants["n"]}, {canon_constants["m"]}, {canon_constants["p"]}, {canon_constants["l"]}, {canon_constants["n_cones"]}'
+            #                 f', {"0" if canon_constants["n_cones"] == 0 else "(int *) &{prefix}ecos_q"}, {canon_constants["e"]}'
+            #                 f', {{prefix}}Canon_Params_conditioning.G->x, {{prefix}}Canon_Params_conditioning.G->p, {{prefix}}Canon_Params_conditioning.G->i'
+            #                 f', {"0" if canon_constants["p"] == 0 else "{prefix}Canon_Params_conditioning.A->x"}'
+            #                 f', {"0" if canon_constants["p"] == 0 else "{prefix}Canon_Params_conditioning.A->p"}'
+            #                 f', {"0" if canon_constants["p"] == 0 else "{prefix}Canon_Params_conditioning.A->i"}'
+            #                 f', {{prefix}}Canon_Params_conditioning.c, {{prefix}}Canon_Params_conditioning.h'
+            #                 f', {"0" if canon_constants["p"] == 0 else "{prefix}Canon_Params_conditioning.b"})'
+            # ),
+            # 'AbcGh': ParameterUpdateLogic(
+            #     update_pending_logic=UpdatePendingLogic(['A', 'b', 'G'], '||', ['c', 'h']),
+            #     function_call=f'{{prefix}}cpg_copy_all();\n'
+            #                 f'      ECOS_updateData({{prefix}}ecos_workspace, {{prefix}}Canon_Params_conditioning.G->x, {"0" if canon_constants["p"] == 0 else "{prefix}Canon_Params_conditioning.A->x"}'
+            #                 f', {{prefix}}Canon_Params_conditioning.c, {{prefix}}Canon_Params_conditioning.h, {"0" if canon_constants["p"] == 0 else "{prefix}Canon_Params_conditioning.b"})'
+            # ),
+            # 'c': ParameterUpdateLogic(
+            #     update_pending_logic=UpdatePendingLogic(['c']),
+            #     function_call=f'{{prefix}}cpg_copy_c();\n'
+            #                 f'        for (i=0; i<{canon_constants["n"]}; i++) {{{{ ecos_updateDataEntry_c({{prefix}}ecos_workspace, i, {{prefix}}Canon_Params_conditioning.c[i]); }}}}'
+            # ),
+            # 'h': ParameterUpdateLogic(
+            #     update_pending_logic=UpdatePendingLogic(['h']),
+            #     function_call=f'{{prefix}}cpg_copy_h();\n'
+            #                 f'        for (i=0; i<{canon_constants["m"]}; i++) {{{{ ecos_updateDataEntry_h({{prefix}}ecos_workspace, i, {{prefix}}Canon_Params_conditioning.h[i]); }}}}'
+            # )
+        }
+
+        super().__init__(self.solver_name, n_var, n_eq, n_ineq, indices_obj, indptr_obj, shape_obj,
+                         indices_constr, indptr_constr, shape_constr, canon_constants, enable_settings)
+
+    @staticmethod
+    def check_unsupported_cones(cone_dims: "ConeDims") -> None:
+        if cone_dims.exp > 0:
+            raise ValueError(
+                'QOCO does not support exponential cones.')
+
+    @staticmethod
+    def ret_prim_func_exists(variable_info: PrimalVariableInfo) -> bool:
+        return True
+
+    @staticmethod
+    def ret_dual_func_exists(dual_variable_info: DualVariableInfo) -> bool:
+        return True
+
+    def generate_code(self, configuration, code_dir, solver_code_dir, cvxpygen_directory,
+                  parameter_canon: ParameterCanon, gradient, prefix) -> None:
+
+        # copy sources
+        if os.path.isdir(solver_code_dir):
+            shutil.rmtree(solver_code_dir)
+        os.mkdir(solver_code_dir)
+        dirs_to_copy = ['src', 'include', 'lib', 'examples']
+        for dtc in dirs_to_copy:
+            shutil.copytree(os.path.join(cvxpygen_directory, 'solvers', 'qoco', dtc),
+                            os.path.join(solver_code_dir, dtc))
+        
+        files_to_copy = ['CMakeLists.txt', 'LICENSE']
+        for fl in files_to_copy:
+            shutil.copyfile(os.path.join(cvxpygen_directory, 'solvers', 'qoco', fl),
+                            os.path.join(solver_code_dir, fl))
+        
+        shutil.copyfile(os.path.join(cvxpygen_directory, 'solvers', 'qoco', 'LICENSE'),
+                        os.path.join(code_dir, 'LICENSE'))
+
+        # adjust top-level CMakeLists.txt
+        indent = ' ' * 6
+        sdir = '${CMAKE_CURRENT_SOURCE_DIR}/solver_code/'
+        cmake_replacements = [
+            (sdir + 'include',
+            sdir + 'include\n' +
+            indent + sdir + 'lib/amd\n' +
+            indent + sdir + 'lib/qdldl/include')
+        ]
+
+        read_write_file(os.path.join(code_dir, 'c', 'CMakeLists.txt'),
+                        lambda x: multiple_replace(x, cmake_replacements))
+
+        # adjust setup.py
+        setup_replacements = [
+            ("os.path.join('c', 'solver_code', 'include'),",
+            "os.path.join('c', 'solver_code'),"),
+            ("license='Apache 2.0'", "license='BSD 3-Clause'")
+        ]
+        read_write_file(os.path.join(code_dir, 'setup.py'),
+                        lambda x: multiple_replace(x, setup_replacements))
+
+
+    def declare_workspace(self, f, prefix, parameter_canon) -> None:
+        if self.canon_constants['nsoc'] > 0:
+            f.write('\n// QOCO array of SOC dimensions\n')
+            write_vec_prot(f, self.canon_constants['q'], f'{prefix}qoco_q', 'cpg_int')
+        f.write('\n// QOCO workspace\n')
+        f.write(f'extern QOCOSolver* {prefix}qoco_solver;\n')
+        f.write('\n// QOCO exit flag\n')
+        f.write(f'extern cpg_int {prefix}qoco_flag;\n')
+
+    def define_workspace(self, f, prefix, parameter_canon) -> None:
+        if self.canon_constants['nsoc'] > 0:
+            f.write('\n// QOCO array of SOC dimensions\n')
+            write_vec_def(f, self.canon_constants['q'], f'{prefix}qoco_q', 'cpg_int')
+        f.write('\n// QOCO solver\n')
+        f.write(f'QOCOSolver* {prefix}qoco_solver = 0;\n')
+        f.write('\n// QOCO exit flag\n')
+        f.write(f'cpg_int {prefix}qoco_flag = -99;\n')
