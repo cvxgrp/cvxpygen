@@ -1606,7 +1606,7 @@ class QOCOInterface(SolverInterface):
     canon_p_ids = ['P', 'c', 'd', 'A', 'b', 'G', 'h']
     canon_p_ids_constr_vec = ['b', 'h']
     supports_gradient = False
-    solve_function_call = '{prefix}qoco_solve = qoco_solve({prefix}qoco_solver)'
+    solve_function_call = 'qoco_solve({prefix}qoco_solver)'
 
     # header files
     header_files = ['"qoco.h"']
@@ -1625,7 +1625,7 @@ class QOCOInterface(SolverInterface):
         primal_residual = 'qoco_solver->sol->pres',
         dual_residual = 'qoco_solver->sol->dres',
         primal_solution = 'qoco_solver->sol->x',
-        dual_solution = 'qoco_solver->{dual_var_name}',
+        dual_solution = 'qoco_solver->sol->{dual_var_name}',
         settings = 'qoco_solver->settings->{setting_name}'
     )
 
@@ -1727,7 +1727,7 @@ class QOCOInterface(SolverInterface):
         if os.path.isdir(solver_code_dir):
             shutil.rmtree(solver_code_dir)
         os.mkdir(solver_code_dir)
-        dirs_to_copy = ['src', 'include', 'lib', 'examples']
+        dirs_to_copy = ['src', 'include', 'lib', 'examples', 'configure']
         for dtc in dirs_to_copy:
             shutil.copytree(os.path.join(cvxpygen_directory, 'solvers', 'qoco', dtc),
                             os.path.join(solver_code_dir, dtc))
@@ -1752,6 +1752,20 @@ class QOCOInterface(SolverInterface):
 
         read_write_file(os.path.join(code_dir, 'c', 'CMakeLists.txt'),
                         lambda x: multiple_replace(x, cmake_replacements))
+        
+        # cmake_replacements = [("# directories including header files", 
+        #                        "# directories including header files\n" + 
+        #                        'if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")\n' + 
+        #                        indent + 'add_compile_definitions(IS_LINUX)\n' + 
+        #                         'elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")\n' + 
+        #                        indent + 'add_compile_definitions(IS_MACOS)\n' + 
+        #                         'elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")\n' + 
+        #                        indent + 'add_compile_definitions(IS_WINDOWS)\n' + 
+        #                        'endif()'
+        #                        )]
+
+        # read_write_file(os.path.join(code_dir, 'c', 'CMakeLists.txt'),
+        #                 lambda x: multiple_replace(x, cmake_replacements))
 
         # adjust setup.py
         setup_replacements = [
