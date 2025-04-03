@@ -1770,7 +1770,9 @@ class QOCOInterface(SolverInterface):
         # adjust setup.py
         setup_replacements = [
             ("os.path.join('c', 'solver_code', 'include'),",
-            "os.path.join('c', 'solver_code'),"),
+            "os.path.join('c', 'solver_code', 'include'),\n" +
+            indent + "os.path.join('c', 'solver_code', 'lib', 'amd'),\n" +
+            indent + "os.path.join('c', 'solver_code', 'lib', 'qdldl', 'include'),"),
             ("license='Apache 2.0'", "license='BSD 3-Clause'")
         ]
         read_write_file(os.path.join(code_dir, 'setup.py'),
