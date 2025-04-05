@@ -1775,7 +1775,7 @@ class QOCOInterface(SolverInterface):
             5 * indent + "os.path.join('c', 'solver_code', 'lib', 'amd'),\n" +
             5 * indent + "os.path.join('c', 'solver_code', 'lib', 'qdldl', 'include'),"),
             ("license='Apache 2.0'", "license='BSD 3-Clause'"),
-            ('extra_objects=[cpg_lib]', "extra_objects=[cpg_lib, os.path.join(cpg_dir, 'build', 'out', 'libqocostatic.a')]")
+            ('extra_objects=[cpg_lib]', "extra_objects=[cpg_lib, os.path.join(cpg_dir, 'build', 'out', 'libqocostatic.a'), os.path.join(cpg_dir, 'build', 'solver_code', 'lib', 'qdldl', 'out', 'libqdldl.a')]")
         ]
         read_write_file(os.path.join(code_dir, 'setup.py'),
                         lambda x: multiple_replace(x, setup_replacements))
