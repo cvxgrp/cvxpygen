@@ -1749,31 +1749,33 @@ class QOCOInterface(SolverInterface):
             indent + sdir + 'lib/amd\n' +
             indent + sdir + 'lib/qdldl/include')
         ]
-
         read_write_file(os.path.join(code_dir, 'c', 'CMakeLists.txt'),
                         lambda x: multiple_replace(x, cmake_replacements))
-        
-        # cmake_replacements = [("# directories including header files", 
-        #                        "# directories including header files\n" + 
-        #                        'if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")\n' + 
-        #                        indent + 'add_compile_definitions(IS_LINUX)\n' + 
-        #                         'elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")\n' + 
-        #                        indent + 'add_compile_definitions(IS_MACOS)\n' + 
-        #                         'elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")\n' + 
-        #                        indent + 'add_compile_definitions(IS_WINDOWS)\n' + 
-        #                        'endif()'
-        #                        )]
 
-        # read_write_file(os.path.join(code_dir, 'c', 'CMakeLists.txt'),
-        #                 lambda x: multiple_replace(x, cmake_replacements))
+        cmake_replacements = [
+            ('add_executable (cpg_example ${cpg_head} ${cpg_src} ${CMAKE_CURRENT_SOURCE_DIR}/src/cpg_example.c)',
+            'add_executable (cpg_example ${cpg_head} ${cpg_src} ${CMAKE_CURRENT_SOURCE_DIR}/src/cpg_example.c)\n' +
+            'target_link_libraries(cpg_example qocostatic)')
+        ]
+        read_write_file(os.path.join(code_dir, 'c', 'CMakeLists.txt'),
+                        lambda x: multiple_replace(x, cmake_replacements))
+
+        cmake_replacements = [
+            ('add_library (cpg STATIC ${cpg_head} ${cpg_src})',
+            'add_library (cpg STATIC ${cpg_head} ${cpg_src})\n' +
+            'target_link_libraries(cpg qocostatic)')
+        ]
+        read_write_file(os.path.join(code_dir, 'c', 'CMakeLists.txt'),
+                        lambda x: multiple_replace(x, cmake_replacements))
 
         # adjust setup.py
         setup_replacements = [
             ("os.path.join('c', 'solver_code', 'include'),",
             "os.path.join('c', 'solver_code', 'include'),\n" +
-            indent + "os.path.join('c', 'solver_code', 'lib', 'amd'),\n" +
-            indent + "os.path.join('c', 'solver_code', 'lib', 'qdldl', 'include'),"),
-            ("license='Apache 2.0'", "license='BSD 3-Clause'")
+            5 * indent + "os.path.join('c', 'solver_code', 'lib', 'amd'),\n" +
+            5 * indent + "os.path.join('c', 'solver_code', 'lib', 'qdldl', 'include'),"),
+            ("license='Apache 2.0'", "license='BSD 3-Clause'"),
+            ('extra_objects=[cpg_lib]', "extra_objects=[cpg_lib, os.path.join(cpg_dir, 'build', 'out', 'libqocostatic.a')]")
         ]
         read_write_file(os.path.join(code_dir, 'setup.py'),
                         lambda x: multiple_replace(x, setup_replacements))
