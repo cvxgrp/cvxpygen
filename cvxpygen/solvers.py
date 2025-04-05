@@ -1673,35 +1673,44 @@ class QOCOInterface(SolverInterface):
                            'q': q}
 
         self.parameter_update_structure = {
-            # 'init': ParameterUpdateLogic(
-            #     update_pending_logic=UpdatePendingLogic([], extra_condition='!{prefix}ecos_workspace', functions_if_false=['AbcGh']),
-            #     function_call=f'{{prefix}}cpg_copy_all();\n'
-            #                 f'    {{prefix}}ecos_workspace = ECOS_setup({canon_constants["n"]}, {canon_constants["m"]}, {canon_constants["p"]}, {canon_constants["l"]}, {canon_constants["n_cones"]}'
-            #                 f', {"0" if canon_constants["n_cones"] == 0 else "(int *) &{prefix}ecos_q"}, {canon_constants["e"]}'
-            #                 f', {{prefix}}Canon_Params_conditioning.G->x, {{prefix}}Canon_Params_conditioning.G->p, {{prefix}}Canon_Params_conditioning.G->i'
-            #                 f', {"0" if canon_constants["p"] == 0 else "{prefix}Canon_Params_conditioning.A->x"}'
-            #                 f', {"0" if canon_constants["p"] == 0 else "{prefix}Canon_Params_conditioning.A->p"}'
-            #                 f', {"0" if canon_constants["p"] == 0 else "{prefix}Canon_Params_conditioning.A->i"}'
-            #                 f', {{prefix}}Canon_Params_conditioning.c, {{prefix}}Canon_Params_conditioning.h'
-            #                 f', {"0" if canon_constants["p"] == 0 else "{prefix}Canon_Params_conditioning.b"})'
-            # ),
-            # 'AbcGh': ParameterUpdateLogic(
-            #     update_pending_logic=UpdatePendingLogic(['A', 'b', 'G'], '||', ['c', 'h']),
-            #     function_call=f'{{prefix}}cpg_copy_all();\n'
-            #                 f'      ECOS_updateData({{prefix}}ecos_workspace, {{prefix}}Canon_Params_conditioning.G->x, {"0" if canon_constants["p"] == 0 else "{prefix}Canon_Params_conditioning.A->x"}'
-            #                 f', {{prefix}}Canon_Params_conditioning.c, {{prefix}}Canon_Params_conditioning.h, {"0" if canon_constants["p"] == 0 else "{prefix}Canon_Params_conditioning.b"})'
-            # ),
-            # 'c': ParameterUpdateLogic(
-            #     update_pending_logic=UpdatePendingLogic(['c']),
-            #     function_call=f'{{prefix}}cpg_copy_c();\n'
-            #                 f'        for (i=0; i<{canon_constants["n"]}; i++) {{{{ ecos_updateDataEntry_c({{prefix}}ecos_workspace, i, {{prefix}}Canon_Params_conditioning.c[i]); }}}}'
-            # ),
-            # 'h': ParameterUpdateLogic(
-            #     update_pending_logic=UpdatePendingLogic(['h']),
-            #     function_call=f'{{prefix}}cpg_copy_h();\n'
-            #                 f'        for (i=0; i<{canon_constants["m"]}; i++) {{{{ ecos_updateDataEntry_h({{prefix}}ecos_workspace, i, {{prefix}}Canon_Params_conditioning.h[i]); }}}}'
-            # )
+            'init': ParameterUpdateLogic(
+                update_pending_logic=UpdatePendingLogic([], extra_condition='!{prefix}qoco_solver', functions_if_false=['AbcGh']),
+                # function_call=f'{{prefix}}cpg_copy_all();\n'
+                #             f'    {{prefix}}ecos_workspace = ECOS_setup({canon_constants["n"]}, {canon_constants["m"]}, {canon_constants["p"]}, {canon_constants["l"]}, {canon_constants["n_cones"]}'
+                #             f', {"0" if canon_constants["n_cones"] == 0 else "(int *) &{prefix}ecos_q"}, {canon_constants["e"]}'
+                #             f', {{prefix}}Canon_Params_conditioning.G->x, {{prefix}}Canon_Params_conditioning.G->p, {{prefix}}Canon_Params_conditioning.G->i'
+                #             f', {"0" if canon_constants["p"] == 0 else "{prefix}Canon_Params_conditioning.A->x"}'
+                #             f', {"0" if canon_constants["p"] == 0 else "{prefix}Canon_Params_conditioning.A->p"}'
+                #             f', {"0" if canon_constants["p"] == 0 else "{prefix}Canon_Params_conditioning.A->i"}'
+                #             f', {{prefix}}Canon_Params_conditioning.c, {{prefix}}Canon_Params_conditioning.h'
+                #             f', {"0" if canon_constants["p"] == 0 else "{prefix}Canon_Params_conditioning.b"})'
+            ),
+            'A': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['A']),
+                function_call='update_matrix_data({prefix}qoco_solver, NULL, {prefix}Canon_Params.A->x, NULL)'
+            ),
+            'G': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['G']),
+                function_call='update_matrix_data({prefix}qoco_solver, NULL, NULL, {prefix}Canon_Params.G->x)'
+            ),
+            'c': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['c']),
+                function_call = 'update_vector_data({prefix}qoco_solver, {prefix}Canon_Params.c, NULL, NULL)'
+            ),
+            'b': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['b']),
+                function_call = 'update_vector_data({prefix}qoco_solver, NULL, {prefix}Canon_Params.b, NULL)'
+            ),
+            'h': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['h']),
+                function_call = 'update_vector_data({prefix}qoco_solver, NULL, NULL, {prefix}Canon_Params.h)'
+            ),
         }
+        if indices_obj is not None:
+            self.parameter_update_structure['P'] = ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['P']),
+                function_call = 'update_matrix_data({prefix}qoco_solver, {prefix}Canon_Params.P->x), NULL, NULL)'
+            )
 
         super().__init__(self.solver_name, n_var, n_eq, n_ineq, indices_obj, indptr_obj, shape_obj,
                          indices_constr, indptr_constr, shape_constr, canon_constants, enable_settings)
@@ -1795,6 +1804,6 @@ class QOCOInterface(SolverInterface):
             f.write('\n// QOCO array of SOC dimensions\n')
             write_vec_def(f, self.canon_constants['q'], f'{prefix}qoco_q', 'cpg_int')
         f.write('\n// QOCO solver\n')
-        f.write(f'QOCOSolver* {prefix}qoco_solver = 0;\n')
+        f.write(f'QOCOSolver* {prefix}qoco_solver = NULL;\n')
         f.write('\n// QOCO exit flag\n')
         f.write(f'cpg_int {prefix}qoco_flag = -99;\n')
