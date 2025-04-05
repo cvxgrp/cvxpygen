@@ -1674,16 +1674,19 @@ class QOCOInterface(SolverInterface):
 
         self.parameter_update_structure = {
             'init': ParameterUpdateLogic(
-                update_pending_logic=UpdatePendingLogic([], extra_condition='!{prefix}qoco_solver', functions_if_false=['AbcGh']),
-                # function_call=f'{{prefix}}cpg_copy_all();\n'
-                #             f'    {{prefix}}ecos_workspace = ECOS_setup({canon_constants["n"]}, {canon_constants["m"]}, {canon_constants["p"]}, {canon_constants["l"]}, {canon_constants["n_cones"]}'
-                #             f', {"0" if canon_constants["n_cones"] == 0 else "(int *) &{prefix}ecos_q"}, {canon_constants["e"]}'
-                #             f', {{prefix}}Canon_Params_conditioning.G->x, {{prefix}}Canon_Params_conditioning.G->p, {{prefix}}Canon_Params_conditioning.G->i'
-                #             f', {"0" if canon_constants["p"] == 0 else "{prefix}Canon_Params_conditioning.A->x"}'
-                #             f', {"0" if canon_constants["p"] == 0 else "{prefix}Canon_Params_conditioning.A->p"}'
-                #             f', {"0" if canon_constants["p"] == 0 else "{prefix}Canon_Params_conditioning.A->i"}'
-                #             f', {{prefix}}Canon_Params_conditioning.c, {{prefix}}Canon_Params_conditioning.h'
-                #             f', {"0" if canon_constants["p"] == 0 else "{prefix}Canon_Params_conditioning.b"})'
+                update_pending_logic=UpdatePendingLogic([], extra_condition='!{prefix}qoco_solver'),
+                function_call=f'{{prefix}}cpg_copy_all();\n'
+                            f'   QOCOCscMatrix* P = (QOCOCscMatrix*)malloc(sizeof(QOCOCscMatrix));\n'
+                            f'   QOCOCscMatrix* A = (QOCOCscMatrix*)malloc(sizeof(QOCOCscMatrix));\n'
+                            f'   QOCOCscMatrix* G = (QOCOCscMatrix*)malloc(sizeof(QOCOCscMatrix));\n'
+                            f'   qoco_set_csc(P, {canon_constants["n"]}, {canon_constants["n"]}, Canon_Params.P->nnz, Canon_Params.P->x, Canon_Params.P->p, Canon_Params.P->i);\n'
+                            f'   qoco_set_csc(A, {canon_constants["p"]}, {canon_constants["n"]}, Canon_Params.A->nnz, Canon_Params.A->x, Canon_Params.A->p, Canon_Params.A->i);\n'
+                            f'   qoco_set_csc(G, {canon_constants["m"]}, {canon_constants["n"]}, Canon_Params.G->nnz, Canon_Params.G->x, Canon_Params.G->p, Canon_Params.G->i);\n'
+                            f'   QOCOSettings* settings = (QOCOSettings*)malloc(sizeof(QOCOSettings));\n'
+                            f'   set_default_settings(settings);\n'
+                            f'   {{prefix}}qoco_solver = (QOCOSolver*)malloc(sizeof(QOCOSolver));\n'
+                            f'    qoco_setup({{prefix}}qoco_solver, {canon_constants["n"]}, {canon_constants["m"]}, {canon_constants["p"]}, P, Canon_Params.c, A, Canon_Params.b, G, Canon_Params.h, {canon_constants["l"]}, {canon_constants["nsoc"]}'
+                            f', {"NULL" if canon_constants["nsoc"] == 0 else "(int *) &{prefix}qoco_q"}, settings);'
             ),
             'A': ParameterUpdateLogic(
                 update_pending_logic = UpdatePendingLogic(['A']),
