@@ -51,3 +51,11 @@ include cvxpygen/solvers/Clarabel.cpp/Clarabel.rs/src/solver/implementations/*.r
 include cvxpygen/solvers/Clarabel.cpp/Clarabel.rs/src/solver/implementations/default/*.rs
 include cvxpygen/solvers/Clarabel.cpp/Clarabel.rs/src/solver/utils/*.rs
 include cvxpygen/solvers/Clarabel.cpp/Clarabel.rs/src/timers/*.rs
+include cvxpygen/solvers/qoco/*
+include cvxpygen/solvers/qoco/src/*.c
+include cvxpygen/solvers/qoco/include/*.h
+include cvxpygen/solvers/qoco/configure/*
+include cvxpygen/solvers/qoco/lib/amd/*
+include cvxpygen/solvers/qoco/qdldl/*
+include cvxpygen/solvers/qoco/qdldl/include/*.h
+include cvxpygen/solvers/qoco/qdldl/src/*.c
