@@ -1682,11 +1682,11 @@ class QOCOInterface(SolverInterface):
                             f'   qoco_set_csc(P, {canon_constants["n"]}, {canon_constants["n"]}, Canon_Params.P->nnz, Canon_Params.P->x, Canon_Params.P->p, Canon_Params.P->i);\n'
                             f'   qoco_set_csc(A, {canon_constants["p"]}, {canon_constants["n"]}, Canon_Params.A->nnz, Canon_Params.A->x, Canon_Params.A->p, Canon_Params.A->i);\n'
                             f'   qoco_set_csc(G, {canon_constants["m"]}, {canon_constants["n"]}, Canon_Params.G->nnz, Canon_Params.G->x, Canon_Params.G->p, Canon_Params.G->i);\n'
-                            f'   QOCOSettings* settings = (QOCOSettings*)malloc(sizeof(QOCOSettings));\n'
-                            f'   set_default_settings(settings);\n'
+                            f'   QOCOSettings* qoco_settings = (QOCOSettings*)malloc(sizeof(QOCOSettings));\n'
+                            f'   set_default_settings(qoco_settings);\n'
                             f'   {{prefix}}qoco_solver = (QOCOSolver*)malloc(sizeof(QOCOSolver));\n'
                             f'    qoco_setup({{prefix}}qoco_solver, {canon_constants["n"]}, {canon_constants["m"]}, {canon_constants["p"]}, P, Canon_Params.c, A, Canon_Params.b, G, Canon_Params.h, {canon_constants["l"]}, {canon_constants["nsoc"]}'
-                            f', {"NULL" if canon_constants["nsoc"] == 0 else "(int *) &{prefix}qoco_q"}, settings);'
+                            f', {"NULL" if canon_constants["nsoc"] == 0 else "(int *) &{prefix}qoco_q"}, qoco_settings)'
             ),
             'A': ParameterUpdateLogic(
                 update_pending_logic = UpdatePendingLogic(['A']),
