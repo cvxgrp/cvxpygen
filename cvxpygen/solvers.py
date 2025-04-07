@@ -1823,7 +1823,7 @@ class QOCOInterface(SolverInterface):
             5 * indent + "os.path.join('c', 'solver_code', 'lib', 'amd'),\n" +
             5 * indent + "os.path.join('c', 'solver_code', 'lib', 'qdldl', 'include'),"),
             ("license='Apache 2.0'", "license='BSD 3-Clause'"),
-            ("lib_name = 'cpg.lib'", "lib_name = 'cpg.lib'\n" + "    libqoco_name = 'qocostatic.lib'\n" + "    libqdldl_name = 'qdldl.lib'"),
+            ("lib_name = 'cpg.lib'", "lib_name = os.path.join('cpg.lib')\n" + "    libqoco_name = os.path.join('Release', 'qocostatic.lib')\n" + "    libqdldl_name = os.path.join('Release', 'qdldl.lib')"),
             ("lib_name = 'libcpg.a'", "lib_name = 'libcpg.a'\n" + "    libqoco_name = 'libqocostatic.a'\n" + "    libqdldl_name = 'libqdldl.a'"),
             ('extra_objects=[cpg_lib]', "extra_objects=[cpg_lib, os.path.join(cpg_dir, 'build', 'out', libqoco_name), os.path.join(cpg_dir, 'build', 'solver_code', 'lib', 'qdldl', 'out', libqdldl_name)]")
         ]
