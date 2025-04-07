@@ -1476,11 +1476,11 @@ class QOCOGENInterface(SolverInterface):
     stgs_direct_write_ptr = '(&({prefix}qoco_custom_workspace.settings))'
     stgs_translation = "{}"
     stgs_reset_function = {'name': 'set_default_settings', 'ptr': '&{prefix}qoco_custom_workspace'}
-    stgs_names = ['max_iters', 'bisect_iters', 'iter_ref_iters', 'kkt_static_reg', 'kkt_dynamic_reg',
+    stgs_names = ['max_iters', 'bisect_iters', 'ruiz_iters', 'iter_ref_iters', 'kkt_static_reg', 'kkt_dynamic_reg',
                       'abstol', 'reltol', 'abstol_inacc', 'reltol_inacc', 'verbose']
     stgs_types = ['cpg_int', 'cpg_int', 'cpg_int', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_int']
     stgs_enabled = [True, True, True, True, True, True, True, True, True, True]
-    stgs_defaults = ['200', '5', '1', '1e-8', '1e-8', '1e-7', '1e-7', '1e-5', '1e-5', '0']
+    stgs_defaults = ['200', '5', '0', '1', '1e-8', '1e-8', '1e-7', '1e-7', '1e-5', '1e-5', '0']
 
     dual_var_split = True
     dual_var_names = ['y', 'z']
