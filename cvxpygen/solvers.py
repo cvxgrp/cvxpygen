@@ -1775,7 +1775,7 @@ class QOCOInterface(SolverInterface):
         if os.path.isdir(solver_code_dir):
             shutil.rmtree(solver_code_dir)
         os.mkdir(solver_code_dir)
-        dirs_to_copy = ['src', 'include', 'lib', 'examples', 'configure']
+        dirs_to_copy = ['src', 'include', 'lib', 'configure']
         for dtc in dirs_to_copy:
             shutil.copytree(os.path.join(cvxpygen_directory, 'solvers', 'qoco', dtc),
                             os.path.join(solver_code_dir, dtc))

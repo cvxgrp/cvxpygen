@@ -90,15 +90,8 @@ def extract_canonicalization(problem, solver, solver_opts, enable_settings) -> C
 
     # QOCOGEN has an identical interface to QOCO, but only QOCO is in cvxpy.
     if solver == 'QOCOGEN':
-        data, _, inverse_data = problem.get_problem_data(
-            solver='QOCO',
-            gp=False,
-            enforce_dpp=True,
-            verbose=False,
-            solver_opts=solver_opts
-        )
-    else:
-        data, _, inverse_data = problem.get_problem_data(
+        solver = 'QOCO'
+    data, _, inverse_data = problem.get_problem_data(
         solver=solver,
         gp=False,
         enforce_dpp=True,

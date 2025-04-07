@@ -147,7 +147,9 @@ def test(name, solver, style, seed):
         assert np.linalg.norm(dual_cg, 2) < 1e-3
 
     # QOCOGEN is not in CVXPY, but QOCO is an identical (but non-customized) solver, so to check QOCOGEN, we use QOCO.
-    if stats_cg.solver_name != 'QOCOGEN':
+    if stats_cg.solver_name == 'QOCOGEN':
+        assert stats_py.solver_name == 'QOCO'
+    else:
         assert stats_py.solver_name == stats_cg.solver_name
     assert sol_cg.opt_val == val_cg
 

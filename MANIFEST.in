@@ -55,7 +55,6 @@ include cvxpygen/solvers/qoco/*
 include cvxpygen/solvers/qoco/src/*.c
 include cvxpygen/solvers/qoco/include/*.h
 include cvxpygen/solvers/qoco/configure/*
-include cvxpygen/solvers/qoco/examples/*
 include cvxpygen/solvers/qoco/lib/*
 include cvxpygen/solvers/qoco/lib/amd/*
 include cvxpygen/solvers/qoco/lib/qdldl/*
