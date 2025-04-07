@@ -73,5 +73,3 @@ jobs:
         pip install pytest
         cd tests
         python -m pytest test_E2E_LP.py::test test_E2E_QP.py::test test_E2E_QP.py::test_OSQP_verbose test_E2E_SOCP.py::test test_E2E_LP.py::test_qocogen test_unsupported_solvers.py
-        gci -Recurse -Filter qocostatic.lib | select -ExpandProperty FullName
-        gci -Recurse -Filter qdldl.lib | select -ExpandProperty FullName
