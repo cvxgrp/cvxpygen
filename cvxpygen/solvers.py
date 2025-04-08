@@ -38,7 +38,7 @@ def get_interface_class(solver_name: str) -> "SolverInterface":
     interface = mapping.get(solver_name.upper(), None)
     if interface is None:
         raise ValueError(f'Unsupported solver: {solver_name}.')
-    return interface[0], interface[1]
+    return interface
 
 
 class SolverInterface(ABC):
