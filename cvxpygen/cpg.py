@@ -88,7 +88,7 @@ def extract_canonicalization(problem, solver, solver_opts, enable_settings) -> C
     
     # problem data
     data, _, inverse_data = problem.get_problem_data(
-        solver=solver,
+        solver=cvxpy_interface_class.__name__,
         gp=False,
         enforce_dpp=True,
         verbose=False,

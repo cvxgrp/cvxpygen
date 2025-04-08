@@ -177,7 +177,7 @@ def get_primal_vec(prob, name):
 N_RAND = 2
 
 name_solver_style_seed = [['actuator', 'MPC', 'portfolio'],
-                          ['OSQP', 'SCS', 'QOCO'],
+                          ['OSQP', 'SCS', 'QOCO', 'QOCOGEN'],
                           ['loops'],
                           list(np.arange(N_RAND))]
 
@@ -226,7 +226,11 @@ def test(name, solver, style, seed):
     else:
         assert np.linalg.norm(dual_cg, 2) < 1e-3
         
-    assert stats_py.solver_name == stats_cg.solver_name
+    # QOCOGEN is not in CVXPY, but QOCO is an identical (but non-customized) solver, so to check QOCOGEN, we use QOCO.
+    if solver == 'QOCOGEN':
+        assert stats_cg.solver_name == 'QOCOGEN'
+    else:
+        assert stats_py.solver_name == stats_cg.solver_name
     assert sol_cg.opt_val == val_cg
 
     
@@ -244,7 +248,7 @@ def test_OSQP_verbose():
     module = importlib.import_module('test_actuator_OSQP_verbose.cpg_solver')
     prob.register_solve('CPG', module.cpg_solve)
 
-    prob = assign_data(prob, 'actuaor', 0)
+    prob = assign_data(prob, 'actuator', 0)
 
     verbose_output = io.StringIO()
     sys.stdout = verbose_output

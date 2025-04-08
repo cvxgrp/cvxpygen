@@ -99,7 +99,7 @@ def get_primal_vec(prob, name):
 N_RAND = 2
 
 name_solver_style_seed = [['network', 'resource'],
-                          ['ECOS'],
+                          ['ECOS', 'QOCO'],
                           ['loops'],
                           list(np.arange(N_RAND))]
 
@@ -146,13 +146,17 @@ def test(name, solver, style, seed):
     else:
         assert np.linalg.norm(dual_cg, 2) < 1e-3
 
-    assert stats_py.solver_name == stats_cg.solver_name
+    # QOCOGEN is not in CVXPY, but QOCO is an identical (but non-customized) solver, so to check QOCOGEN, we use QOCO.
+    if solver == 'QOCOGEN':
+        assert stats_cg.solver_name == 'QOCOGEN'
+    else:
+        assert stats_py.solver_name == stats_cg.solver_name
     assert sol_cg.opt_val == val_cg
 
 def test_clarabel():
     test('network', 'CLARABEL', 'loops', 0)
     test('network', 'CLARABEL', 'loops', 1)
 
-def test_qoco():
-    test('network', 'QOCO', 'loops', 0)
-    test('network', 'QOCO', 'loops', 1)
+def test_qocogen():
+    test('network', 'QOCOGEN', 'loops', 0)
+    test('network', 'QOCOGEN', 'loops', 1)
