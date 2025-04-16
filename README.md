@@ -193,6 +193,9 @@ from cvxpylayers.torch import CvxpyLayer
 layer = CvxpyLayer(problem, parameters=[A, b], variables=[x], custom_method=(forward, backward))
 ```
 
+See [examples/paper_grad](https://github.com/cvxgrp/cvxpygen/tree/master/examples/paper_grad)
+for three practical examples from the areas of machine learning, control, and finance.
+
 ## Tests
 
 To run tests, install ``pytest`` via
