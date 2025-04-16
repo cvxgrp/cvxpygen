@@ -63,3 +63,4 @@ include cvxpygen/solvers/qoco/lib/qdldl/configure/*
 include cvxpygen/solvers/qoco/lib/qdldl/configure/cmake/*
 include cvxpygen/solvers/qoco/lib/qdldl/include/*.h
 include cvxpygen/solvers/qoco/lib/qdldl/src/*.c
+exclude tests/*
