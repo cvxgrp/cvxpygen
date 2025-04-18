@@ -39,7 +39,7 @@ jobs:
       run: |
         sudo apt install libeigen3-dev
         python setup.py install
-        pip install cvxpylayers torch==2.3 jax
+        pip install cvxpylayers torch==2.3 jax==0.5.3
 
     - name: Install dependencies (macOS)
       if: runner.os == 'macOS'
