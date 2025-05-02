@@ -1563,6 +1563,10 @@ class QOCOGENInterface(SolverInterface):
                                 self.canon_constants['l'], self.canon_constants['nsoc'], self.canon_constants['q'],
                                 os.path.join(code_dir, 'c'), "solver_code")
         
+        # Copy LICENSE
+        shutil.copyfile(os.path.join(code_dir, 'c', 'solver_code', 'LICENSE'),
+                os.path.join(code_dir, 'LICENSE'))
+
         # adjust top-level CMakeLists.txt
         sdir = '${CMAKE_CURRENT_SOURCE_DIR}/solver_code/'
         cmake_replacements = [
