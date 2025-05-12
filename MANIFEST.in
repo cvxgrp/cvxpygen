@@ -1,6 +1,7 @@
 include *.yml
 include LICENSE
 include cvxpygen/template/*
+include cvxpygen/template/grad/*
 include cvxpygen/solvers/osqp-python/LICENSE
 include cvxpygen/solvers/scs/*
 include cvxpygen/solvers/scs/cmake/*.cmake
@@ -50,3 +51,16 @@ include cvxpygen/solvers/Clarabel.cpp/Clarabel.rs/src/solver/implementations/*.r
 include cvxpygen/solvers/Clarabel.cpp/Clarabel.rs/src/solver/implementations/default/*.rs
 include cvxpygen/solvers/Clarabel.cpp/Clarabel.rs/src/solver/utils/*.rs
 include cvxpygen/solvers/Clarabel.cpp/Clarabel.rs/src/timers/*.rs
+include cvxpygen/solvers/qoco/*
+include cvxpygen/solvers/qoco/src/*.c
+include cvxpygen/solvers/qoco/include/*.h
+include cvxpygen/solvers/qoco/configure/*
+include cvxpygen/solvers/qoco/lib/*
+include cvxpygen/solvers/qoco/lib/amd/*
+include cvxpygen/solvers/qoco/lib/qdldl/*
+include cvxpygen/solvers/qoco/lib/qdldl/*
+include cvxpygen/solvers/qoco/lib/qdldl/configure/*
+include cvxpygen/solvers/qoco/lib/qdldl/configure/cmake/*
+include cvxpygen/solvers/qoco/lib/qdldl/include/*.h
+include cvxpygen/solvers/qoco/lib/qdldl/src/*.c
+exclude tests/*

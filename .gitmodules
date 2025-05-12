@@ -10,3 +10,6 @@
 [submodule "cvxpygen/solvers/Clarabel.cpp"]
 	path = cvxpygen/solvers/Clarabel.cpp
 	url = https://github.com/oxfordcontrol/Clarabel.cpp.git
+[submodule "cvxpygen/solvers/qoco"]
+	path = cvxpygen/solvers/qoco
+	url = https://github.com/qoco-org/qoco.git

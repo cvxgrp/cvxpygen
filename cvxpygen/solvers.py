@@ -18,21 +18,27 @@ from cvxpy.reductions.solvers.qp_solvers.osqp_qpif import OSQP
 from cvxpy.reductions.solvers.conic_solvers.scs_conif import SCS
 from cvxpy.reductions.solvers.conic_solvers.ecos_conif import ECOS
 from cvxpy.reductions.solvers.conic_solvers.clarabel_conif import CLARABEL
+from cvxpy.reductions.solvers.conic_solvers.qoco_conif import QOCO
+
+
+UNSUPPORTED_ON_WINDOWS = ['CLARABEL']
 
 
 def get_interface_class(solver_name: str) -> "SolverInterface":
-    if platform.system() == 'Windows' and solver_name.upper() == 'CLARABEL':
-        raise ValueError(f'Clarabel solver currently unsupported on Windows.')
+    if platform.system() == 'Windows' and solver_name.upper() in UNSUPPORTED_ON_WINDOWS:
+        raise ValueError(f'{solver_name} solver currently not supported on Windows.')
     mapping = {
         'OSQP': (OSQPInterface, OSQP),
         'SCS': (SCSInterface, SCS),
         'ECOS': (ECOSInterface, ECOS),
         'CLARABEL': (ClarabelInterface, CLARABEL),
+        'QOCO': (QOCOInterface, QOCO),
+        'QOCOGEN': (QOCOGENInterface, QOCO),
     }
     interface = mapping.get(solver_name.upper(), None)
     if interface is None:
         raise ValueError(f'Unsupported solver: {solver_name}.')
-    return interface[0], interface[1]
+    return interface
 
 
 class SolverInterface(ABC):
@@ -106,7 +112,7 @@ class SolverInterface(ABC):
         elif p_id in ['q', 'c']:
             affine_map.mapping = param_prob.c[:-1]
         elif p_id == 'd':
-            affine_map.mapping = param_prob.c[-1]
+            affine_map.mapping = param_prob.c[[-1], :]
         elif p_id == 'A':
             affine_map.mapping_rows = constraint_info.mapping_rows_eq[
                 constraint_info.mapping_rows_eq < constraint_info.n_data_constr_mat]
@@ -689,7 +695,7 @@ class OSQPInterface(SolverInterface):
         elif p_id == 'q':
             affine_map.mapping = param_prob.q[:-1]
         elif p_id == 'd':
-            affine_map.mapping = param_prob.q[-1]
+            affine_map.mapping = param_prob.q[[-1], :]
         elif p_id == 'A':
             affine_map.mapping = param_prob.reduced_A.reduced_mat[
                                  :constraint_info.n_data_constr_mat]
@@ -1426,3 +1432,421 @@ class ClarabelInterface(SolverInterface):
         f.write(f'ClarabelDefaultSettings {prefix}settings;\n')
         f.write(f'ClarabelDefaultSolver *{prefix}solver = 0;\n')
         f.write(f'ClarabelDefaultSolution {prefix}solution;\n')
+
+class QOCOGENInterface(SolverInterface):
+    solver_name = 'QOCOGEN'
+    solver_type = 'conic'
+    canon_p_ids = ['P', 'c', 'd', 'A', 'b', 'G', 'h']
+    canon_p_ids_constr_vec = ['b', 'h']
+    solve_function_call = 'qoco_custom_solve(&{prefix}qoco_custom_workspace)'
+
+    # header files
+    header_files = ['"qoco_custom.h"']
+    cmake_headers = ['${qoco_custom_headers}']
+    cmake_sources = ['${qoco_custom_sources}']
+
+    # preconditioning of problem data happening in-memory
+    inmemory_preconditioning = False
+
+    # workspace
+    ws_statically_allocated_in_solver_code = False
+    ws_ptrs = WorkspacePointerInfo(
+        objective_value = 'qoco_custom_workspace.sol.obj',
+        iterations = 'qoco_custom_workspace.sol.iters',
+        status = 'qoco_custom_workspace.sol.status',
+        primal_residual = 'qoco_custom_workspace.sol.pres',
+        dual_residual = 'qoco_custom_workspace.sol.dres',
+        primal_solution = 'qoco_custom_workspace.sol.x',
+        dual_solution = 'qoco_custom_workspace.sol.{dual_var_name}',
+        settings = 'qoco_custom_workspace.settings.{setting_name}'
+    )
+
+    # solution vectors statically allocated
+    sol_statically_allocated = True
+
+    # solver status as integer vs. string
+    status_is_int = True
+
+    # float and integer types
+    numeric_types = {'float': 'double', 'int': 'int'}
+
+    # solver settings
+    stgs_dynamically_allocated = False
+    stgs_requires_extra_struct_type = False
+    stgs_direct_write_ptr = '(&({prefix}qoco_custom_workspace.settings))'
+    stgs_translation = "{}"
+    stgs_reset_function = {'name': 'set_default_settings', 'ptr': '&{prefix}qoco_custom_workspace'}
+    stgs_names = ['max_iters', 'bisect_iters', 'ruiz_iters', 'iter_ref_iters', 'kkt_static_reg', 'kkt_dynamic_reg',
+                      'abstol', 'reltol', 'abstol_inacc', 'reltol_inacc', 'verbose']
+    stgs_types = ['cpg_int', 'cpg_int', 'cpg_int', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_int']
+    stgs_enabled = [True, True, True, True, True, True, True, True, True, True]
+    stgs_defaults = ['200', '5', '0', '1', '1e-8', '1e-8', '1e-7', '1e-7', '1e-5', '1e-5', '0']
+
+    dual_var_split = True
+    dual_var_names = ['y', 'z']
+
+    # docu
+    docu = 'https://qoco-org.github.io/qoco/'
+
+    def __init__(self, data, p_prob, enable_settings):
+        n_var = p_prob.x.size
+        n_eq = p_prob.cone_dims.zero
+        n_ineq = data['G'].shape[0]
+        q = np.array(p_prob.cone_dims.soc)
+        indices_obj, indptr_obj, shape_obj = self.get_problem_data_index(p_prob.reduced_P)
+        indices_constr, indptr_constr, shape_constr = self.get_problem_data_index(p_prob.reduced_A)
+
+        canon_constants = {'n': n_var, 'm': n_ineq, 'p': n_eq,
+                           'l': p_prob.cone_dims.nonneg,
+                           'nsoc': len(p_prob.cone_dims.soc),
+                           'q': q}
+
+        self.parameter_update_structure = {
+            'init': ParameterUpdateLogic(
+                update_pending_logic=UpdatePendingLogic([], extra_condition='{prefix}qoco_custom_workspace.n <= 0'),
+                function_call=f'load_data(&{{prefix}}qoco_custom_workspace)'
+            ),
+            'A': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['A']),
+                function_call='update_A(&{prefix}qoco_custom_workspace, {prefix}Canon_Params.A->x)'
+            ),
+            'G': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['G']),
+                function_call='update_G(&{prefix}qoco_custom_workspace, {prefix}Canon_Params.G->x)'
+            ),
+            'c': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['c']),
+                function_call = 'update_c(&{prefix}qoco_custom_workspace, {prefix}Canon_Params.c)'
+            ),
+            'b': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['b']),
+                function_call = 'update_b(&{prefix}qoco_custom_workspace, {prefix}Canon_Params.b)'
+            ),
+            'h': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['h']),
+                function_call = 'update_h(&{prefix}qoco_custom_workspace, {prefix}Canon_Params.h)'
+            ),
+        }
+        if indices_obj is not None:
+            self.parameter_update_structure['P'] = ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['P']),
+                function_call = 'update_P(&{prefix}qoco_custom_workspace, {prefix}Canon_Params.P->x)'
+            )
+
+        super().__init__(self.solver_name, n_var, n_eq, n_ineq, indices_obj, indptr_obj, shape_obj,
+                         indices_constr, indptr_constr, shape_constr, canon_constants, enable_settings)
+
+    @staticmethod
+    def check_unsupported_cones(cone_dims: "ConeDims") -> None:
+        if cone_dims.exp > 0:
+            raise ValueError(
+                'Exponential cones is not supported for QOCOGEN.')
+
+    @staticmethod
+    def ret_prim_func_exists(variable_info: PrimalVariableInfo) -> bool:
+        return True
+
+    @staticmethod
+    def ret_dual_func_exists(dual_variable_info: DualVariableInfo) -> bool:
+        return True
+
+    def generate_code(self, configuration, code_dir, solver_code_dir, cvxpygen_directory,
+                  parameter_canon: ParameterCanon, gradient, prefix) -> None:
+        import qocogen
+
+        # Need to check if problem has quadratic objective.
+        P = parameter_canon.p['P'] if 'P' in parameter_canon.p.keys() else None
+
+        # Generate qoco_custom
+        qocogen.generate_solver(self.canon_constants['n'], self.canon_constants['m'], self.canon_constants['p'], P, 
+                                parameter_canon.p['c'], parameter_canon.p['A'], parameter_canon.p['b'], parameter_canon.p['G'], parameter_canon.p['h'],
+                                self.canon_constants['l'], self.canon_constants['nsoc'], self.canon_constants['q'],
+                                os.path.join(code_dir, 'c'), "solver_code")
+        
+        # Copy LICENSE
+        shutil.copyfile(os.path.join(code_dir, 'c', 'solver_code', 'LICENSE'),
+                os.path.join(code_dir, 'LICENSE'))
+
+        # adjust top-level CMakeLists.txt
+        sdir = '${CMAKE_CURRENT_SOURCE_DIR}/solver_code/'
+        cmake_replacements = [
+            (sdir + 'include',
+            sdir)
+        ]
+        read_write_file(os.path.join(code_dir, 'c', 'CMakeLists.txt'),
+                        lambda x: multiple_replace(x, cmake_replacements))
+
+        # adjust setup.py
+        setup_replacements = [
+            ("os.path.join('c', 'solver_code', 'include'),",
+            "os.path.join('c', 'solver_code'),"),
+            ("license='Apache 2.0'", "license='BSD 3-Clause'")
+        ]
+        read_write_file(os.path.join(code_dir, 'setup.py'),
+                        lambda x: multiple_replace(x, setup_replacements))
+
+
+    def declare_workspace(self, f, prefix, parameter_canon) -> None:
+        if self.canon_constants['nsoc'] > 0:
+            f.write('\n// qoco_custom array of SOC dimensions\n')
+            write_vec_prot(f, self.canon_constants['q'], f'{prefix}qoco_custom_q', 'cpg_int')
+        f.write('\n// qoco_custom workspace\n')
+        f.write(f'extern Workspace {prefix}qoco_custom_workspace;\n')
+        f.write('\n// qoco_custom exit flag\n')
+        f.write(f'extern cpg_int {prefix}qoco_custom_flag;\n')
+
+    def define_workspace(self, f, prefix, parameter_canon) -> None:
+        if self.canon_constants['nsoc'] > 0:
+            f.write('\n// qoco_custom array of SOC dimensions\n')
+            write_vec_def(f, self.canon_constants['q'], f'{prefix}qoco_custom_q', 'cpg_int')
+        f.write('\n// qoco_custom workspace\n')
+        f.write(f'Workspace {prefix}qoco_custom_workspace;\n')
+        f.write('\n// qoco_custom exit flag\n')
+        f.write(f'cpg_int {prefix}qoco_custom_flag = -99;\n')
+
+class QOCOInterface(SolverInterface):
+    solver_name = 'QOCO'
+    solver_type = 'conic'
+    canon_p_ids = ['P', 'c', 'd', 'A', 'b', 'G', 'h']
+    canon_p_ids_constr_vec = ['b', 'h']
+    supports_gradient = False
+    solve_function_call = 'qoco_solve({prefix}qoco_solver)'
+
+    # header files
+    header_files = ['"qoco.h"']
+    cmake_headers = ['${qoco_headers}']
+    cmake_sources = ['${qoco_sources}']
+
+    # preconditioning of problem data happening in-memory
+    inmemory_preconditioning = True
+
+    # workspace
+    ws_statically_allocated_in_solver_code = False
+    ws_ptrs = WorkspacePointerInfo(
+        objective_value = 'qoco_solver->sol->obj',
+        iterations = 'qoco_solver->sol->iters',
+        status = 'qoco_solver->sol->status',
+        primal_residual = 'qoco_solver->sol->pres',
+        dual_residual = 'qoco_solver->sol->dres',
+        primal_solution = 'qoco_solver->sol->x',
+        dual_solution = 'qoco_solver->sol->{dual_var_name}',
+        settings = 'qoco_solver->settings->{setting_name}'
+    )
+
+    # solution vectors statically allocated
+    sol_statically_allocated = False
+
+    # solver status as integer vs. string
+    status_is_int = True
+
+    # float and integer types
+    numeric_types = {'float': 'QOCOFloat', 'int': 'QOCOInt'}
+
+    # solver settings
+    stgs_dynamically_allocated = True
+    stgs_requires_extra_struct_type = True
+    stgs_direct_write_ptr = None
+    stgs_reset_function = None
+    stgs_translation = "{}"
+    stgs_names = ['max_iters', 'bisect_iters', 'ruiz_iters', 'iter_ref_iters', 'kkt_static_reg', 'kkt_dynamic_reg',
+                      'abstol', 'reltol', 'abstol_inacc', 'reltol_inacc', 'verbose']
+    stgs_types = ['cpg_int', 'cpg_int', 'cpg_int', 'cpg_int', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_int']
+    stgs_enabled = [True, True, True, True, True, True, True, True, True, True, True]
+    stgs_defaults = ['200', '5', '0', '1', '1e-8', '1e-8', '1e-7', '1e-7', '1e-5', '1e-5', '0']
+
+    # dual variables split into y and z vectors
+    dual_var_split = True
+    dual_var_names = ['y', 'z']
+
+    # docu
+    docu = 'https://qoco-org.github.io/qoco/'
+
+    def __init__(self, data, p_prob, enable_settings):
+        n_var = p_prob.x.size
+        n_eq = p_prob.cone_dims.zero
+        n_ineq = data['G'].shape[0]
+        q = np.array(p_prob.cone_dims.soc)
+        indices_obj, indptr_obj, shape_obj = self.get_problem_data_index(p_prob.reduced_P)
+        indices_constr, indptr_constr, shape_constr = self.get_problem_data_index(p_prob.reduced_A)
+
+        canon_constants = {'n': n_var, 'm': n_ineq, 'p': n_eq,
+                           'l': p_prob.cone_dims.nonneg,
+                           'nsoc': len(p_prob.cone_dims.soc),
+                           'q': q}
+
+        function_call = (
+            f'{{prefix}}cpg_copy_all();\n'
+            '   QOCOCscMatrix* P = (QOCOCscMatrix*)malloc(sizeof(QOCOCscMatrix));\n'
+            '   QOCOCscMatrix* A = (QOCOCscMatrix*)malloc(sizeof(QOCOCscMatrix));\n'
+            '   QOCOCscMatrix* G = (QOCOCscMatrix*)malloc(sizeof(QOCOCscMatrix));\n'
+        )
+
+        if indices_obj is not None:
+            function_call += (
+                f'   qoco_set_csc(P, {canon_constants["n"]}, {canon_constants["n"]}, '
+                f'{{prefix}}Canon_Params.P->nnz, {{prefix}}Canon_Params.P->x, '
+                f'{{prefix}}Canon_Params.P->p, {{prefix}}Canon_Params.P->i);\n'
+            )
+        else:
+            function_call += '   P = NULL;\n'
+
+        if canon_constants["p"] > 0:
+            function_call += (
+                f'   qoco_set_csc(A, {canon_constants["p"]}, {canon_constants["n"]}, '
+                f'{{prefix}}Canon_Params.A->nnz, {{prefix}}Canon_Params.A->x, '
+                f'{{prefix}}Canon_Params.A->p, {{prefix}}Canon_Params.A->i);\n'
+            )
+        else:
+            function_call += '   A = NULL;\n'
+
+        if canon_constants["m"] > 0:
+            function_call += (
+                f'   qoco_set_csc(G, {canon_constants["m"]}, {canon_constants["n"]}, '
+                f'{{prefix}}Canon_Params.G->nnz, {{prefix}}Canon_Params.G->x, '
+                f'{{prefix}}Canon_Params.G->p, {{prefix}}Canon_Params.G->i);\n'
+            )
+        else:
+            function_call += '   G = NULL;\n'
+
+        function_call += (
+            '   QOCOSettings* qoco_settings = (QOCOSettings*)malloc(sizeof(QOCOSettings));\n'
+            '   set_default_settings(qoco_settings);\n'
+            f'   {{prefix}}qoco_solver = (QOCOSolver*)malloc(sizeof(QOCOSolver));\n'
+            f'   qoco_setup({{prefix}}qoco_solver, {canon_constants["n"]}, {canon_constants["m"]}, {canon_constants["p"]}, P, '
+            f'{{prefix}}Canon_Params.c, A, '
+            f'{"NULL" if canon_constants["p"] == 0 else f"{{prefix}}Canon_Params.b"}, '
+            f'G, {"NULL" if canon_constants["m"] == 0 else f"{{prefix}}Canon_Params.h"}, '
+            f'{canon_constants["l"]}, {canon_constants["nsoc"]}, '
+            f'{"NULL" if canon_constants["nsoc"] == 0 else f"(int *) &{{prefix}}qoco_q"}, '
+            'qoco_settings)'
+        )
+
+        self.parameter_update_structure = {
+            'init': ParameterUpdateLogic(
+                update_pending_logic=UpdatePendingLogic([], extra_condition='!{prefix}qoco_solver'),
+                function_call=function_call
+            ),
+            'A': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['A']),
+                function_call='update_matrix_data({prefix}qoco_solver, NULL, {prefix}Canon_Params.A->x, NULL)'
+            ),
+            'G': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['G']),
+                function_call='update_matrix_data({prefix}qoco_solver, NULL, NULL, {prefix}Canon_Params.G->x)'
+            ),
+            'c': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['c']),
+                function_call = 'update_vector_data({prefix}qoco_solver, {prefix}Canon_Params.c, NULL, NULL)'
+            ),
+            'b': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['b']),
+                function_call = 'update_vector_data({prefix}qoco_solver, NULL, {prefix}Canon_Params.b, NULL)'
+            ),
+            'h': ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['h']),
+                function_call = 'update_vector_data({prefix}qoco_solver, NULL, NULL, {prefix}Canon_Params.h)'
+            ),
+        }
+        if indices_obj is not None:
+            self.parameter_update_structure['P'] = ParameterUpdateLogic(
+                update_pending_logic = UpdatePendingLogic(['P']),
+                function_call = 'update_matrix_data({prefix}qoco_solver, {prefix}Canon_Params.P->x, NULL, NULL)'
+            )
+
+        super().__init__(self.solver_name, n_var, n_eq, n_ineq, indices_obj, indptr_obj, shape_obj,
+                         indices_constr, indptr_constr, shape_constr, canon_constants, enable_settings)
+
+    @staticmethod
+    def check_unsupported_cones(cone_dims: "ConeDims") -> None:
+        if cone_dims.exp > 0:
+            raise ValueError(
+                'QOCO does not support exponential cones.')
+
+    @staticmethod
+    def ret_prim_func_exists(variable_info: PrimalVariableInfo) -> bool:
+        return True
+
+    @staticmethod
+    def ret_dual_func_exists(dual_variable_info: DualVariableInfo) -> bool:
+        return True
+
+    def generate_code(self, configuration, code_dir, solver_code_dir, cvxpygen_directory,
+                  parameter_canon: ParameterCanon, gradient, prefix) -> None:
+
+        # copy sources
+        if os.path.isdir(solver_code_dir):
+            shutil.rmtree(solver_code_dir)
+        os.mkdir(solver_code_dir)
+        dirs_to_copy = ['src', 'include', 'lib', 'configure']
+        for dtc in dirs_to_copy:
+            shutil.copytree(os.path.join(cvxpygen_directory, 'solvers', 'qoco', dtc),
+                            os.path.join(solver_code_dir, dtc))
+        
+        files_to_copy = ['CMakeLists.txt', 'LICENSE']
+        for fl in files_to_copy:
+            shutil.copyfile(os.path.join(cvxpygen_directory, 'solvers', 'qoco', fl),
+                            os.path.join(solver_code_dir, fl))
+        
+        shutil.copyfile(os.path.join(cvxpygen_directory, 'solvers', 'qoco', 'LICENSE'),
+                        os.path.join(code_dir, 'LICENSE'))
+
+        # adjust top-level CMakeLists.txt
+        indent = ' ' * 6
+        sdir = '${CMAKE_CURRENT_SOURCE_DIR}/solver_code/'
+        cmake_replacements = [
+            (sdir + 'include',
+            sdir + 'include\n' +
+            indent + sdir + 'lib/amd\n' +
+            indent + sdir + 'lib/qdldl/include')
+        ]
+        read_write_file(os.path.join(code_dir, 'c', 'CMakeLists.txt'),
+                        lambda x: multiple_replace(x, cmake_replacements))
+
+        cmake_replacements = [
+            ('add_executable (cpg_example ${cpg_head} ${cpg_src} ${CMAKE_CURRENT_SOURCE_DIR}/src/cpg_example.c)',
+            'add_executable (cpg_example ${cpg_head} ${cpg_src} ${CMAKE_CURRENT_SOURCE_DIR}/src/cpg_example.c)\n' +
+            'target_link_libraries(cpg_example qocostatic)')
+        ]
+        read_write_file(os.path.join(code_dir, 'c', 'CMakeLists.txt'),
+                        lambda x: multiple_replace(x, cmake_replacements))
+
+        cmake_replacements = [
+            ('add_library (cpg STATIC ${cpg_head} ${cpg_src})',
+            'add_library (cpg STATIC ${cpg_head} ${cpg_src})\n' +
+            'target_link_libraries(cpg qocostatic)')
+        ]
+        read_write_file(os.path.join(code_dir, 'c', 'CMakeLists.txt'),
+                        lambda x: multiple_replace(x, cmake_replacements))
+
+        # adjust setup.py
+        setup_replacements = [
+            ("os.path.join('c', 'solver_code', 'include'),",
+            "os.path.join('c', 'solver_code', 'include'),\n" +
+            5 * indent + "os.path.join('c', 'solver_code', 'lib', 'amd'),\n" +
+            5 * indent + "os.path.join('c', 'solver_code', 'lib', 'qdldl', 'include'),"),
+            ("license='Apache 2.0'", "license='BSD 3-Clause'"),
+            ("lib_name = 'cpg.lib'", "lib_name = os.path.join('cpg.lib')\n" + "    libqoco_name = os.path.join('Release', 'qocostatic.lib')\n" + "    libqdldl_name = os.path.join('Release', 'qdldl.lib')"),
+            ("lib_name = 'libcpg.a'", "lib_name = 'libcpg.a'\n" + "    libqoco_name = 'libqocostatic.a'\n" + "    libqdldl_name = 'libqdldl.a'"),
+            ('extra_objects=[cpg_lib]', "extra_objects=[cpg_lib, os.path.join(cpg_dir, 'build', 'out', libqoco_name), os.path.join(cpg_dir, 'build', 'solver_code', 'lib', 'qdldl', 'out', libqdldl_name)]")
+        ]
+        read_write_file(os.path.join(code_dir, 'setup.py'),
+                        lambda x: multiple_replace(x, setup_replacements))
+
+
+    def declare_workspace(self, f, prefix, parameter_canon) -> None:
+        if self.canon_constants['nsoc'] > 0:
+            f.write('\n// QOCO array of SOC dimensions\n')
+            write_vec_prot(f, self.canon_constants['q'], f'{prefix}qoco_q', 'cpg_int')
+        f.write('\n// QOCO workspace\n')
+        f.write(f'extern QOCOSolver* {prefix}qoco_solver;\n')
+        f.write('\n// QOCO exit flag\n')
+        f.write(f'extern cpg_int {prefix}qoco_flag;\n')
+
+    def define_workspace(self, f, prefix, parameter_canon) -> None:
+        if self.canon_constants['nsoc'] > 0:
+            f.write('\n// QOCO array of SOC dimensions\n')
+            write_vec_def(f, self.canon_constants['q'], f'{prefix}qoco_q', 'cpg_int')
+        f.write('\n// QOCO solver\n')
+        f.write(f'QOCOSolver* {prefix}qoco_solver = NULL;\n')
+        f.write('\n// QOCO exit flag\n')
+        f.write(f'cpg_int {prefix}qoco_flag = -99;\n')

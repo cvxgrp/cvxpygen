@@ -331,11 +331,13 @@ def write_canonicalize(f, canon_name, s, mapping, prefix, prefix_params=None):
     
     if prefix_params is None:
         prefix_params = prefix
+        
+    indexing = '' if canon_name == 'd' else '[i]'
 
     f.write(f'  for(i=0; i<{mapping.shape[0]}; i++){{\n')
-    f.write(f'    {prefix}Canon_Params.{canon_name}{s}[i] = 0;\n')
+    f.write(f'    {prefix}Canon_Params.{canon_name}{s}{indexing} = 0;\n')
     f.write(f'    for(j={prefix}canon_{canon_name}_map.p[i]; j<{prefix}canon_{canon_name}_map.p[i+1]; j++){{\n')
-    f.write(f'      {prefix}Canon_Params.{canon_name}{s}[i] += {prefix}canon_{canon_name}_map.x[j]*{prefix_params}cpg_params_vec[{prefix}canon_{canon_name}_map.i[j]];\n')
+    f.write(f'      {prefix}Canon_Params.{canon_name}{s}{indexing} += {prefix}canon_{canon_name}_map.x[j]*{prefix_params}cpg_params_vec[{prefix}canon_{canon_name}_map.i[j]];\n')
     f.write(f'    }}\n')
     f.write(f'  }}\n')
 
@@ -482,6 +484,10 @@ def write_update_structure(f, configuration, parameter_canon, pus, functions, fu
 
     if write_else:
         f.write(' else {\n')
+
+    if 'init' in functions:
+        functions.remove('init')
+        functions = ['init'] + list(functions)
 
     for function in functions:
 
@@ -1123,7 +1129,7 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
         f.write('// Update solver settings\n')
         f.write(f'void {configuration.prefix}cpg_set_solver_default_settings(){{\n')
         if solver_interface.stgs_reset_function is not None:
-            f.write(f'  {solver_interface.stgs_reset_function["name"]}({solver_interface.stgs_reset_function["ptr"] if solver_interface.stgs_reset_function["ptr"] is not None else "&" + configuration.prefix + "Canon_Settings"});\n')
+            f.write(f'  {solver_interface.stgs_reset_function["name"]}({solver_interface.stgs_reset_function["ptr"].format(prefix=configuration.prefix) if solver_interface.stgs_reset_function["ptr"] is not None else "&" + configuration.prefix + "Canon_Settings"});\n')
         else:
             for name, value in solver_interface.stgs_names_to_default.items():
                 f.write(f'  {configuration.prefix}Canon_Settings.{name} = {value};\n')
@@ -1131,7 +1137,7 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
         for name, typ in solver_interface.stgs_names_to_type.items():
             f.write(f'\nvoid {configuration.prefix}cpg_set_solver_{name}({typ} {name}_new){{\n')
             if solver_interface.stgs_direct_write_ptr is not None:
-                f.write(f'  {solver_interface.stgs_direct_write_ptr}->{name} = {name}_new;\n')
+                f.write(f'  {solver_interface.stgs_direct_write_ptr.format(prefix=configuration.prefix)}->{name} = {name}_new;\n')
             else:
                 f.write(f'  {configuration.prefix}Canon_Settings.{name} = {name}_new;\n')
             f.write('}\n')
@@ -1762,7 +1768,7 @@ def write_method(f, configuration, variable_info, dual_variable_info, parameter_
         f.write('    results_dict = {\'solver_specific_stats\': solver_specific_stats,\n')
         f.write('                    \'num_iters\': res.cpg_info.iter,\n')
         f.write('                    \'solve_time\': t1 - t0}\n')
-        f.write(f'    prob._solver_stats = SolverStats(results_dict, \'{configuration.solver_name}\')\n\n')
+        f.write(f'    prob._solver_stats = SolverStats.from_dict(results_dict, \'{configuration.solver_name}\')\n\n')
         f.write(f'    return prob.value{", res.cpg_info.gradient_primal, res.cpg_info.gradient_dual" if configuration.gradient else ""}\n\n\n')
     else:
         f.write('\n    return None\n')

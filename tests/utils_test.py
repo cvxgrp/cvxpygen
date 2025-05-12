@@ -28,10 +28,14 @@ def check(prob, solver, name, func_get_primal_vec, **extra_settings):
         val_py = prob.solve(solver='SCS', warm_start=False, verbose=False, **extra_settings)
     elif solver == 'CLARABEL':
         val_py = prob.solve(solver='CLARABEL', verbose=False, **extra_settings)
+    elif solver == 'QOCOGEN':
+        # QOCOGEN is not in CVXPY, but QOCO is an identical (but non-customized) solver.
+        val_py = prob.solve(solver='QOCO', **extra_settings)
     else:
         val_py = prob.solve(solver=solver, **extra_settings)
     prim_py = func_get_primal_vec(prob, name)
     dual_py = get_dual_vec(prob)
+    stats_py = prob.solver_stats
     if solver == 'OSQP':
         val_cg = prob.solve(method='CPG', warm_start=False, **extra_settings)
     elif solver == 'SCS':
@@ -42,7 +46,9 @@ def check(prob, solver, name, func_get_primal_vec, **extra_settings):
         val_cg = prob.solve(method='CPG', **extra_settings)
     prim_cg = func_get_primal_vec(prob, name)
     dual_cg = get_dual_vec(prob)
+    stats_cg = prob.solver_stats
+    sol_cg = prob.solution
     prim_py_norm = np.linalg.norm(prim_py, 2)
     dual_py_norm = np.linalg.norm(dual_py, 2)
 
-    return nan_to_inf(val_py), prim_py, dual_py, nan_to_inf(val_cg), prim_cg, dual_cg, prim_py_norm, dual_py_norm
+    return nan_to_inf(val_py), prim_py, dual_py, nan_to_inf(val_cg), prim_cg, dual_cg, prim_py_norm, dual_py_norm, stats_py, stats_cg, sol_cg

@@ -39,6 +39,7 @@ jobs:
       run: |
         sudo apt install libeigen3-dev
         python setup.py install
+        pip install cvxpylayers torch==2.3 jax==0.5.3
 
     - name: Install dependencies (macOS)
       if: runner.os == 'macOS'
@@ -64,11 +65,11 @@ jobs:
       run: |
         pip install pytest
         cd tests
-        python -m pytest
+        python -m pytest test_E2E_LP.py test_E2E_QP.py test_E2E_SOCP.py
 
     - name: Test with pytest (Windows)
       if: runner.os == 'Windows'
       run: |
         pip install pytest
         cd tests
-        pytest test_E2E_LP.py::test test_E2E_QP.py::test test_E2E_QP.py::test_OSQP_verbose test_E2E_SOCP.py::test
+        python -m pytest test_E2E_LP.py::test test_E2E_QP.py::test test_E2E_QP.py::test_OSQP_verbose test_E2E_SOCP.py::test test_E2E_LP.py::test_qocogen test_unsupported_solvers.py

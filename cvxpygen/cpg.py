@@ -202,16 +202,18 @@ def get_parameter_delta_bounds(problem, parameter_info, parameter_canon):
         
 def extract_canonicalization(problem, solver, solver_opts, enable_settings) -> Canon:
     
+    # interface class
+    interface_class, cvxpy_interface_class = get_interface_class(solver)
+    
     # problem data
     data, _, inverse_data = problem.get_problem_data(
-        solver=solver,
+        solver=cvxpy_interface_class.__name__,
         gp=False,
         enforce_dpp=True,
         verbose=False,
         solver_opts=solver_opts
     )
     param_prob = data['param_prob']
-    interface_class, cvxpy_interface_class = get_interface_class(solver)
 
     # cone problems check
     if hasattr(param_prob, 'cone_dims'):
@@ -234,7 +236,7 @@ def extract_canonicalization(problem, solver, solver_opts, enable_settings) -> C
         user_p_name: [canon_p_ids[j] for j in np.nonzero(adjacency[:, i])[0]]
         for i, user_p_name in enumerate(parameter_info.names)
     }
-    
+
     return Canon(prim_variable_info, dual_variable_info, parameter_info, parameter_canon), solver_interface
     
 
@@ -358,6 +360,11 @@ def process_canonical_parameters(
         if affine_map:
             if p_id in solver_interface.canon_p_ids_constr_vec:
                 affine_map = update_to_dense_mapping(affine_map, param_prob)
+            
+            if len(affine_map.mapping.shape) < 2:
+                affine_map.mapping = affine_map.mapping.reshape(1, -1)
+            affine_map.mapping = affine_map.mapping.tocsr()
+            
             if p_id == 'd':
                 parameter_canon.nonzero_d = affine_map.mapping.nnz > 0
 
@@ -392,7 +399,7 @@ def update_to_dense_mapping(affine_map, param_prob):
         mapping_to_dense[affine_map.indices[i_data], :] = sparse_row
 
     # Convert to Compressed Sparse Column format and update mapping
-    affine_map.mapping = sparse.csc_matrix(mapping_to_dense)
+    affine_map.mapping = sparse.csr_matrix(mapping_to_dense)
     
     return affine_map
 
@@ -405,8 +412,11 @@ def set_default_values(affine_map, p_id, parameter_canon, parameter_info, solver
         canon_p_data = affine_map.mapping @ parameter_info.flat_usp
         # compute 'indptr' to construct sparse matrix from 'canon_p_data' and 'indices'
         if solver_interface.dual_var_split: # by equality and inequality
-            indptr_original = solver_interface.indptr_constr[:-1]
-            affine_map.indptr = 0 * indptr_original # rebuild 'indptr' by considering only 'mapping_rows' (corresponds to either equality or inequality)
+            if p_id == 'P':
+                affine_map.indptr = solver_interface.indptr_obj
+            else:
+                indptr_original = solver_interface.indptr_constr[:-1]
+                affine_map.indptr = 0 * indptr_original # rebuild 'indptr' by considering only 'mapping_rows' (corresponds to either equality or inequality)
             for r in affine_map.mapping_rows:
                 for c in range(affine_map.shape[1]): # shape of matrix re-shaped from flat param vector resulting from mapping
                     if indptr_original[c] <= r < indptr_original[c + 1]:
@@ -501,14 +511,16 @@ def get_dual_variable_info(inverse_data, solver_interface, cvxpy_interface_class
     d_canon_offsets = np.cumsum([0] + [c.args[0].size for c in con_canon[:-1]])
     if solver_interface.dual_var_split:
         n_split = len(inverse_data[-1][cvxpy_interface_class.EQ_CONSTR])
-        d_vectors = [solver_interface.dual_var_names[0]] * n_split + [solver_interface.dual_var_names[1]] * (len(d_canon_offsets) - n_split)
+        d_canon_vectors = [solver_interface.dual_var_names[0]] * n_split + [solver_interface.dual_var_names[1]] * (len(d_canon_offsets) - n_split)
         d_canon_offsets[n_split:] -= d_canon_offsets[n_split]
     else:
-        d_vectors = solver_interface.dual_var_names * len(d_canon_offsets)
+        d_canon_vectors = solver_interface.dual_var_names * len(d_canon_offsets)
     d_canon_offsets_dict = {c.id: off for c, off in zip(con_canon, d_canon_offsets)}
+    d_canon_vectors_dict = {c.id: v for c, v in zip(con_canon, d_canon_vectors)}
     
     # select for user-defined constraints
     d_offsets = [d_canon_offsets_dict[i] for i in dual_ids]
+    d_vectors = [d_canon_vectors_dict[i] for i in dual_ids]
     d_sizes = [con_canon_dict[i].size for i in dual_ids]
     d_shapes = [con_canon_dict[i].shape for i in dual_ids]
     d_names = [f'd{i}' for i in range(len(dual_ids))]
@@ -752,7 +764,7 @@ def get_parameter_info(p_prob) -> ParameterInfo:
     for p_name, p in zip(user_p_names, p_prob.parameters):
         if p.value is None:
             p.project_and_assign(np.random.randn(*p.shape))
-            if type(p.value) is sparse.dia_matrix:
+            if type(p.value) in [sparse.dia_matrix, sparse.dia_array]:
                 p.value = p.value.toarray()
         if len(p.shape) < 2:
             # dealing with scalar or vector

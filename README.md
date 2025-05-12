@@ -25,7 +25,7 @@ under the [GNU General Public License v3.0](https://github.com/embotech/ecos/blo
 
 ## Installation
 
-1. Install `cvxpygen` (on Windows preferably with **Python 3.9**).
+1. Install `cvxpygen`.
     ```
     pip install cvxpygen
     ```
@@ -105,6 +105,7 @@ Next to the positional argument `problem`, all keyword arguments for the `genera
 | `unroll`         | unroll loops in canonicalization code                              | Bool            | `False`       |
 | `prefix`         | prefix for unique code symbols when dealing with multiple problems | String          | `''`          |
 | `wrapper`        | compile Python wrapper for CVXPY interface                         | Bool            | `True`        |
+| `gradient`       | enable differentiation (works for linear and quadratic programs)   | Bool            | `False`       |
 
 You can find an overview of the code generation result in `nonneg_LS/README.html`.
 
@@ -176,6 +177,25 @@ cmake ..
 cmake --build . --target cpg_example --config release
 Release\cpg_example
 ```
+
+## Differentiating through problems
+
+CVXPYgen supports differentiating through linear and quadratic programs.
+To enable this feature, set `gradient=True` when generating code.
+You can use the generated code together with [CVXPYlayers](https://github.com/cvxgrp/cvxpylayers) as
+
+```python
+cpg.generate_code(problem, code_dir='code_diff', gradient=True, wrapper=True)
+
+from code_diff.cpg_solver import forward, backward
+from cvxpylayers.torch import CvxpyLayer
+
+layer = CvxpyLayer(problem, parameters=[A, b], variables=[x], custom_method=(forward, backward))
+```
+
+See our [manuscript](https://stanford.edu/~boyd/papers/cvxpygen_grad.html) for more details
+and [examples/paper_grad](https://github.com/cvxgrp/cvxpygen/tree/master/examples/paper_grad)
+for three practical examples (from our manuscript), in the areas of machine learning, control, and finance.
 
 ## Tests
 
