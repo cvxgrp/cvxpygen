@@ -1028,7 +1028,7 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
                     f.write(f'  {configuration.prefix}CPG_Prim.{var_name}[%d] = {prim_str}[%d];\n' % (i, idx))
         f.write('}\n\n')
 
-    if solver_interface.ret_dual_func_exists(dual_variable_info) or configuration.gradient_two_stage:
+    if not configuration.explicit and (solver_interface.ret_dual_func_exists(dual_variable_info) or configuration.gradient_two_stage):
         f.write('// Retrieve dual solution in terms of user-defined constraints\n')
         f.write(f'void {configuration.prefix}cpg_retrieve_dual(){{\n')
         if configuration.gradient_two_stage:
@@ -1113,7 +1113,7 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
     f.write('  // Retrieve results\n')
     if solver_interface.ret_prim_func_exists(variable_info):
         f.write(f'  {configuration.prefix}cpg_retrieve_prim();\n')
-    if solver_interface.ret_dual_func_exists(dual_variable_info) or configuration.gradient_two_stage:
+    if not configuration.explicit and (solver_interface.ret_dual_func_exists(dual_variable_info) or configuration.gradient_two_stage):
         f.write(f'  {configuration.prefix}cpg_retrieve_dual();\n')
     if not configuration.explicit:  # TODO: explicit case
         f.write(f'  {configuration.prefix}cpg_retrieve_info();\n')
@@ -1169,7 +1169,7 @@ def write_solve_prot(f, configuration, variable_info, dual_variable_info, parame
         f.write('\n// Retrieve primal solution in terms of user-defined variables\n')
         f.write(f'extern void {configuration.prefix}cpg_retrieve_prim();\n')
 
-    if solver_interface.ret_dual_func_exists(dual_variable_info):
+    if not configuration.explicit and solver_interface.ret_dual_func_exists(dual_variable_info):
         f.write('\n// Retrieve dual solution in terms of user-defined constraints\n')
         f.write(f'extern void {configuration.prefix}cpg_retrieve_dual();\n')
 
