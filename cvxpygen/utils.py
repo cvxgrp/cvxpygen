@@ -1376,9 +1376,9 @@ def write_module_def(f, configuration, variable_info, dual_variable_info, parame
 
     # perform ASA procedure
     f.write('\n    // Solve\n')
-    f.write('    std::clock_t ASA_start = std::clock();\n')
+    f.write('    auto ASA_start = std::chrono::high_resolution_clock::now();\n')
     f.write(f'    {configuration.prefix}cpg_solve();\n')
-    f.write('    std::clock_t ASA_end = std::clock();\n\n')
+    f.write('    auto ASA_end = std::chrono::high_resolution_clock::now();\n\n')
 
     # arrange and return results
     f.write('    // Arrange and return results\n')
@@ -1403,10 +1403,14 @@ def write_module_def(f, configuration, variable_info, dual_variable_info, parame
                     f.write(f'        CPG_Dual_cpp.{name}[i] = {configuration.prefix}CPG_Dual.{name}[i];\n')
                     f.write('    }\n')
 
-        f.write(f'    {configuration.prefix}CPG_Info_cpp_t CPG_Info_cpp {{}};\n')
+    f.write(f'    {configuration.prefix}CPG_Info_cpp_t CPG_Info_cpp {{}};\n')
+    if not configuration.explicit:  # TODO: explicit case
         for field in ['obj_val', 'iter', 'status', 'pri_res', 'dua_res']:
             f.write(f'    CPG_Info_cpp.{field} = {configuration.prefix}CPG_Info.{field};\n')
-        f.write('    CPG_Info_cpp.time = 1.0 * (ASA_end - ASA_start) / CLOCKS_PER_SEC;\n')
+    f.write('    std::chrono::duration<double> elapsed = ASA_end - ASA_start;\n')
+    f.write('    CPG_Info_cpp.time = elapsed.count();\n')
+    #else:
+    #    f.write('    CPG_Info_cpp.time = 1.0 * (ASA_end - ASA_start) / CLOCKS_PER_SEC / 1000;\n')
     if configuration.gradient:
         f.write(f'    for(i=0; i<{gradient_interface.n_var}; i++) {{\n')
         f.write(f'        CPG_Info_cpp.gradient_primal[i] = sol_x[i];\n')
@@ -1420,7 +1424,7 @@ def write_module_def(f, configuration, variable_info, dual_variable_info, parame
     if not configuration.explicit:  # TODO: explicit case
         if len(dual_variable_info.name_to_init) > 0:
             f.write('    CPG_Result_cpp.dual = CPG_Dual_cpp;\n')
-        f.write('    CPG_Result_cpp.info = CPG_Info_cpp;\n')
+    f.write('    CPG_Result_cpp.info = CPG_Info_cpp;\n')
 
     # return
     f.write('    return CPG_Result_cpp;\n\n')
@@ -1505,19 +1509,19 @@ def write_module_def(f, configuration, variable_info, dual_variable_info, parame
         f.write(f'            .def_readwrite("dual", &{configuration.prefix}CPG_GSol_cpp_t::dual)\n')
         f.write('            ;\n\n')
 
+    f.write(f'    py::class_<{configuration.prefix}CPG_Info_cpp_t>(m, "{configuration.prefix}cpg_info")\n')
+    f.write('            .def(py::init<>())\n')
     if not configuration.explicit:  # TODO: explicit case
-        f.write(f'    py::class_<{configuration.prefix}CPG_Info_cpp_t>(m, "{configuration.prefix}cpg_info")\n')
-        f.write('            .def(py::init<>())\n')
         f.write(f'            .def_readwrite("obj_val", &{configuration.prefix}CPG_Info_cpp_t::obj_val)\n')
         f.write(f'            .def_readwrite("iter", &{configuration.prefix}CPG_Info_cpp_t::iter)\n')
         f.write(f'            .def_readwrite("status", &{configuration.prefix}CPG_Info_cpp_t::status)\n')
         f.write(f'            .def_readwrite("pri_res", &{configuration.prefix}CPG_Info_cpp_t::pri_res)\n')
         f.write(f'            .def_readwrite("dua_res", &{configuration.prefix}CPG_Info_cpp_t::dua_res)\n')
-        f.write(f'            .def_readwrite("time", &{configuration.prefix}CPG_Info_cpp_t::time)\n')
-        if configuration.gradient:
-            f.write(f'            .def_readwrite("gradient_primal", &{configuration.prefix}CPG_Info_cpp_t::gradient_primal)\n')
-            f.write(f'            .def_readwrite("gradient_dual", &{configuration.prefix}CPG_Info_cpp_t::gradient_dual)\n')
-        f.write('            ;\n\n')
+    f.write(f'            .def_readwrite("time", &{configuration.prefix}CPG_Info_cpp_t::time)\n')
+    if configuration.gradient:
+        f.write(f'            .def_readwrite("gradient_primal", &{configuration.prefix}CPG_Info_cpp_t::gradient_primal)\n')
+        f.write(f'            .def_readwrite("gradient_dual", &{configuration.prefix}CPG_Info_cpp_t::gradient_dual)\n')
+    f.write('            ;\n\n')
 
     f.write(f'    py::class_<{configuration.prefix}CPG_Result_cpp_t>(m, "{configuration.prefix}cpg_result")\n')
     f.write('            .def(py::init<>())\n')
@@ -1525,7 +1529,7 @@ def write_module_def(f, configuration, variable_info, dual_variable_info, parame
     if not configuration.explicit:  # TODO: explicit case
         if len(dual_variable_info.name_to_init) > 0:
             f.write(f'            .def_readwrite("cpg_dual", &{configuration.prefix}CPG_Result_cpp_t::dual)\n')
-        f.write(f'            .def_readwrite("cpg_info", &{configuration.prefix}CPG_Result_cpp_t::info)\n')
+    f.write(f'            .def_readwrite("cpg_info", &{configuration.prefix}CPG_Result_cpp_t::info)\n')
     f.write('            ;\n\n')
 
     f.write(f'    m.def("solve", &{configuration.prefix}solve_cpp);\n\n')
@@ -1602,19 +1606,20 @@ def write_module_prot(f, configuration, parameter_info, variable_info, dual_vari
             f.write(f'    std::array<double, {gradient_interface.n_eq + gradient_interface.n_ineq}> dual;\n')
             f.write('};\n\n')
 
-        # cpp struct containing info on results
-        f.write('// Solver information\n')
-        f.write(f'struct {configuration.prefix}CPG_Info_cpp_t {{\n')
+    # cpp struct containing info on results
+    f.write('// Solver information\n')
+    f.write(f'struct {configuration.prefix}CPG_Info_cpp_t {{\n')
+    if not configuration.explicit:  # TODO: explicit case
         f.write('    double obj_val;\n')
         f.write('    int iter;\n')
         f.write(f'    { "int" if solver_interface.status_is_int else "char*"} status;\n')
         f.write('    double pri_res;\n')
         f.write('    double dua_res;\n')
-        f.write('    double time;\n')
-        if configuration.gradient:
-            f.write(f'    std::array<double, {gradient_interface.n_var}> gradient_primal;\n')
-            f.write(f'    std::array<double, {gradient_interface.n_eq + gradient_interface.n_ineq}> gradient_dual;\n')
-        f.write('};\n\n')
+    f.write('    double time;\n')
+    if configuration.gradient:
+        f.write(f'    std::array<double, {gradient_interface.n_var}> gradient_primal;\n')
+        f.write(f'    std::array<double, {gradient_interface.n_eq + gradient_interface.n_ineq}> gradient_dual;\n')
+    f.write('};\n\n')
 
     # cpp struct containing objective value and user-defined variables
     f.write('// Solution and solver information\n')
@@ -1623,7 +1628,7 @@ def write_module_prot(f, configuration, parameter_info, variable_info, dual_vari
     if not configuration.explicit:  # TODO: explicit case
         if len(dual_variable_info.name_to_init) > 0:
             f.write(f'    {configuration.prefix}CPG_Dual_cpp_t dual;\n')
-        f.write(f'    {configuration.prefix}CPG_Info_cpp_t info;\n')
+    f.write(f'    {configuration.prefix}CPG_Info_cpp_t info;\n')
     f.write('};\n\n')
 
     # cpp function that maps parameters to results
@@ -1789,7 +1794,7 @@ def write_method(f, configuration, variable_info, dual_variable_info, parameter_
         f.write(f'    prob._solver_stats = SolverStats.from_dict(results_dict, \'{configuration.solver_name}\')\n\n')
         f.write(f'    return prob.value{", res.cpg_info.gradient_primal, res.cpg_info.gradient_dual" if configuration.gradient else ""}\n\n\n')
     else:
-        f.write('\n    return None\n')
+        f.write(f'\n    return res.cpg_info.time\n')
     
     if configuration.gradient:
         f.write('def cpg_solve(prob, updated_params=None, **kwargs):\n\n')
