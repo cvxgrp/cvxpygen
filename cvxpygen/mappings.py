@@ -54,6 +54,8 @@ class ParameterInfo:
     num: int
     sparsity_mask: np.ndarray
     writable: Dict[str, np.ndarray]
+    lower: np.ndarray
+    upper: np.ndarray
 
 
 @dataclass

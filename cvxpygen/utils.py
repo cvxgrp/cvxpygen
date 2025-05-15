@@ -553,6 +553,8 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
         if full:
             f.write('\n// Vector containing flattened user-defined parameters\n')
             write_vec_def(f, parameter_info.flat_usp, f'{prefix}cpg_params_vec', 'cpg_float')
+            write_vec_def(f, parameter_info.lower, f'{prefix}cpg_params_vec_lower', 'cpg_float')
+            write_vec_def(f, parameter_info.upper, f'{prefix}cpg_params_vec_upper', 'cpg_float')
         f.write('\n// Sparse mappings from user-defined to canonical parameters\n')
         for p_id, mapping in parameter_canon.p_id_to_mapping.items():
             if parameter_canon.p_id_to_changes[p_id]:
@@ -870,6 +872,8 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
         if full:
             f.write('\n// Vector containing flattened user-defined parameters\n')
             write_vec_prot(f, parameter_info.flat_usp, f'{prefix}cpg_params_vec', 'cpg_float')
+            write_vec_prot(f, parameter_info.lower, f'{prefix}cpg_params_vec_lower', 'cpg_float')
+            write_vec_prot(f, parameter_info.upper, f'{prefix}cpg_params_vec_upper', 'cpg_float')
         f.write('\n// Sparse mappings from user-defined to canonical parameters\n')
         for p_id, mapping in parameter_canon.p_id_to_mapping.items():
             if parameter_canon.p_id_to_changes[p_id]:
@@ -984,9 +988,23 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
             Canon_outdated_names = parameter_canon.user_p_name_to_canon_outdated[name]
             if parameter_info.name_to_size_usp[name] == 1:
                 f.write(f'void {configuration.prefix}cpg_update_{name}(cpg_float val){{\n')
-                f.write(f'  {configuration.prefix}cpg_params_vec[%d] = val;\n' % base_col)
+                if configuration.explicit:
+                    f.write(f'  if (val < {configuration.prefix}cpg_params_vec_lower[{base_col}]){{\n')
+                    f.write(f'    val = {configuration.prefix}cpg_params_vec_lower[{base_col}];\n')
+                    f.write('  }\n')
+                    f.write(f'  if (val > {configuration.prefix}cpg_params_vec_upper[{base_col}]){{\n')
+                    f.write(f'    val = {configuration.prefix}cpg_params_vec_upper[{base_col}];\n')
+                    f.write('  }\n')
+                f.write(f'  {configuration.prefix}cpg_params_vec[{base_col}] = val;\n')
             else:
                 f.write(f'void {configuration.prefix}cpg_update_{name}(cpg_int idx, cpg_float val){{\n')
+                if configuration.explicit:
+                    f.write(f'  if (val < {configuration.prefix}cpg_params_vec_lower[idx+{base_col}]){{\n')
+                    f.write(f'    val = {configuration.prefix}cpg_params_vec_lower[idx+{base_col}];\n')
+                    f.write('  }\n')
+                    f.write(f'  if (val > {configuration.prefix}cpg_params_vec_upper[idx+{base_col}]){{\n')
+                    f.write(f'    val = {configuration.prefix}cpg_params_vec_upper[idx+{base_col}];\n')
+                    f.write('  }\n')
                 f.write(f'  {configuration.prefix}cpg_params_vec[idx+{base_col}] = val;\n')
             for Canon_outdated_name in Canon_outdated_names:
                 f.write(f'  {configuration.prefix}Canon_Outdated.{Canon_outdated_name} = 1;\n')

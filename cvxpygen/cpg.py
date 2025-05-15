@@ -133,7 +133,7 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir):
     B = B[A_mask, :]
     
     # extract bounds on theta
-    thmin, thmax = get_parameter_delta_bounds(problem, canon.parameter_info, canon.parameter_canon)
+    thmin, thmax, lower, upper = get_parameter_delta_bounds(problem, canon.parameter_info, canon.parameter_canon)
     
     # eliminate theta components that are fixed
     th_mask = thmin != thmax
@@ -176,28 +176,34 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir):
         fl.write('set (solver_head ${pdaqp_head} PARENT_SCOPE)\n')
         
     canon.parameter_canon.th_mask = th_mask_resulting
+    canon.parameter_info.lower = lower
+    canon.parameter_info.upper = upper
     
     
 def get_parameter_delta_bounds(problem, parameter_info, parameter_canon):
     # extract bounds on user-defined parameter deltas
-    lower = np.zeros(parameter_info.flat_usp.size)
+    lower = np.zeros(parameter_info.flat_usp.size) # TODO: check if need to initialize to -1e30
     upper = np.zeros(parameter_info.flat_usp.size)
+    lower_total = -1e30 * np.ones(parameter_info.flat_usp.size - 1)
+    upper_total = 1e30 * np.ones(parameter_info.flat_usp.size - 1)
     for constraint in problem.constraints:
         if not constraint.variables() and constraint.parameters():
             lhs, rhs = constraint.args
             if isinstance(lhs, cp.Parameter) and isinstance(rhs, cp.Constant):
                 col = parameter_info.id_to_col[lhs.id]
                 upper[col:col + lhs.size] = rhs.value - lhs.value
+                upper_total[col:col + lhs.size] = rhs.value
             elif isinstance(lhs, cp.Constant) and isinstance(rhs, cp.Parameter):
                 col = parameter_info.id_to_col[rhs.id]
                 lower[col:col + rhs.size] = lhs.value - rhs.value
+                lower_total[col:col + rhs.size] = lhs.value
             else:
                 raise ValueError('Explicit mode: Parameter constraints must be simple bounds!')
     # map to Delta (q, u)
     id_to_mapping = parameter_canon.p_id_to_mapping
     C_qu = sparse.vstack([id_to_mapping['q'], id_to_mapping['u']])
     lower_mapped, upper_mapped = C_qu @ lower, C_qu @ upper
-    return np.minimum(lower_mapped, upper_mapped), np.maximum(lower_mapped, upper_mapped)
+    return np.minimum(lower_mapped, upper_mapped), np.maximum(lower_mapped, upper_mapped), lower_total, upper_total
         
         
 def extract_canonicalization(problem, solver, solver_opts, enable_settings) -> Canon:
@@ -792,7 +798,7 @@ def get_parameter_info(p_prob) -> ParameterInfo:
     parameter_info = ParameterInfo(user_p_col_to_name_usp, user_p_flat_usp, user_p_id_to_col,
                                    user_p_ids, user_p_name_to_shape, user_p_name_to_size_usp,
                                    user_p_name_to_sparsity, user_p_name_to_sparsity_type,
-                                   user_p_names, user_p_num, user_p_sparsity_mask, user_p_writable)
+                                   user_p_names, user_p_num, user_p_sparsity_mask, user_p_writable, None, None)
     return parameter_info
 
 
