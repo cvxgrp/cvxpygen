@@ -553,8 +553,9 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
         if full:
             f.write('\n// Vector containing flattened user-defined parameters\n')
             write_vec_def(f, parameter_info.flat_usp, f'{prefix}cpg_params_vec', 'cpg_float')
-            write_vec_def(f, parameter_info.lower, f'{prefix}cpg_params_vec_lower', 'cpg_float')
-            write_vec_def(f, parameter_info.upper, f'{prefix}cpg_params_vec_upper', 'cpg_float')
+            if configuration.explicit:
+                write_vec_def(f, parameter_info.lower, f'{prefix}cpg_params_vec_lower', 'cpg_float')
+                write_vec_def(f, parameter_info.upper, f'{prefix}cpg_params_vec_upper', 'cpg_float')
         f.write('\n// Sparse mappings from user-defined to canonical parameters\n')
         for p_id, mapping in parameter_canon.p_id_to_mapping.items():
             if parameter_canon.p_id_to_changes[p_id]:
@@ -872,8 +873,9 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
         if full:
             f.write('\n// Vector containing flattened user-defined parameters\n')
             write_vec_prot(f, parameter_info.flat_usp, f'{prefix}cpg_params_vec', 'cpg_float')
-            write_vec_prot(f, parameter_info.lower, f'{prefix}cpg_params_vec_lower', 'cpg_float')
-            write_vec_prot(f, parameter_info.upper, f'{prefix}cpg_params_vec_upper', 'cpg_float')
+            if configuration.explicit:
+                write_vec_prot(f, parameter_info.lower, f'{prefix}cpg_params_vec_lower', 'cpg_float')
+                write_vec_prot(f, parameter_info.upper, f'{prefix}cpg_params_vec_upper', 'cpg_float')
         f.write('\n// Sparse mappings from user-defined to canonical parameters\n')
         for p_id, mapping in parameter_canon.p_id_to_mapping.items():
             if parameter_canon.p_id_to_changes[p_id]:
