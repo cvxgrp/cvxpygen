@@ -966,6 +966,9 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
 
     if configuration.unroll and solver_interface.inmemory_preconditioning:
         f.write('static cpg_int i;\n')
+        
+    if configuration.explicit:
+        f.write('static cpg_float obj_val;\n')
 
     f.write('\n// Update user-defined parameters\n')
     if configuration.unroll:
@@ -1144,6 +1147,20 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
             f.write(f'  {configuration.prefix}Canon_Outdated.{p_id} = 0;\n')
 
     f.write('}\n\n')
+    
+    if configuration.explicit:
+        f.write(f'cpg_float {configuration.prefix}cpg_obj(){{\n')
+        f.write(f'  obj_val = 0.0;\n')
+        f.write(f'  for (i=0; i<{solver_interface.n_var}; i++){{\n')
+        f.write(f'    for (j={configuration.prefix}Canon_Params.P->p[i]; j<{configuration.prefix}Canon_Params.P->p[i+1]; j++){{\n')
+        f.write(f'      obj_val += 0.5 * {configuration.prefix}Canon_Params.P->x[j] * sol_x[{configuration.prefix}Canon_Params.P->i[j]] * sol_x[i];\n')
+        f.write('    }\n')
+        f.write('  }\n')
+        f.write(f'  for (i=0; i<{solver_interface.n_var}; i++){{\n')
+        f.write(f'    obj_val += {configuration.prefix}Canon_Params.q[i] * sol_x[i];\n')
+        f.write('  }\n')
+        f.write(f'  return obj_val;\n')
+        f.write('}\n\n')
 
     if not configuration.explicit:  # TODO: explicit case
         f.write('// Update solver settings\n')
@@ -1206,6 +1223,10 @@ def write_solve_prot(f, configuration, variable_info, dual_variable_info, parame
 
     f.write('\n// Solve via canonicalization, canonical solve, retrieval\n')
     f.write(f'extern void {configuration.prefix}cpg_solve();\n')
+    
+    if configuration.explicit:
+        f.write('\n// Compute value of the objective\n')
+        f.write(f'extern cpg_float {configuration.prefix}cpg_obj();\n')
 
     if not configuration.explicit:  # TODO: explicit case
         f.write('\n// Update solver settings\n')
