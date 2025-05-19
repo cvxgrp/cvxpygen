@@ -155,6 +155,14 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir):
     # offline-solve MPQP and generate code
     eq_m = canon.parameter_canon.p_id_to_size['l']
     eq_inds = np.arange(eq_m)[A_mask[:eq_m]]
+    
+    # print dimensions info
+    sys.stdout.write(f'Generating explicit solver for (canonicalized) parametric QP with\n'
+                     f'{len(f)} variables,\n'
+                     f'{len(eq_inds)} linear equality constraints,\n'
+                     f'{len(b)-len(eq_inds)} linear inequality constraints, and\n'
+                     f'{len(thmin)} parameters ...\n')
+
     mpqp = MPQP(H, f, F, A, b, B, thmin, thmax, eq_inds=eq_inds)
     mpqp.solve()
     mpqp.codegen(dir=solver_code_dir)
