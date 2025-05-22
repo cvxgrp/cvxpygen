@@ -108,7 +108,7 @@ def get_solver_and_explicit_flag(solver):
         return solver, False
     
     
-def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, region_limit=100):
+def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, region_limit=500):
     
     # check that P and A are constants
     for p_id in ['P', 'A']:
