@@ -108,7 +108,7 @@ def get_solver_and_explicit_flag(solver):
         return solver, False
     
     
-def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir):
+def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, region_limit=100):
     
     # check that P and A are constants
     for p_id in ['P', 'A']:
@@ -164,8 +164,11 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir):
                      f'{len(thmin)} parameters ...\n')
 
     mpqp = MPQP(H, f, F, A, b, B, thmin, thmax, eq_inds=eq_inds)
-    mpqp.solve()
-    mpqp.codegen(dir=solver_code_dir)
+    mpqp.solve(settings={"region_limit":region_limit})
+    try:
+        mpqp.codegen(dir=solver_code_dir)
+    except:
+        raise Exception("Could not generate explicit solver") from None
     
     # create solver_code_dir/include and solver_code_dir/src directories and copy all generated .h files into include and .c files into src
     # the two subdirectories don't exist yet
