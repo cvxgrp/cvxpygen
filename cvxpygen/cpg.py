@@ -84,7 +84,7 @@ def generate_code(problem, code_dir='cpg_code', solver=None, solver_opts=None,
         cvxpygen_directory = os.path.dirname(os.path.realpath(__file__))
         solver_code_dir = os.path.join(code_dir, 'c', 'solver_code')
         if explicit:
-            offline_solve_and_codegen_explicit(problem, canon, solver_code_dir)    
+            offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, explicit)
         else:
             solver_interface.generate_code(configuration, code_dir, solver_code_dir, cvxpygen_directory, canon.parameter_canon, gradient, configuration.prefix)
     
@@ -101,15 +101,17 @@ def generate_code(problem, code_dir='cpg_code', solver=None, solver_opts=None,
         
 def get_solver_and_explicit_flag(solver):
     if solver is None:
-        return None, False
+        return None, 0
     elif solver.lower() == 'explicit':
-        return 'OSQP', True
+        return 'OSQP', 1
+    elif solver.lower() == 'explicit_primal_dual':
+        return 'OSQP', 2
     else:
-        return solver, False
+        return solver, 0
     
     
-def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, region_limit=500,
-                                       max_reals = 1e6):
+def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, explicit_flag,
+                                       region_limit=500, max_reals = 1e6):
     
     # check that P and A are constants
     for p_id in ['P', 'A']:
@@ -134,7 +136,7 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, region_l
     B = B[A_mask, :]
     
     # extract bounds on theta
-    thmin, thmax, lower, upper = get_parameter_delta_bounds(problem, canon.parameter_info, canon.parameter_canon)
+    thmin, thmax, lower, upper = get_parameter_delta_bounds(problem, canon)
     
     # eliminate theta components that are fixed
     th_mask = thmin != thmax
@@ -165,15 +167,15 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, region_l
                      f'{len(thmin)} parameters ...\n')
 
     mpqp = MPQP(H, f, F, A, b, B, thmin, thmax, eq_inds=eq_inds)
-    mpqp.solve(settings={"region_limit":region_limit})
-    if str(mpqp.solution_info.status) != "Solved":
+    mpqp.solve(settings={'region_limit': region_limit, 'store_dual': (explicit_flag==2)})
+    if str(mpqp.solution_info.status) != 'Solved':
         # XXX Do something to abort
-        raise Exception("Could not compute explicit solution: "+str(mpqp.solution_info.status))
+        raise Exception(f'Could not compute explicit solution: {mpqp.solution_info.status}')
 
-    codegen_status = mpqp.codegen(dir=solver_code_dir, max_reals=max_reals)
+    codegen_status = mpqp.codegen(dir=solver_code_dir, max_reals=max_reals, dual=(explicit_flag==2))
     if codegen_status < 0:
         # XXX Do something to abort
-        raise Exception("Could not generate explicit solver. Consider increasing max_reals")
+        raise Exception('Could not generate explicit solver. Consider increasing max_reals.')
     
     # create solver_code_dir/include and solver_code_dir/src directories and copy all generated .h files into include and .c files into src
     # the two subdirectories don't exist yet
@@ -192,17 +194,21 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, region_l
         fl.write('set (solver_head ${pdaqp_head} PARENT_SCOPE)\n')
         
     canon.parameter_canon.th_mask = th_mask_resulting
+    canon.parameter_canon.n_param_reduced = np.count_nonzero(th_mask_resulting)
+    canon.parameter_canon.n_dual_reduced = len(b)
     canon.parameter_info.lower = lower
     canon.parameter_info.upper = upper
     
     
-def get_parameter_delta_bounds(problem, parameter_info, parameter_canon):
+def get_parameter_delta_bounds(problem, canon):
+    parameter_info = canon.parameter_info
+    parameter_canon = canon.parameter_canon
     # extract bounds on user-defined parameter deltas
     lower = np.zeros(parameter_info.flat_usp.size) # TODO: check if need to initialize to -1e30
     upper = np.zeros(parameter_info.flat_usp.size)
     lower_total = -1e30 * np.ones(parameter_info.flat_usp.size - 1)
     upper_total = 1e30 * np.ones(parameter_info.flat_usp.size - 1)
-    for constraint in problem.constraints:
+    for i, constraint in enumerate(problem.constraints):
         if not constraint.variables() and constraint.parameters():
             lhs, rhs = constraint.args
             if isinstance(lhs, cp.Parameter) and isinstance(rhs, cp.Constant):
@@ -215,6 +221,15 @@ def get_parameter_delta_bounds(problem, parameter_info, parameter_canon):
                 lower_total[col:col + rhs.size] = lhs.value
             else:
                 raise ValueError('Explicit mode: Parameter constraints must be simple bounds!')
+            # remove dual variables corresponding to parameter constraints
+            canon.dual_variable_info.name_to_init.pop(f'd{i}')
+            canon.dual_variable_info.name_to_vec.pop(f'd{i}')
+            canon.dual_variable_info.name_to_offset.pop(f'd{i}')
+            canon.dual_variable_info.name_to_indices.pop(f'd{i}')
+            canon.dual_variable_info.name_to_size.pop(f'd{i}')
+            canon.dual_variable_info.name_to_shape.pop(f'd{i}')
+            canon.dual_variable_info.sizes[i] = -1
+    canon.dual_variable_info.sizes = [s for s in canon.dual_variable_info.sizes if s != -1]
     # map to Delta (q, u)
     id_to_mapping = parameter_canon.p_id_to_mapping
     C_qu = sparse.vstack([id_to_mapping['q'], id_to_mapping['u']])

@@ -38,6 +38,8 @@ class ParameterCanon:
     user_p_name_to_canon_outdated: Dict[str, List[str]] = field(default_factory=dict)
     quad_obj: bool = True
     th_mask: np.ndarray = None
+    n_param_reduced: int = 0
+    n_dual_reduced: int = 0
 
 
 @dataclass
