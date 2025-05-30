@@ -47,13 +47,9 @@ def generate_code(problem, code_dir='cpg_code', solver=None, solver_opts=None,
     # get solver and explicit flag
     solver, explicit = get_solver_and_explicit_flag(solver)
     
-    # in explicit mode, check that problem parameters are initialized
-    if explicit:
-        if gradient:
-            raise ValueError('Explicit mode: Gradient computation is not supported!')
-        for param in problem.parameters():
-            if param.value is None:
-                raise ValueError(f'Explicit mode: Parameter {param.name()} is not initialized!')
+    # in explicit mode, check that gradient computation is not requested
+    if explicit and gradient:
+        raise ValueError('Explicit mode: Gradient computation is not supported!')
     
     gradient_two_stage = gradient and solver != 'OSQP'
 
@@ -123,10 +119,10 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, explicit
     
     H = canon.parameter_canon.p['P'].toarray() + 1e-6 * np.eye(n)  # check
 
-    f = canon.parameter_canon.p['q']
+    f = np.zeros_like(canon.parameter_canon.p['q'])
     F = np.hstack([np.eye(n), np.zeros((n, m))])
     
-    b = canon.parameter_canon.p['u']
+    b = np.zeros_like(canon.parameter_canon.p['u'])
     B = np.hstack([np.zeros((m, n)), np.eye(m)])
     
     # remove any zero rows from A and corresponding rows of b and B
@@ -204,21 +200,18 @@ def get_parameter_delta_bounds(problem, canon):
     parameter_info = canon.parameter_info
     parameter_canon = canon.parameter_canon
     # extract bounds on user-defined parameter deltas
-    lower = np.zeros(parameter_info.flat_usp.size) # TODO: check if need to initialize to -1e30
-    upper = np.zeros(parameter_info.flat_usp.size)
-    lower_total = -1e30 * np.ones(parameter_info.flat_usp.size - 1)
-    upper_total = 1e30 * np.ones(parameter_info.flat_usp.size - 1)
+    lower = -1e30 * np.ones_like(parameter_info.flat_usp)
+    upper = 1e30 * np.ones_like(parameter_info.flat_usp)
+    lower[-1], upper[-1] = 1, 1
     for i, constraint in enumerate(problem.constraints):
         if not constraint.variables() and constraint.parameters():
             lhs, rhs = constraint.args
             if isinstance(lhs, cp.Parameter) and isinstance(rhs, cp.Constant):
                 col = parameter_info.id_to_col[lhs.id]
-                upper[col:col + lhs.size] = rhs.value - lhs.value
-                upper_total[col:col + lhs.size] = rhs.value
+                upper[col:col + lhs.size] = rhs.value
             elif isinstance(lhs, cp.Constant) and isinstance(rhs, cp.Parameter):
                 col = parameter_info.id_to_col[rhs.id]
-                lower[col:col + rhs.size] = lhs.value - rhs.value
-                lower_total[col:col + rhs.size] = lhs.value
+                lower[col:col + rhs.size] = lhs.value
             else:
                 raise ValueError('Explicit mode: Parameter constraints must be simple bounds!')
             # remove dual variables corresponding to parameter constraints
@@ -234,7 +227,7 @@ def get_parameter_delta_bounds(problem, canon):
     id_to_mapping = parameter_canon.p_id_to_mapping
     C_qu = sparse.vstack([id_to_mapping['q'], id_to_mapping['u']])
     lower_mapped, upper_mapped = C_qu @ lower, C_qu @ upper
-    return np.minimum(lower_mapped, upper_mapped), np.maximum(lower_mapped, upper_mapped), lower_total, upper_total
+    return np.minimum(lower_mapped, upper_mapped), np.maximum(lower_mapped, upper_mapped), lower, upper
         
         
 def extract_canonicalization(problem, solver, solver_opts, enable_settings) -> Canon:

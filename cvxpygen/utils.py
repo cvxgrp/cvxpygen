@@ -1129,11 +1129,9 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
         for i, update in enumerate(parameter_canon.th_mask):
             if update:
                 if i < solver_interface.n_var:
-                    idx = i
-                    f.write(f'  {configuration.prefix}cpg_theta[{k}] = {configuration.prefix}Canon_Params.q[{idx}] - {parameter_canon.p["q"][idx]};\n')
+                    f.write(f'  {configuration.prefix}cpg_theta[{k}] = {configuration.prefix}Canon_Params.q[{i}];\n')
                 else:
-                    idx = i - solver_interface.n_var
-                    f.write(f'  {configuration.prefix}cpg_theta[{k}] = {configuration.prefix}Canon_Params.u[{idx}] - {parameter_canon.p["u"][idx]};\n')
+                    f.write(f'  {configuration.prefix}cpg_theta[{k}] = {configuration.prefix}Canon_Params.u[{i - solver_interface.n_var}];\n')
                 k += 1
     else:
         pus = solver_interface.parameter_update_structure
