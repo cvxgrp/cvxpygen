@@ -670,20 +670,20 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
                             write_vec_def(f, value.flatten(order='F'), prefix + name, 'cpg_float')
                             f.write('\n')
 
-            f.write('// Struct containing dual solution\n')
-            CPG_Dual_fields = dual_variable_info.name_to_init.keys()
-            CPG_Dual_values = []
-            for name, var in dual_variable_info.name_to_init.items():
-                vec = dual_variable_info.name_to_vec[name]
-                offset = dual_variable_info.name_to_offset[name]
-                if is_mathematical_scalar(var):
-                    CPG_Dual_values.append('0')
-                else:
-                    if not solver_interface.sol_statically_allocated:
-                        CPG_Dual_values.append('&' + prefix + name)
+                f.write('// Struct containing dual solution\n')
+                CPG_Dual_fields = dual_variable_info.name_to_init.keys()
+                CPG_Dual_values = []
+                for name, var in dual_variable_info.name_to_init.items():
+                    vec = dual_variable_info.name_to_vec[name]
+                    offset = dual_variable_info.name_to_offset[name]
+                    if is_mathematical_scalar(var):
+                        CPG_Dual_values.append('0')
                     else:
-                        CPG_Dual_values.append(f'&{result_prefix}{solver_interface.ws_ptrs.dual_solution.format(dual_var_name=vec)} + {offset}')
-            write_struct_def(f, CPG_Dual_fields, dual_cast, CPG_Dual_values, f'{prefix}CPG_Dual', 'CPG_Dual_t')
+                        if not solver_interface.sol_statically_allocated:
+                            CPG_Dual_values.append('&' + prefix + name)
+                        else:
+                            CPG_Dual_values.append(f'&{result_prefix}{solver_interface.ws_ptrs.dual_solution.format(dual_var_name=vec)} + {offset}')
+                write_struct_def(f, CPG_Dual_fields, dual_cast, CPG_Dual_values, f'{prefix}CPG_Dual', 'CPG_Dual_t')
 
         if not configuration.explicit:
             f.write('\n// Struct containing solver info\n')
