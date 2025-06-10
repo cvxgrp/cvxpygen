@@ -35,7 +35,7 @@ setup(
     url='https://github.com/cvxgrp/cvxpygen',
     packages=find_packages(),
     python_requires='>=3.9',
-    py_modules=['cpg', 'utils'],
+    py_modules=['cpg', 'utils', 'mpqp'],
     include_package_data=True,
     install_requires=[
         'cmake >= 3.5',
