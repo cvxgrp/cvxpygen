@@ -162,21 +162,10 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, explicit
                      f'{len(b)-len(eq_inds)} linear inequality constraints, and\n'
                      f'{len(thmin)} parameters ...\n')
 
+    
     # do not store auxiliary variables
-    
-    name_offset_size = []
-    for name in canon.prim_variable_info.name_to_offset:
-        name_offset_size.append((name, canon.prim_variable_info.name_to_offset[name], canon.prim_variable_info.name_to_size[name]))
-    name_offset_size = sorted(name_offset_size, key=lambda x: x[1])
-    
-    out_inds = np.empty(0, dtype=int)
-    shift = 0
-    for name, offset, size in name_offset_size:
-        out_inds = np.append(out_inds, np.arange(offset, offset + size))
-        canon.prim_variable_info.name_to_offset[name] = shift
-        shift += size
 
-    mpqp = MPQP(H, f, F, A, b, B, thmin, thmax, eq_inds=eq_inds, out_inds=out_inds)
+    mpqp = MPQP(H, f, F, A, b, B, thmin, thmax, eq_inds=eq_inds)
     mpqp.solve(settings={'region_limit': region_limit, 'store_dual': (explicit_flag==2)})
     if str(mpqp.solution_info.status) != 'Solved':
         # XXX Do something to abort
