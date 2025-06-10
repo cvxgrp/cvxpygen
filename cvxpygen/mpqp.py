@@ -31,7 +31,7 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, explicit
     A = canon.parameter_canon.p['A'].toarray()
     m, n = A.shape
     
-    H = canon.parameter_canon.p['P'].toarray() + 1e-6 * np.eye(n)  # check
+    H = canon.parameter_canon.p['P'].toarray() + 1e-6 * np.eye(n)
 
     f = np.zeros_like(canon.parameter_canon.p['q'])
     F = np.hstack([np.eye(n), np.zeros((n, m))])
@@ -45,7 +45,7 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, explicit
     b = b[A_mask]
     B = B[A_mask, :]
     
-    # extract bounds on theta
+    # extract bounds on theta (thmin, thmax) and user-defined params (lower, upper)
     thmin, thmax, lower, upper = get_parameter_delta_bounds(problem, canon)
     
     # eliminate theta components that are fixed
@@ -65,7 +65,7 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, explicit
     th_mask_resulting = th_mask.copy()
     th_mask_resulting[th_mask] = th_mask_multiplied_nonzero
 
-    # offline-solve MPQP and generate code
+    # extract indices of equality constraints
     eq_m = canon.parameter_canon.p_id_to_size['l']
     eq_inds = np.arange(eq_m)[A_mask[:eq_m]]
     
@@ -76,15 +76,14 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, explicit
                      f'{len(b)-len(eq_inds)} linear inequality constraints, and\n'
                      f'{len(thmin)} parameters ...\n')
 
+    # construct explicit solution
     mpqp = MPQP(H, f, F, A, b, B, thmin, thmax, eq_inds=eq_inds)
     mpqp.solve(settings={'region_limit': region_limit, 'store_dual': (explicit_flag==2)})
     if str(mpqp.solution_info.status) != 'Solved':
-        # XXX Do something to abort
         raise Exception(f'Could not compute explicit solution: {mpqp.solution_info.status}')
 
     codegen_status = mpqp.codegen(dir=solver_code_dir, max_reals=max_reals, dual=(explicit_flag==2))
     if codegen_status < 0:
-        # XXX Do something to abort
         raise Exception('Could not generate explicit solver. Consider increasing max_reals.')
     
     include_dir = os.path.join(solver_code_dir, 'include')
