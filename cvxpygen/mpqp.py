@@ -108,15 +108,23 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, explicit
     
     
 def get_parameter_delta_bounds(problem, canon):
+    
     parameter_info = canon.parameter_info
     parameter_canon = canon.parameter_canon
+    
     # extract bounds on user-defined parameter deltas
     lower = -1e30 * np.ones_like(parameter_info.flat_usp)
     upper = 1e30 * np.ones_like(parameter_info.flat_usp)
     lower[-1], upper[-1] = 1, 1
+    
     for i, constraint in enumerate(problem.constraints):
+        
+        # consider pure parameter constraints
         if not constraint.variables() and constraint.parameters():
+            
             lhs, rhs = constraint.args
+            
+            # consider simple bounds
             if isinstance(lhs, cp.Parameter) and isinstance(rhs, cp.Constant):
                 col = parameter_info.id_to_col[lhs.id]
                 upper[col:col + lhs.size] = rhs.value
@@ -125,6 +133,7 @@ def get_parameter_delta_bounds(problem, canon):
                 lower[col:col + rhs.size] = lhs.value
             else:
                 raise ValueError('Explicit mode: Parameter constraints must be simple bounds!')
+            
             # remove dual variables corresponding to parameter constraints
             canon.dual_variable_info.name_to_init.pop(f'd{i}')
             canon.dual_variable_info.name_to_vec.pop(f'd{i}')
@@ -133,9 +142,12 @@ def get_parameter_delta_bounds(problem, canon):
             canon.dual_variable_info.name_to_size.pop(f'd{i}')
             canon.dual_variable_info.name_to_shape.pop(f'd{i}')
             canon.dual_variable_info.sizes[i] = -1
+    
     canon.dual_variable_info.sizes = [s for s in canon.dual_variable_info.sizes if s != -1]
+    
     # map to Delta (q, u)
     id_to_mapping = parameter_canon.p_id_to_mapping
     C_qu = sparse.vstack([id_to_mapping['q'], id_to_mapping['u']])
     lower_mapped, upper_mapped = C_qu @ lower, C_qu @ upper
+    
     return np.minimum(lower_mapped, upper_mapped), np.maximum(lower_mapped, upper_mapped), lower, upper
