@@ -1381,6 +1381,7 @@ def write_module_def(f, configuration, variable_info, dual_variable_info, parame
     f.write('#include <pybind11/pybind11.h>\n')
     f.write('#include <pybind11/stl.h>\n')
     f.write('#include <ctime>\n')
+    f.write('#include <chrono>\n')
     f.write('#include "cpg_module.hpp"\n\n')
     f.write('extern "C" {\n')
     f.write('    #include "include/cpg_workspace.h"\n')
