@@ -23,8 +23,11 @@ from pdaqp import MPQP
 def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, solver_opts, explicit_flag):
     
     # set maximum number of regions and maximum number of reals
-    region_limit = solver_opts.get('region_limit', 500) if solver_opts else 500
-    max_reals = solver_opts.get('max_reals', 1e6) if solver_opts else 1e6
+    max_regions = solver_opts.get('max_regions', 500) if solver_opts else 500
+    max_floats = solver_opts.get('max_floats', 1e6) if solver_opts else 1e6
+    
+    # set precision for storing explicit solution
+    c_float_store = '_Float16' if solver_opts and (solver_opts.get('fp16', False) or solver_opts.get('FP16', False)) else 'float'
     
     # check that P and A are constants
     for p_id in ['P', 'A']:
@@ -94,11 +97,11 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, solver_o
 
     # construct explicit solution
     mpqp = MPQP(H, f, F, A, b, B, thmin, thmax, eq_inds=eq_inds, out_inds=out_inds)
-    mpqp.solve(settings={'region_limit': region_limit, 'store_dual': (explicit_flag==2)})
+    mpqp.solve(settings={'region_limit': max_regions, 'store_dual': (explicit_flag==2)})
     if str(mpqp.solution_info.status) != 'Solved':
         raise Exception(f'Could not compute explicit solution: {mpqp.solution_info.status}')
 
-    codegen_status = mpqp.codegen(dir=solver_code_dir, max_reals=max_reals, dual=(explicit_flag==2))
+    codegen_status = mpqp.codegen(dir=solver_code_dir, max_reals=max_floats, dual=(explicit_flag==2), c_float_store=c_float_store)
     if codegen_status < 0:
         raise Exception('Could not generate explicit solver. Consider increasing max_reals in solver_opts.')
     

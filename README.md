@@ -16,8 +16,8 @@ Solving a DPP-compliant problem repeatedly for different values of the parameter
 
 For now, CVXPYgen is a separate module, until it will be integrated into CVXPY.
 As of today, CVXPYgen works with linear, quadratic, and second-order cone programs.
-It also supports differentiating through quadratic programs and computing an
-explicit solution to linear and quadratic programs (see below).
+It also supports [differentiating through quadratic programs](#differentiating-through-problems) and computing an
+[explicit solution to linear and quadratic programs](#explicitly-solving-problems).
 
 This package has similar functionality as the package [cvxpy_codegen](https://github.com/moehle/cvxpy_codegen),
 which appears to be unsupported.
@@ -194,9 +194,14 @@ CVXPYgen can generate an explicit solution for linear and quadratic programs.
 To enable this feature, set `solver='explicit'` when generating code.
 By default, only the primal solution is computed. To also compute the dual
 solution, pass `solver_opts={'dual': True}`.
+Also, you can choose to store the explicit solution in half precision (instead of single
+precision), by setting `'fp16': True` in `solver_opts`.
 
 This feature is limited to small problems with a few variables and parameters.
 See our [manuscript](https://stanford.edu/~boyd/papers/cvxpygen_mpqp.html) for more details.
+You can control the maximum number of floating point numbers in the explicit solution
+via `'max_floats'` (default is `1e6`) and the maximum number of regions (see the manuscript for what this means, default is `500`)
+via `'max_regions'` in the `solver_opts` dict.
 
 ## Tests
 

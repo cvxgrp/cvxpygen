@@ -151,6 +151,60 @@ def test_control():
     assert np.allclose(X.value, X_ref, rtol=rtol)
     assert np.allclose(U.value, U_ref, rtol=rtol)
     assert np.allclose(obj.value, obj_ref, rtol=rtol)
+    
+    
+def test_control_fp16():
+    
+    np.random.seed(1)
+    
+    n, m = 6, 1
+    H = 5
+    
+    A = 0.1 * np.random.randn(n, n)
+    np.fill_diagonal(A, np.random.randn(n))
+    evs, _ = np.linalg.eigh(A)
+    A /= np.max(np.abs(evs))
+    B = np.sqrt(0.001) * np.random.randn(n, m)
+    
+    Q = np.eye(n)
+    R = 0.1 * np.eye(m)
+    
+    P = la.solve_discrete_are(A, B, Q, R)
+    
+    X = cp.Variable((n, H+1), name='X')
+    U = cp.Variable((m, H), name='U')
+    
+    xinit = cp.Parameter(n, name='xinit')
+        
+    obj = cp.quad_form(X[:, H], P) + cp.sum_squares(X[:, :-1]) + 0.1 * cp.sum_squares(U)
+    constr = [
+        X[:, 1:] == A @ X[:, :-1] + B @ U,
+        -1 <= U, U <= 1,
+        X[:, 0] == xinit,
+        -1 <= xinit, xinit <= 1
+    ]
+        
+    problem = cp.Problem(cp.Minimize(obj), constr)
+    
+    # generate code
+    cpg.generate_code(problem, code_dir='explicit_MPC_fp16', solver='explicit', solver_opts={'fp16': True}, prefix='ex_mpc')
+    from explicit_MPC_fp16.cpg_solver import cpg_solve
+    problem.register_solve('cpg_explicit', cpg_solve)
+
+    np.random.seed(2)
+    
+    xinit.value = -1 + 2 * np.random.rand(n)
+    
+    problem.solve(solver='OSQP')
+    X_ref = X.value
+    U_ref = U.value
+    obj_ref = obj.value
+    
+    problem.solve(method='cpg_explicit')
+    rtol = 1e-3
+    assert np.allclose(X.value, X_ref, rtol=rtol)
+    assert np.allclose(U.value, U_ref, rtol=rtol)
+    assert np.allclose(obj.value, obj_ref, rtol=rtol)
 
 
 def test_dual():
