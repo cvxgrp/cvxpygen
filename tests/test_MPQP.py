@@ -171,11 +171,11 @@ def test_dual():
 
     problem = cp.Problem(cp.Minimize(obj), constr)
     
-    cpg.generate_code(problem, solver='explicit_primal_dual', code_dir='explicit_primal_dual', prefix='ex_dual')
+    cpg.generate_code(problem, solver='explicit', solver_opts={'dual': True}, code_dir='explicit_dual', prefix='ex_dual')
     
     np.random.seed(0)
     
-    from explicit_primal_dual.cpg_solver import cpg_solve
+    from explicit_dual.cpg_solver import cpg_solve
     problem.register_solve('gen_explicit', cpg_solve)
     
     y.value = [0.6, 0.8, 0.2]

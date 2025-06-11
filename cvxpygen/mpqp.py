@@ -20,8 +20,11 @@ from scipy import sparse
 from pdaqp import MPQP
 
 
-def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, explicit_flag,
-                                       region_limit=500, max_reals=1e6):
+def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, solver_opts, explicit_flag):
+    
+    # set maximum number of regions and maximum number of reals
+    region_limit = solver_opts.get('region_limit', 500) if solver_opts else 500
+    max_reals = solver_opts.get('max_reals', 1e6) if solver_opts else 1e6
     
     # check that P and A are constants
     for p_id in ['P', 'A']:
@@ -97,7 +100,7 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, explicit
 
     codegen_status = mpqp.codegen(dir=solver_code_dir, max_reals=max_reals, dual=(explicit_flag==2))
     if codegen_status < 0:
-        raise Exception('Could not generate explicit solver. Consider increasing max_reals.')
+        raise Exception('Could not generate explicit solver. Consider increasing max_reals in solver_opts.')
     
     include_dir = os.path.join(solver_code_dir, 'include')
     src_dir = os.path.join(solver_code_dir, 'src')

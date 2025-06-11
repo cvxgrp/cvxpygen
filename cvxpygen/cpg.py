@@ -44,7 +44,7 @@ def generate_code(problem, code_dir='cpg_code', solver=None, solver_opts=None,
     create_folder_structure(code_dir)
     
     # get solver and explicit flag
-    solver, explicit = get_solver_and_explicit_flag(solver)
+    solver, explicit = get_solver_and_explicit_flag(solver, solver_opts)
     
     # in explicit mode, check that gradient computation is not requested
     if explicit and gradient:
@@ -79,7 +79,7 @@ def generate_code(problem, code_dir='cpg_code', solver=None, solver_opts=None,
         cvxpygen_directory = os.path.dirname(os.path.realpath(__file__))
         solver_code_dir = os.path.join(code_dir, 'c', 'solver_code')
         if explicit:
-            mpqp.offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, explicit)
+            mpqp.offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, solver_opts, explicit)
         else:
             solver_interface.generate_code(configuration, code_dir, solver_code_dir, cvxpygen_directory, canon.parameter_canon, gradient, configuration.prefix)
     
@@ -94,13 +94,14 @@ def generate_code(problem, code_dir='cpg_code', solver=None, solver_opts=None,
         problem.register_solve('CPG', cpg_solve)
         
         
-def get_solver_and_explicit_flag(solver):
+def get_solver_and_explicit_flag(solver, solver_opts):
     if solver is None:
         return None, 0
     elif solver.lower() == 'explicit':
-        return 'OSQP', 1
-    elif solver.lower() == 'explicit_primal_dual':
-        return 'OSQP', 2
+        if solver_opts and solver_opts.get('dual', False):
+            return 'OSQP', 2
+        else:
+            return 'OSQP', 1
     else:
         return solver, 0
         

@@ -193,7 +193,7 @@ for three practical examples (from our manuscript), in the areas of machine lear
 CVXPYgen can generate an explicit solution for linear and quadratic programs.
 To enable this feature, set `solver='explicit'` when generating code.
 By default, only the primal solution is computed. To also compute the dual
-solution, set `solver='explicit_primal_dual'`.
+solution, pass `solver_opts={'dual': True}`.
 
 This feature is limited to small problems with a few variables and parameters.
 See our [manuscript](https://stanford.edu/~boyd/papers/cvxpygen_mpqp.html) for more details.
