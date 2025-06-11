@@ -1,5 +1,5 @@
 
-# CVXPYgen - Code generation with CVXPY
+# CVXPYgen: Code generation with CVXPY
 
 CVXPYgen takes a convex optimization problem family modeled with CVXPY and generates a custom solver implementation in C.
 This generated solver is specific to the problem family and accepts different parameter values.
@@ -16,6 +16,8 @@ Solving a DPP-compliant problem repeatedly for different values of the parameter
 
 For now, CVXPYgen is a separate module, until it will be integrated into CVXPY.
 As of today, CVXPYgen works with linear, quadratic, and second-order cone programs.
+It also supports [differentiating through quadratic programs](#differentiating-through-problems) and computing an
+[explicit solution to linear and quadratic programs](#explicitly-solving-problems).
 
 This package has similar functionality as the package [cvxpy_codegen](https://github.com/moehle/cvxpy_codegen),
 which appears to be unsupported.
@@ -25,26 +27,15 @@ under the [GNU General Public License v3.0](https://github.com/embotech/ecos/blo
 
 ## Installation
 
-1. Install `cvxpygen`.
-    ```
-    pip install cvxpygen
-    ```
-   
-
-2. On Linux or Mac, install the [GCC compiler](https://gcc.gnu.org).
-   On Windows, install [Microsoft Visual Studio](https://visualstudio.microsoft.com/downloads/) 
-   with the 'Desktop development with C++' workload.
-   CVXPYgen is tested with Visual Studio 2019 and 2022, older versions might work as well.
-   
-
-3. *Optional:* If you wish to use the example notebooks located in [``examples/``](https://github.com/cvxgrp/cvxpygen/blob/master/examples/), 
-   install ``ipykernel``, ``jupyter``, ``matplotlib``, and register a new kernel spec with Jupyter.
-    ```
-   pip install ipykernel jupyter matplotlib
-   ipython kernel install --user --name=cvxpygen
-   ```
+```
+pip install cvxpygen
+```
 
 If you wish to use the `Clarabel` solver, you need to install [`Rust`](https://www.rust-lang.org/tools/install) and [`Eigen`](https://github.com/oxfordcontrol/Clarabel.cpp#installation).
+
+The example notebooks located in [``examples/``](https://github.com/cvxgrp/cvxpygen/blob/master/examples/) require ``matplotlib``.
+
+Windows users: CVXPYgen is tested with Visual Studio 2019 and 2022, newer and older versions might work as well.
     
 ## Example
 
@@ -125,19 +116,19 @@ problem.register_solve('CPG', cpg_solve)
 t0 = time.time()
 val = problem.solve(solver='SCS')
 t1 = time.time()
-sys.stdout.write('\nCVXPY\nSolve time: %.3f ms\n' % (1000*(t1-t0)))
-sys.stdout.write('Primal solution: x = [%.6f, %.6f]\n' % tuple(x.value))
-sys.stdout.write('Dual solution: d0 = [%.6f, %.6f]\n' % tuple(problem.constraints[0].dual_value))
-sys.stdout.write('Objective function value: %.6f\n' % val)
+print('\nCVXPY\nSolve time: %.3f ms\n' % (1000*(t1-t0)))
+print('Primal solution: x = [%.6f, %.6f]\n' % tuple(x.value))
+print('Dual solution: d0 = [%.6f, %.6f]\n' % tuple(problem.constraints[0].dual_value))
+print('Objective function value: %.6f\n' % val)
 
 # solve problem with C code via python wrapper
 t0 = time.time()
 val = problem.solve(method='CPG', updated_params=['A', 'b'], verbose=False)
 t1 = time.time()
-sys.stdout.write('\nCVXPYgen\nSolve time: %.3f ms\n' % (1000 * (t1 - t0)))
-sys.stdout.write('Primal solution: x = [%.6f, %.6f]\n' % tuple(x.value))
-sys.stdout.write('Dual solution: d0 = [%.6f, %.6f]\n' % tuple(problem.constraints[0].dual_value))
-sys.stdout.write('Objective function value: %.6f\n' % val)
+print('\nCVXPYgen\nSolve time: %.3f ms\n' % (1000 * (t1 - t0)))
+print('Primal solution: x = [%.6f, %.6f]\n' % tuple(x.value))
+print('Dual solution: d0 = [%.6f, %.6f]\n' % tuple(problem.constraints[0].dual_value))
+print('Objective function value: %.6f\n' % val)
 ```
 
 The argument `updated_params` specifies which user-defined parameter values are new.
@@ -180,7 +171,7 @@ Release\cpg_example
 
 ## Differentiating through problems
 
-CVXPYgen supports differentiating through linear and quadratic programs.
+CVXPYgen supports differentiating through quadratic programs.
 To enable this feature, set `gradient=True` when generating code.
 You can use the generated code together with [CVXPYlayers](https://github.com/cvxgrp/cvxpylayers) as
 
@@ -196,6 +187,21 @@ layer = CvxpyLayer(problem, parameters=[A, b], variables=[x], custom_method=(for
 See our [manuscript](https://stanford.edu/~boyd/papers/cvxpygen_grad.html) for more details
 and [examples/paper_grad](https://github.com/cvxgrp/cvxpygen/tree/master/examples/paper_grad)
 for three practical examples (from our manuscript), in the areas of machine learning, control, and finance.
+
+## Explicitly solving problems
+
+CVXPYgen can generate an explicit solution for linear and quadratic programs.
+To enable this feature, set `solver='explicit'` when generating code.
+By default, only the primal solution is computed. To also compute the dual
+solution, pass `solver_opts={'dual': True}`.
+Also, you can choose to store the explicit solution in half precision (instead of single
+precision), by setting `'fp16': True` in `solver_opts`.
+
+This feature is limited to small problems with a few variables and parameters.
+See our [manuscript](https://stanford.edu/~boyd/papers/cvxpygen_mpqp.html) for more details.
+You can control the maximum number of floating point numbers in the explicit solution
+via `'max_floats'` (default is `1e6`) and the maximum number of regions (see the manuscript for what this means, default is `500`)
+via `'max_regions'` in the `solver_opts` dict.
 
 ## Tests
 

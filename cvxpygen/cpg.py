@@ -19,7 +19,7 @@ import warnings
 import copy
 import importlib
 
-from cvxpygen import utils
+from cvxpygen import utils, mpqp
 from cvxpygen.utils import write_file, read_write_file, write_example_def, write_module_prot, write_module_def, \
     write_canon_cmake, write_method, replace_cmake_data, replace_setup_data, replace_html_data
 from cvxpygen.mappings import Configuration, PrimalVariableInfo, DualVariableInfo, ConstraintInfo, \
@@ -43,6 +43,13 @@ def generate_code(problem, code_dir='cpg_code', solver=None, solver_opts=None,
     
     create_folder_structure(code_dir)
     
+    # get solver and explicit flag
+    solver, explicit = get_solver_and_explicit_flag(solver, solver_opts)
+    
+    # in explicit mode, check that gradient computation is not requested
+    if explicit and gradient:
+        raise ValueError('Explicit mode: Gradient computation is not supported!')
+    
     gradient_two_stage = gradient and solver != 'OSQP'
 
     # extract canonicalization
@@ -61,7 +68,7 @@ def generate_code(problem, code_dir='cpg_code', solver=None, solver_opts=None,
         canon, solver_interface = extract_canonicalization(problem, solver, solver_opts, enable_settings)
         gradient_interface = solver_interface
 
-    configuration = get_configuration(code_dir, solver, unroll, prefix, gradient, gradient_two_stage)
+    configuration = get_configuration(code_dir, solver, unroll, prefix, gradient, gradient_two_stage, explicit)
     cvxpygen_directory = os.path.dirname(os.path.realpath(__file__))
     solver_code_dir = os.path.join(code_dir, 'c', 'solver_code')
     osqp_code_dir = os.path.join(code_dir, 'c', 'osqp_code')
@@ -69,7 +76,13 @@ def generate_code(problem, code_dir='cpg_code', solver=None, solver_opts=None,
         solver_interface.generate_code(configuration, code_dir, solver_code_dir, cvxpygen_directory, canon.parameter_canon, False, configuration.prefix)
         gradient_interface.generate_code(configuration, code_dir, osqp_code_dir, cvxpygen_directory, canon_gradient.parameter_canon, True, f'gradient_{configuration.prefix}')
     else:
-        solver_interface.generate_code(configuration, code_dir, solver_code_dir, cvxpygen_directory, canon.parameter_canon, gradient, configuration.prefix)
+        cvxpygen_directory = os.path.dirname(os.path.realpath(__file__))
+        solver_code_dir = os.path.join(code_dir, 'c', 'solver_code')
+        if explicit:
+            mpqp.offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, solver_opts, explicit)
+        else:
+            solver_interface.generate_code(configuration, code_dir, solver_code_dir, cvxpygen_directory, canon.parameter_canon, gradient, configuration.prefix)
+    
     write_c_code(problem, configuration, canon, canon_gradient, canon_solver, solver_interface, gradient_interface)
 
     sys.stdout.write('CVXPYgen finished generating code.\n')
@@ -79,6 +92,18 @@ def generate_code(problem, code_dir='cpg_code', solver=None, solver_opts=None,
         module = importlib.import_module(f'{code_dir}.cpg_solver')
         cpg_solve = getattr(module, 'cpg_solve')
         problem.register_solve('CPG', cpg_solve)
+        
+        
+def get_solver_and_explicit_flag(solver, solver_opts):
+    if solver is None:
+        return None, 0
+    elif solver.lower() == 'explicit':
+        if solver_opts and solver_opts.get('dual', False):
+            return 'OSQP', 2
+        else:
+            return 'OSQP', 1
+    else:
+        return solver, 0
         
         
 def extract_canonicalization(problem, solver, solver_opts, enable_settings) -> Canon:
@@ -218,7 +243,6 @@ def get_quad_obj(problem, solver_type, solver_opts, solver_class) -> bool:
     return use_quad_obj and solver_class().supports_quad_obj() and problem.objective.expr.has_quadratic_term()
 
 
-
 def process_canonical_parameters(
         constraint_info, param_prob, parameter_info, 
         solver_interface, solver_opts, problem, cvxpy_interface_class):
@@ -265,7 +289,6 @@ def process_canonical_parameters(
     parameter_canon.is_maximization = isinstance(problem.objective, Maximize)
 
     return adjacency, parameter_canon, canon_p_ids
-
 
 
 def update_to_dense_mapping(affine_map, param_prob):
@@ -560,9 +583,10 @@ def write_c_code(problem: cp.Problem, configuration: Configuration,
                configuration, prim_variable_info, dual_variable_info, 
                parameter_info, solver_interface, gradient_interface)
 
-    write_file(os.path.join(solver_code_dir, 'CMakeLists.txt'), 'a',
-               write_canon_cmake,
-               'solver', solver_interface)
+    if not configuration.explicit:
+        write_file(os.path.join(solver_code_dir, 'CMakeLists.txt'), 'a',
+                write_canon_cmake,
+                'solver', solver_interface)
     
     if configuration.gradient_two_stage:
         read_write_file(os.path.join(osqp_code_dir, 'CMakeLists.txt'),
@@ -604,8 +628,8 @@ def adjust_prefix(prefix):
     return prefix + '_' if prefix else prefix
 
 
-def get_configuration(code_dir, solver_name, unroll, prefix, gradient, gradient_two_stage) -> Configuration:
-    return Configuration(code_dir, solver_name, unroll, adjust_prefix(prefix), gradient, gradient_two_stage)
+def get_configuration(code_dir, solver_name, unroll, prefix, gradient, gradient_two_stage, explicit) -> Configuration:
+    return Configuration(code_dir, solver_name, unroll, adjust_prefix(prefix), gradient, gradient_two_stage, explicit)
 
 
 def get_parameter_info(p_prob) -> ParameterInfo:
@@ -672,7 +696,7 @@ def get_parameter_info(p_prob) -> ParameterInfo:
     parameter_info = ParameterInfo(user_p_col_to_name_usp, user_p_flat_usp, user_p_id_to_col,
                                    user_p_ids, user_p_name_to_shape, user_p_name_to_size_usp,
                                    user_p_name_to_sparsity, user_p_name_to_sparsity_type,
-                                   user_p_names, user_p_num, user_p_sparsity_mask, user_p_writable)
+                                   user_p_names, user_p_num, user_p_sparsity_mask, user_p_writable, None, None)
     return parameter_info
 
 

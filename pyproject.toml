@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cvxpygen"
+version = "0.6.0"
+description = "Code generation with CVXPY"
+readme = { file = "README.md", content-type = "text/markdown" }
+requires-python = ">=3.10"
+license = { text = "Apache License, Version 2.0" }
+authors = [
+  { name = "Maximilian Schaller", email = "mschall@stanford.edu" },
+  { name = "Goran Banjac", email = "goranbanjac1989@gmail.com" },
+  { name = "Bartolomeo Stellato", email = "bstellato@princeton.edu" },
+  { name = "Steven Diamond", email = "diamond@cs.stanford.edu" },
+  { name = "Akshay Agrawal", email = "akshayka@cs.stanford.edu" },
+  { name = "Stephen Boyd", email = "boyd@stanford.edu" }
+]
+urls = { Homepage = "https://github.com/cvxgrp/cvxpygen" }
+
+dependencies = [
+  "cmake >= 3.5",
+  "cvxpy >= 1.6.4",
+  "pybind11 >= 2.8",
+  "osqp >= 1.0.0b3",
+  "ecos >= 2.0.14",
+  "clarabel >= 0.6.0",
+  "scipy >= 1.13.1",
+  "numpy >= 1.26.0",
+  "qocogen >= 0.1.9",
+  "qoco >= 0.1.4",
+  "pdaqp >= 0.6.4"
+]
+
+[project.optional-dependencies]
+dev = ["pytest == 6.2.4"]
+
+[tool.setuptools]
+packages = ["cvxpygen"]
+include-package-data = true
+py-modules = ["cpg", "utils", "mappings", "solvers", "mpqp"]
