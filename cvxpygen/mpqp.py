@@ -22,7 +22,7 @@ from pdaqp import MPQP
 
 def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, solver_opts, explicit_flag):
     
-    # set maximum number of regions and maximum number of reals
+    # set maximum number of regions and maximum number of floating point numbers
     max_regions = solver_opts.get('max_regions', 500) if solver_opts else 500
     max_floats = solver_opts.get('max_floats', 1e6) if solver_opts else 1e6
     
