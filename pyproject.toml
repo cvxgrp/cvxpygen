@@ -30,7 +30,7 @@ dependencies = [
   "numpy >= 1.26.0",
   "qocogen >= 0.1.9",
   "qoco >= 0.1.4",
-  "pdaqp >= 0.6.3"
+  "pdaqp >= 0.6.4"
 ]
 
 [project.optional-dependencies]
