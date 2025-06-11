@@ -187,7 +187,7 @@ def test_control_fp16():
     problem = cp.Problem(cp.Minimize(obj), constr)
     
     # generate code
-    cpg.generate_code(problem, code_dir='explicit_MPC_fp16', solver='explicit', solver_opts={'fp16': True}, prefix='ex_mpc')
+    cpg.generate_code(problem, code_dir='explicit_MPC_fp16', solver='explicit', solver_opts={'fp16': True}, prefix='ex_mpc_fp16')
     from explicit_MPC_fp16.cpg_solver import cpg_solve
     problem.register_solve('cpg_explicit', cpg_solve)
 
