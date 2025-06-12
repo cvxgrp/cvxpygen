@@ -22,9 +22,6 @@ It also supports [differentiating through quadratic programs](#differentiating-t
 This package has similar functionality as the package [cvxpy_codegen](https://github.com/moehle/cvxpy_codegen),
 which appears to be unsupported.
 
-**Important: When generating code with the ECOS solver, the generated code is licensed 
-under the [GNU General Public License v3.0](https://github.com/embotech/ecos/blob/develop/COPYING).**
-
 ## Installation
 
 ```
@@ -190,18 +187,39 @@ for three practical examples (from our manuscript), in the areas of machine lear
 
 ## Explicitly solving problems
 
-CVXPYgen can generate an explicit solution for linear and quadratic programs.
+For quadratic programs in which 
+the coefficients of the linear objective terms and the righthand side of the
+constraints are affine functions of a parameter,
+the solution is a piecewise affine function of the parameter.
+
+The number of (polyhedral) regions in the solution map
+can grow exponentially in problem size (specifically, the number of inequality constraints),
+but when the number of regions is moderate, a so-called 
+explicit solver is practical.
+Such a solver computes the coefficients of the affine
+functions and the linear inequalities defining the polyhedral regions 
+offline; to solve a problem instance online it simply evaluates 
+this explicit solution map.
+Potential advantages of an explicit solver over a more general purpose
+iterative solver can include transparency, interpretability, reliability,
+and speed.
+
+CVXPYgen can generate such explicit solvers.
 To enable this feature, set `solver='explicit'` when generating code.
 By default, only the primal solution is computed. To also compute the dual
 solution, pass `solver_opts={'dual': True}`.
-Also, you can choose to store the explicit solution in half precision (instead of single
+You can choose to store the explicit solution in half precision (instead of single
 precision), by setting `'fp16': True` in `solver_opts`.
+Limits on parameters are encouraged and can be represented as standard CVXPY constraints.
+As of now, we support simple bounds of the form `[l <= p, p <= u]` where
+`p` is a `cp.Parameter()` and `l` and `u` are constants.
 
-This feature is limited to small problems with a few variables and parameters.
 See our [manuscript](https://stanford.edu/~boyd/papers/cvxpygen_mpqp.html) for more details.
 You can control the maximum number of floating point numbers in the explicit solution
-via `'max_floats'` (default is `1e6`) and the maximum number of regions (see the manuscript for what this means, default is `500`)
-via `'max_regions'` in the `solver_opts` dict.
+via `'max_floats'` (default is `1e6`) and the maximum number of regions
+via `'max_regions'` (default is `500`) in the `solver_opts` dict.
+
+CVXPYgen uses [PDAQP](https://github.com/darnstrom/pdaqp) to construct explicit solutions.
 
 ## Tests
 
