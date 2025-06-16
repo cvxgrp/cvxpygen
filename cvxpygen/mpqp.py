@@ -89,6 +89,7 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, solver_o
     stored_vars = solver_opts.get('stored_vars', all_names) if solver_opts else all_names
     stored_vars = [var if len(var)==2 else (var,None) for var in stored_vars]
 
+    print(canon.prim_variable_info)
 
     shift=0
     added_names = []
@@ -102,8 +103,11 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, solver_o
             out_inds = np.append(out_inds, offset+inds)
 
             canon.prim_variable_info.name_to_offset[name] = shift
-            canon.prim_variable_info.name_to_indices[name] = np.full(size,-1)
-            canon.prim_variable_info.name_to_indices[name][inds] = np.arange(0,len(inds))
+            if size == 1:
+                canon.prim_variable_info.name_to_indices[name] = np.array([shift])
+            else:
+                canon.prim_variable_info.name_to_indices[name] = np.full(size,-1)
+                canon.prim_variable_info.name_to_indices[name][inds] = np.arange(0,len(inds))
             added_names.append(name)
             shift+=len(inds)
         #else:
@@ -122,6 +126,7 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, solver_o
             del canon.prim_variable_info.sym[i]
             canon.prim_variable_info.reduced = True
 
+    print(canon.prim_variable_info)
     # construct explicit solution
     mpqp = MPQP(H, f, F, A, b, B, thmin, thmax, eq_inds=eq_inds, out_inds=out_inds)
     mpqp.solve(settings={'region_limit': max_regions, 'store_dual': (explicit_flag==2)})
