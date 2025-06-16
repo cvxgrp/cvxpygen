@@ -121,6 +121,7 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, solver_o
             del canon.prim_variable_info.name_to_sym[name]
             del canon.prim_variable_info.sizes[i]
             del canon.prim_variable_info.sym[i]
+            canon.prim_variable_info.reduced = True
 
     # construct explicit solution
     mpqp = MPQP(H, f, F, A, b, B, thmin, thmax, eq_inds=eq_inds, out_inds=out_inds)
