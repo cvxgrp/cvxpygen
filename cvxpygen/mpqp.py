@@ -104,7 +104,6 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, solver_o
             canon.prim_variable_info.name_to_offset[name] = shift
             canon.prim_variable_info.name_to_indices[name] = np.full(size,-1)
             canon.prim_variable_info.name_to_indices[name][inds] = np.arange(0,len(inds))
-            canon.prim_variable_info.name_to_init[name][:] = np.nan
             added_names.append(name)
             shift+=len(inds)
         #else:
