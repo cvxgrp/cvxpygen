@@ -95,7 +95,7 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, solver_o
     for var,inds in stored_vars:
         name = str(var)
         offset = canon.prim_variable_info.name_to_offset.get(name,None)
-        if offset:
+        if offset is not None:
             size = canon.prim_variable_info.name_to_size[name]
             inds = np.array(inds,dtype='int') if inds else np.arange(0,size)
 
