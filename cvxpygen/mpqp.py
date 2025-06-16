@@ -81,19 +81,46 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, solver_o
                      f'{len(eq_inds)} linear equality constraints,\n'
                      f'{len(b)-len(eq_inds)} linear inequality constraints, and\n'
                      f'{len(thmin)} parameters ...\n')
-    # do not store auxiliary variables
-    name_offset_size = []
-    for name in canon.prim_variable_info.name_to_offset:
-        name_offset_size.append((name, canon.prim_variable_info.name_to_offset[name], canon.prim_variable_info.name_to_size[name]))
-    name_offset_size = sorted(name_offset_size, key=lambda x: x[1])
-    
+
+    # extract variables to store
+    all_names = [name for name in canon.prim_variable_info.name_to_offset]
+
     out_inds = np.empty(0, dtype=int)
-    shift = 0
-    for name, offset, size in name_offset_size:
-        out_inds = np.append(out_inds, np.arange(offset, offset + size))
-        canon.prim_variable_info.name_to_offset[name] = shift
-        canon.prim_variable_info.name_to_indices[name] -= offset - shift
-        shift += size
+    stored_vars = solver_opts.get('stored_vars', all_names) if solver_opts else all_names
+    stored_vars = [var if len(var)==2 else (var,None) for var in stored_vars]
+
+
+    shift=0
+    added_names = []
+    for var,inds in stored_vars:
+        name = str(var)
+        offset = canon.prim_variable_info.name_to_offset.get(name,None)
+        if offset:
+            size = canon.prim_variable_info.name_to_size[name]
+            inds = np.array(inds,dtype='int') if inds else np.arange(0,size)
+
+            out_inds = np.append(out_inds, offset+inds)
+
+            canon.prim_variable_info.name_to_offset[name] = shift
+            canon.prim_variable_info.name_to_indices[name] = np.full(size,-1)
+            canon.prim_variable_info.name_to_indices[name][inds] = shift+np.arange(0,len(inds))
+            canon.prim_variable_info.name_to_init[name][:] = np.nan
+            added_names.append(name)
+            shift+=len(inds)
+        #else:
+            # XXX wanted to store variable that does not exist
+
+    # Remove non-stored variables from canonicalization
+    for i,name in enumerate(all_names):
+        if name not in added_names:
+            del canon.prim_variable_info.name_to_offset[name]
+            del canon.prim_variable_info.name_to_indices[name]
+            del canon.prim_variable_info.name_to_size[name]
+            del canon.prim_variable_info.name_to_shape[name]
+            del canon.prim_variable_info.name_to_init[name]
+            del canon.prim_variable_info.name_to_sym[name]
+            del canon.prim_variable_info.sizes[i]
+            del canon.prim_variable_info.sym[i]
 
     # construct explicit solution
     mpqp = MPQP(H, f, F, A, b, B, thmin, thmax, eq_inds=eq_inds, out_inds=out_inds)
