@@ -1430,9 +1430,14 @@ def write_module_def(f, configuration, variable_info, dual_variable_info, parame
         if is_mathematical_scalar(var):
             f.write(f'    CPG_Prim_cpp.{name} = {configuration.prefix}CPG_Prim.{name};\n')
         else:
-            f.write(f'    for(i=0; i<{var.size}; i++) {{\n')
-            f.write(f'        CPG_Prim_cpp.{name}[i] = {configuration.prefix}CPG_Prim.{name}[i];\n')
-            f.write('    }\n')
+            if configuration.explicit:
+                for i, idx in enumerate(variable_info.name_to_indices[name]):
+                    if idx >= 0:
+                        f.write(f'    CPG_Prim_cpp.{name}[%d] = {configuration.prefix}CPG_Prim.{name}[%d];\n' % (i,idx))
+            else:
+                f.write(f'    for(i=0; i<{var.size}; i++) {{\n')
+                f.write(f'        CPG_Prim_cpp.{name}[i] = {configuration.prefix}CPG_Prim.{name}[i];\n')
+                f.write('    }\n')
 
     if configuration.explicit != 1:
         if len(dual_variable_info.name_to_init) > 0:
