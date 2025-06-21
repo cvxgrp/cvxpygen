@@ -19,6 +19,7 @@ import cvxpy as cp
 from scipy import sparse
 from pdaqp import MPQP
 from itertools import product
+from cvxpy.utilities import key_utils as ku
 
 
 def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, solver_opts, explicit_flag):
@@ -94,7 +95,9 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, solver_o
             if sl is None: # Variable => store all
                 names_and_inds.append((v.name(), None))
             else:
-                ranges = [np.arange(s.start,s.stop,s.step) for s in sl[0]]
+                sl = [ku.format_slice(key,sh,len(v.shape)) if not ku.is_special_slice(key) else key
+                              for key,sh in zip(sl[0],v.shape)]
+                ranges = [np.arange(s.start,s.stop,s.step) if type(s) == slice else s for s in sl]
                 inds = [np.ravel_multi_index(id, v.shape) for id in product(*ranges)]
                 names_and_inds.append((v.name(), inds))
     else: # by default, store all variables
