@@ -18,6 +18,7 @@ import numpy as np
 import cvxpy as cp
 from scipy import sparse
 from pdaqp import MPQP
+from itertools import product
 
 
 def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, solver_opts, explicit_flag):
@@ -84,15 +85,25 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, solver_o
 
     # extract variables to store
     all_names = [name for name in canon.prim_variable_info.name_to_offset]
-
-    out_inds = np.empty(0, dtype=int)
-    stored_vars = solver_opts.get('stored_vars', all_names) if solver_opts else all_names
-    stored_vars = [var if len(var)==2 else (var,None) for var in stored_vars]
+    stored_vars = solver_opts.get('stored_vars', all_names) if solver_opts else None
+    names_and_inds = []
+    if stored_vars is not None:
+        for s in stored_vars:
+            v = s.variables()[0]
+            sl  =  s.get_data()
+            if sl is None: # Variable => store all
+                names_and_inds.append((v.name(), None))
+            else:
+                ranges = [np.arange(s.start,s.stop,s.step) for s in sl[0]]
+                inds = [np.ravel_multi_index(id, v.shape) for id in product(*ranges)]
+                names_and_inds.append((v.name(), inds))
+    else: # by default, store all variables
+        for name in all_names: names_and_inds.append((name,None))
 
     shift=0
+    out_inds = np.empty(0, dtype=int)
     added_names = []
-    for var,inds in stored_vars:
-        name = str(var)
+    for name,inds in names_and_inds:
         offset = canon.prim_variable_info.name_to_offset.get(name,None)
         if offset is not None:
             size = canon.prim_variable_info.name_to_size[name]
