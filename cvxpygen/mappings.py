@@ -122,3 +122,11 @@ class Canon:
     dual_variable_info: DualVariableInfo
     parameter_info: ParameterInfo
     parameter_canon: ParameterCanon
+
+
+@dataclass
+class Setting:
+    type: str
+    default: str
+    enabled: bool = True
+    name_cvxpy: str = None
