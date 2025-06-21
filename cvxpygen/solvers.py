@@ -12,7 +12,7 @@ from cvxpygen.utils import write_file, read_write_file, write_struct_prot, write
     write_vec_prot, write_vec_def, multiple_replace, cut_from_expr, \
     write_description, type_to_cast, write_mat_def, write_L_def, ones, zeros, write_canonicalize
 from cvxpygen.mappings import PrimalVariableInfo, DualVariableInfo, ConstraintInfo, AffineMap, \
-    ParameterCanon, WorkspacePointerInfo, UpdatePendingLogic, ParameterUpdateLogic
+    ParameterCanon, WorkspacePointerInfo, UpdatePendingLogic, ParameterUpdateLogic, Setting
 
 from cvxpy.reductions.solvers.qp_solvers.osqp_qpif import OSQP
 from cvxpy.reductions.solvers.conic_solvers.scs_conif import SCS
@@ -72,17 +72,7 @@ class SolverInterface(ABC):
 
     @property
     @abstractmethod
-    def stgs_names(self):
-        pass
-
-    @property
-    @abstractmethod
-    def stgs_types(self):
-        pass
-
-    @property
-    @abstractmethod
-    def stgs_defaults(self):
+    def stgs(self):
         pass
 
     @staticmethod
@@ -94,10 +84,10 @@ class SolverInterface(ABC):
         return any([s == 1 for s in dual_variable_info.sizes])
 
     def configure_settings(self) -> None:
-        for i, s in enumerate(self.stgs_names):
+        for s in self.stgs:
             if s in self.enable_settings:
-                self.stgs_enabled[i] = True
-        for s in set(self.enable_settings)-set(self.stgs_names):
+                self.stgs[s].enabled = True
+        for s in set(self.enable_settings)-set(self.stgs):
             warnings.warn(f'Cannot enable setting {s} for solver {self.solver_name}')
 
     def get_affine_map(self, p_id, param_prob, constraint_info: ConstraintInfo) -> AffineMap:
@@ -155,18 +145,20 @@ class SolverInterface(ABC):
 
     @property
     def stgs_names_enabled(self):
-        return [name for name, enabled in zip(self.stgs_names, self.stgs_enabled) if enabled]
+        return [n for n, s in self.stgs.items() if s.enabled]
 
     @property
     def stgs_names_to_type(self):
-        return {name: typ for name, typ, enabled in zip(self.stgs_names, self.stgs_types, self.stgs_enabled)
-                if enabled}
-
+        return {n: s.type for n, s in self.stgs.items() if s.enabled}
+    
     @property
     def stgs_names_to_default(self):
-        return {name: typ for name, typ, enabled in zip(self.stgs_names, self.stgs_defaults, self.stgs_enabled)
-                if enabled}
-
+        return {n: s.default for n, s in self.stgs.items() if s.enabled}
+    
+    @property
+    def stgs_translation(self):
+        return {s.name_cvxpy: n for n, s in self.stgs.items() if s.enabled and s.name_cvxpy is not None}
+    
     @staticmethod
     def check_unsupported_cones(cone_dims: "ConeDims") -> None:
         pass
@@ -286,17 +278,20 @@ class OSQPInterface(SolverInterface):
     stgs_requires_extra_struct_type = True
     stgs_direct_write_ptr = 'solver.settings'
     stgs_reset_function = {'name': 'osqp_set_default_settings', 'ptr': 'solver.settings'}
-    stgs_names = ['max_iter', 'eps_abs', 'eps_rel', 'eps_prim_inf', 'eps_dual_inf',
-                      'scaled_termination', 'check_termination', 'warm_starting',
-                      'verbose', 'polishing', 'polish_refine_iter', 'delta']
-    stgs_translation = "{'warm_start': 'warm_starting'}"
-    stgs_types = ['cpg_int', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float',
-                      'cpg_int', 'cpg_int', 'cpg_int', 'cpg_int', 'cpg_int', 'cpg_int', 'cpg_float']
-    stgs_enabled = [True, True, True, True, True, True, True, True,
-                        False, False, False, False]
-    stgs_defaults = ['4000', '1e-3', '1e-3', '1e-4', '1e-4',
-                         '0', '25', '1',
-                         '0', '0', '0', '1e-6']
+    stgs = {
+        'max_iter': Setting(type='cpg_int', default='4000'),
+        'eps_abs': Setting(type='cpg_float', default='1e-3'),
+        'eps_rel': Setting(type='cpg_float', default='1e-3'),
+        'eps_prim_inf': Setting(type='cpg_float', default='1e-4'),
+        'eps_dual_inf': Setting(type='cpg_float', default='1e-4'),
+        'scaled_termination': Setting(type='cpg_int', default='0'),
+        'check_termination': Setting(type='cpg_int', default='25'),
+        'warm_starting': Setting(type='cpg_int', default='1', name_cvxpy='warm_start'),
+        'verbose': Setting(type='cpg_int', default='0', enabled=False),
+        'polishing': Setting(type='cpg_int', default='0', enabled=False),
+        'polish_refine_iter': Setting(type='cpg_int', default='0', enabled=False),
+        'delta': Setting(type='cpg_float', default='1e-6', enabled=False)
+    }
 
     # dual variables split into two vectors
     dual_var_split = False
@@ -801,20 +796,24 @@ class SCSInterface(SolverInterface):
     stgs_requires_extra_struct_type = False
     stgs_direct_write_ptr = None
     stgs_reset_function = {'name': 'scs_set_default_settings', 'ptr': None} # set 'ptr' to None if stgs not statically allocated in solver code
-    stgs_names = ['normalize', 'scale', 'adaptive_scale', 'rho_x', 'max_iters', 'eps_abs',
-                      'eps_rel',
-                      'eps_infeas', 'alpha', 'time_limit_secs', 'verbose', 'warm_start',
-                      'acceleration_lookback',
-                      'acceleration_interval', 'write_data_filename', 'log_csv_filename']
-    stgs_translation = "{'max_iters': 'maxit'}"
-    stgs_types = ['cpg_int', 'cpg_float', 'cpg_int', 'cpg_float', 'cpg_int', 'cpg_float', 'cpg_float',
-                      'cpg_float', 'cpg_float',
-                      'cpg_float', 'cpg_int', 'cpg_int', 'cpg_int', 'cpg_int', 'const char*', 'const char*']
-    stgs_enabled = [True, True, True, True, True, True, True, True, True, True, True, True,
-                        True, True, True, True]
-    stgs_defaults = ['1', '0.1', '1', '1e-6', '1e5', '1e-4', '1e-4', '1e-7', '1.5', '0', '0',
-                         '0', '0', '1',
-                         'SCS_NULL', 'SCS_NULL']
+    stgs = {
+        'normalize': Setting(type='cpg_int', default='1'),
+        'scale': Setting(type='cpg_float', default='0.1'),
+        'adaptive_scale': Setting(type='cpg_int', default='1'),
+        'rho_x': Setting(type='cpg_float', default='1e-6'),
+        'max_iters': Setting(type='cpg_int', default='1e5'),
+        'eps_abs': Setting(type='cpg_float', default='1e-4'),
+        'eps_rel': Setting(type='cpg_float', default='1e-4'),
+        'eps_infeas': Setting(type='cpg_float', default='1e-7'),
+        'alpha': Setting(type='cpg_float', default='1.5'),
+        'time_limit_secs': Setting(type='cpg_float', default='0'),
+        'verbose': Setting(type='cpg_int', default='0'),
+        'warm_start': Setting(type='cpg_int', default='0'),
+        'acceleration_lookback': Setting(type='cpg_int', default='0'),
+        'acceleration_interval': Setting(type='cpg_int', default='1'),
+        'write_data_filename': Setting(type='const char*', default='SCS_NULL'),
+        'log_csv_filename': Setting(type='const char*', default='SCS_NULL')
+    }
     
     # dual variables split into two vectors
     dual_var_split = False
@@ -1025,12 +1024,15 @@ class ECOSInterface(SolverInterface):
     stgs_requires_extra_struct_type = True
     stgs_direct_write_ptr = None
     stgs_reset_function = None
-    stgs_names = ['feastol', 'abstol', 'reltol', 'feastol_inacc', 'abstol_inacc',
-                      'reltol_inacc', 'maxit']
-    stgs_translation = "{}"
-    stgs_types = ['cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_int']
-    stgs_enabled = [True, True, True, True, True, True, True]
-    stgs_defaults = ['1e-8', '1e-8', '1e-8', '1e-4', '5e-5', '5e-5', '100']
+    stgs = {
+        'feastol': Setting(type='cpg_float', default='1e-8'),
+        'abstol': Setting(type='cpg_float', default='1e-8'),
+        'reltol': Setting(type='cpg_float', default='1e-8'),
+        'feastol_inacc': Setting(type='cpg_float', default='1e-4'),
+        'abstol_inacc': Setting(type='cpg_float', default='5e-5'),
+        'reltol_inacc': Setting(type='cpg_float', default='5e-5'),
+        'maxit': Setting(type='cpg_int', default='100', name_cvxpy='max_iters')
+    }
 
     # dual variables split into y and z vectors
     dual_var_split = True
@@ -1219,14 +1221,16 @@ class ClarabelInterface(SolverInterface):
     stgs_direct_write_ptr = None
     stgs_reset_function = None
     # TODO: extend to all available settings
-    stgs_names = ['max_iter', 'time_limit', 'verbose', 'max_step_fraction',
-                  'equilibrate_enable', 'equilibrate_max_iter', 'equilibrate_min_scaling', 'equilibrate_max_scaling']
-    stgs_translation = "{}"
-    stgs_types = ['cpg_int', 'cpg_float', 'cpg_int', 'cpg_float',
-                  'cpg_int', 'cpg_int', 'cpg_float', 'cpg_float']
-    stgs_enabled = [True, True, True, True, True, True, True, True]
-    stgs_defaults = ['50', '1e6', '1', '0.99',
-                     '1', '10', '1e-4', '1e4']
+    stgs = {
+        'max_iter': Setting(type='cpg_int', default='50', name_cvxpy='max_iters'),
+        'time_limit': Setting(type='cpg_float', default='1e6'),
+        'verbose': Setting(type='cpg_int', default='1'),
+        'max_step_fraction': Setting(type='cpg_float', default='0.99'),
+        'equilibrate_enable': Setting(type='cpg_int', default='1'),
+        'equilibrate_max_iter': Setting(type='cpg_int', default='10'),
+        'equilibrate_min_scaling': Setting(type='cpg_float', default='1e-4'),
+        'equilibrate_max_scaling': Setting(type='cpg_float', default='1e4')
+    }
 
     # dual variables split into two vectors
     dual_var_split = False
@@ -1476,12 +1480,20 @@ class QOCOGENInterface(SolverInterface):
     stgs_direct_write_ptr = '(&({prefix}qoco_custom_workspace.settings))'
     stgs_translation = "{}"
     stgs_reset_function = {'name': 'set_default_settings', 'ptr': '&{prefix}qoco_custom_workspace'}
-    stgs_names = ['max_iters', 'bisect_iters', 'ruiz_iters', 'iter_ref_iters', 'kkt_static_reg', 'kkt_dynamic_reg',
-                      'abstol', 'reltol', 'abstol_inacc', 'reltol_inacc', 'verbose']
-    stgs_types = ['cpg_int', 'cpg_int', 'cpg_int', 'cpg_int', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_int']
-    stgs_enabled = [True, True, True, True, True, True, True, True, True, True, True]
-    stgs_defaults = ['200', '5', '0', '1', '1e-8', '1e-8', '1e-7', '1e-7', '1e-5', '1e-5', '0']
-
+    stgs = {
+        'max_iters': Setting(type='cpg_int', default='200'),
+        'bisect_iters': Setting(type='cpg_int', default='5'),
+        'ruiz_iters': Setting(type='cpg_int', default='0'),
+        'iter_ref_iters': Setting(type='cpg_int', default='1'),
+        'kkt_static_reg': Setting(type='cpg_float', default='1e-8'),
+        'kkt_dynamic_reg': Setting(type='cpg_float', default='1e-8'),
+        'abstol': Setting(type='cpg_float', default='1e-7'),
+        'reltol': Setting(type='cpg_float', default='1e-7'),
+        'abstol_inacc': Setting(type='cpg_float', default='1e-5'),
+        'reltol_inacc': Setting(type='cpg_float', default='1e-5'),
+        'verbose': Setting(type='cpg_int', default='0')
+    }
+    
     dual_var_split = True
     dual_var_names = ['y', 'z']
 
@@ -1647,12 +1659,19 @@ class QOCOInterface(SolverInterface):
     stgs_requires_extra_struct_type = True
     stgs_direct_write_ptr = None
     stgs_reset_function = None
-    stgs_translation = "{}"
-    stgs_names = ['max_iters', 'bisect_iters', 'ruiz_iters', 'iter_ref_iters', 'kkt_static_reg', 'kkt_dynamic_reg',
-                      'abstol', 'reltol', 'abstol_inacc', 'reltol_inacc', 'verbose']
-    stgs_types = ['cpg_int', 'cpg_int', 'cpg_int', 'cpg_int', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_float', 'cpg_int']
-    stgs_enabled = [True, True, True, True, True, True, True, True, True, True, True]
-    stgs_defaults = ['200', '5', '0', '1', '1e-8', '1e-8', '1e-7', '1e-7', '1e-5', '1e-5', '0']
+    stgs = {
+        'max_iters': Setting(type='cpg_int', default='200'),
+        'bisect_iters': Setting(type='cpg_int', default='5'),
+        'ruiz_iters': Setting(type='cpg_int', default='0'),
+        'iter_ref_iters': Setting(type='cpg_int', default='1'),
+        'kkt_static_reg': Setting(type='cpg_float', default='1e-8'),
+        'kkt_dynamic_reg': Setting(type='cpg_float', default='1e-8'),
+        'abstol': Setting(type='cpg_float', default='1e-7'),
+        'reltol': Setting(type='cpg_float', default='1e-7'),
+        'abstol_inacc': Setting(type='cpg_float', default='1e-5'),
+        'reltol_inacc': Setting(type='cpg_float', default='1e-5'),
+        'verbose': Setting(type='cpg_int', default='0')
+    }
 
     # dual variables split into y and z vectors
     dual_var_split = True
