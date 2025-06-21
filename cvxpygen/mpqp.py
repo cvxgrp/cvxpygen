@@ -86,7 +86,7 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, solver_o
 
     # extract variables to store
     all_names = [name for name in canon.prim_variable_info.name_to_offset]
-    stored_vars = solver_opts.get('stored_vars', all_names) if solver_opts else None
+    stored_vars = solver_opts.get('stored_vars', None) if solver_opts else None
     names_and_inds = []
     if stored_vars is not None:
         for s in stored_vars:
