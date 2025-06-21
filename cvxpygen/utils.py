@@ -586,7 +586,10 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
                 
     if configuration.explicit:
         write_vec_def(f, np.zeros(parameter_canon.n_param_reduced), f'{configuration.prefix}cpg_theta', 'cpg_float')
-        write_vec_def(f, np.zeros(sum(variable_info.sizes)), 'sol_x', 'cpg_float')
+        if variable_info.reduced:
+            write_vec_def(f, np.zeros(sum(variable_info.sizes)), 'sol_x', 'cpg_float')
+        else:
+            write_vec_def(f, np.zeros(solver_interface.n_var), 'sol_x', 'cpg_float')
     if configuration.explicit == 2:
         write_vec_def(f, np.zeros(parameter_canon.n_dual_reduced), 'sol_y', 'cpg_float')
 
@@ -910,7 +913,10 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
                 
     if configuration.explicit:
         write_vec_prot(f, np.zeros(parameter_canon.n_param_reduced), f'{prefix}cpg_theta', 'cpg_float')
-        write_vec_prot(f, np.zeros(sum(variable_info.sizes)), 'sol_x', 'cpg_float')
+        if variable_info.reduced:
+            write_vec_prot(f, np.zeros(sum(variable_info.sizes)), 'sol_x', 'cpg_float')
+        else:
+            write_vec_prot(f, np.zeros(solver_interface.n_var), 'sol_x', 'cpg_float')
     if configuration.explicit == 2:
         write_vec_prot(f, np.zeros(parameter_canon.n_dual_reduced), 'sol_y', 'cpg_float')
 
