@@ -98,7 +98,7 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, solver_o
                 sl = [ku.format_slice(key,sh,len(v.shape)) if not ku.is_special_slice(key) else key
                               for key,sh in zip(sl[0],v.shape)]
                 ranges = [np.arange(s.start,s.stop,s.step) if type(s) == slice else s for s in sl]
-                inds = [np.ravel_multi_index(id, v.shape) for id in product(*ranges)]
+                inds = [np.ravel_multi_index(id, v.shape,order='F') for id in product(*ranges)]
                 names_and_inds.append((v.name(), inds))
     else: # by default, store all variables
         for name in all_names: names_and_inds.append((name,None))
