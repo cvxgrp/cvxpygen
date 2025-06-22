@@ -1192,8 +1192,6 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
             f.write('  }\n')
             f.write(f'  return obj_val;\n')
             f.write('}\n\n')
-        else:
-            f.write(f'cpg_float {configuration.prefix}cpg_obj(){{obj_val = 1e30; return obj_val;}};\n')
 
 
 
@@ -1260,8 +1258,9 @@ def write_solve_prot(f, configuration, variable_info, dual_variable_info, parame
     f.write(f'extern void {configuration.prefix}cpg_solve();\n')
     
     if configuration.explicit:
-        f.write('\n// Compute value of the objective\n')
-        f.write(f'extern cpg_float {configuration.prefix}cpg_obj();\n')
+        if not variable_info.reduced:
+            f.write('\n// Compute value of the objective\n')
+            f.write(f'extern cpg_float {configuration.prefix}cpg_obj();\n')
 
     if not configuration.explicit:  # TODO: explicit case
         f.write('\n// Update solver settings\n')
