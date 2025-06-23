@@ -1795,21 +1795,11 @@ def write_method(f, configuration, variable_info, dual_variable_info, parameter_
     f.write('    # store solution in problem object\n')
     f.write('    prob._clear_solution()\n')
     for name, shape in variable_info.name_to_shape.items():
-        if len(shape) == 2:
-            f.write(f'    prob.var_dict[\'{name}\'].save_value(np.array(res.cpg_prim.{name}).reshape(({shape[0]}, {shape[1]}), order=\'F\'))\n')
-        elif len(shape) == 1:
-            f.write(f'    prob.var_dict[\'{name}\'].save_value(np.array(res.cpg_prim.{name}).reshape({shape[0]}))\n')
-        else:
-            f.write(f'    prob.var_dict[\'{name}\'].save_value(np.array(res.cpg_prim.{name}))\n')
+        f.write(f'    prob.var_dict[\'{name}\'].save_value(np.array(res.cpg_prim.{name}).reshape({shape}, order=\'F\'))\n')
 
     if configuration.explicit != 1:
         for i, (name, shape) in enumerate(dual_variable_info.name_to_shape.items()):
-            if len(shape) == 2:
-                f.write(f'    prob.constraints[{i}].save_dual_value(np.array(res.cpg_dual.{name}).reshape(({shape[0]}, {shape[1]}), order=\'F\'))\n')
-            elif len(shape) == 1:
-                f.write(f'    prob.constraints[{i}].save_dual_value(np.array(res.cpg_dual.{name}).reshape({shape[0]}))\n')
-            else:
-                f.write(f'    prob.constraints[{i}].save_dual_value(np.array(res.cpg_dual.{name}))\n')
+            f.write(f'    prob.constraints[{i}].save_dual_value(np.array(res.cpg_dual.{name}).reshape({shape}, order=\'F\'))\n')
 
     if not configuration.explicit:  # TODO: explicit case
         f.write('\n    # store additional solver information in problem object\n')
