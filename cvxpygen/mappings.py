@@ -74,6 +74,7 @@ class VariableInfo:
 class PrimalVariableInfo(VariableInfo):
     name_to_sym: Dict[str, bool]
     sym: List[bool]
+    reduced: bool = False
 
 
 @dataclass

@@ -121,7 +121,7 @@ def test_control():
     U = cp.Variable((m, H), name='U')
     
     xinit = cp.Parameter(n, name='xinit')
-        
+
     obj = cp.quad_form(X[:, H], P) + cp.sum_squares(X[:, :-1]) + 0.1 * cp.sum_squares(U)
     constr = [
         X[:, 1:] == A @ X[:, :-1] + B @ U,
@@ -129,7 +129,7 @@ def test_control():
         X[:, 0] == xinit,
         -1 <= xinit, xinit <= 1
     ]
-        
+
     problem = cp.Problem(cp.Minimize(obj), constr)
     
     # generate code
@@ -206,6 +206,106 @@ def test_control_fp16():
     assert np.allclose(U.value, U_ref, rtol=rtol)
     assert np.allclose(obj.value, obj_ref, rtol=rtol)
 
+def test_control_reduced():
+
+    np.random.seed(1)
+
+    n, m = 6, 1
+    H = 5
+
+    A = 0.1 * np.random.randn(n, n)
+    np.fill_diagonal(A, np.random.randn(n))
+    evs, _ = np.linalg.eigh(A)
+    A /= np.max(np.abs(evs))
+    B = np.sqrt(0.001) * np.random.randn(n, m)
+
+    Q = np.eye(n)
+    R = 0.1 * np.eye(m)
+
+    P = la.solve_discrete_are(A, B, Q, R)
+
+    X = cp.Variable((n, H+1), name='X')
+    U = cp.Variable((m, H), name='U')
+
+    xinit = cp.Parameter(n, name='xinit')
+
+    obj = cp.quad_form(X[:, H], P) + cp.sum_squares(X[:, :-1]) + 0.1 * cp.sum_squares(U)
+    constr = [
+        X[:, 1:] == A @ X[:, :-1] + B @ U,
+        -1 <= U, U <= 1,  # TODO: Test use of cp.norm and cp.abs
+        X[:, 0] == xinit,
+        -1 <= xinit, xinit <= 1
+    ]
+
+    problem = cp.Problem(cp.Minimize(obj), constr)
+
+    solver_opts= {"stored_vars":[U[:,0],X[[1,2],:]]}
+    # generate code
+    cpg.generate_code(problem, code_dir='explicit_MPC_reduced', solver='explicit', prefix='ex_mpc_red',
+                      solver_opts=solver_opts)
+    from explicit_MPC_reduced.cpg_solver import cpg_solve
+    problem.register_solve('cpg_explicit', cpg_solve)
+
+    np.random.seed(2)
+
+    xinit.value = -1 + 2 * np.random.rand(n)
+
+    problem.solve(solver='OSQP')
+    X_ref = X.value
+    U_ref = U.value
+    obj_ref = obj.value
+
+    problem.solve(method='cpg_explicit')
+    rtol = 1e-4
+
+    assert np.allclose(U.value[:,0], U_ref[:,0], rtol=rtol)
+    assert np.allclose(U.value[:,1:5], np.zeros(4), rtol=rtol) # Not stored -> zero
+    assert np.allclose(X.value[[1,2],:], X_ref[[1,2],:], rtol=rtol)
+    assert np.allclose(X.value[[0,3,4,5],:], np.zeros((4,6)), rtol=rtol) # Not stored -> zero
+
+def test_stored_vars():
+
+    np.random.seed(1)
+    # define CVXPY problem
+    q, d = 5, 8
+    A = np.random.randn(q, d)
+    X = cp.Variable((2,2,2), name='X')
+    xs = cp.Variable(name='xs')
+    b = cp.Parameter(q, name='b')
+    obj = cp.sum_squares(A @ cp.vec(X,order='F') + np.random.randn(q,1)*xs - b)
+    constr = [cp.diff(cp.vec(X,order='F')) >= 0, -1 <= b, b <= 1]
+    problem = cp.Problem(cp.Minimize(obj), constr)
+
+    # generate code
+    cpg.generate_code(problem, code_dir='ex_store_X', solver='explicit', prefix='ex_store_X', solver_opts = {'stored_vars':[X[0,:,[1]]]})
+    from ex_store_X.cpg_solver import cpg_solve
+    problem.register_solve('cpg_explicit_X', cpg_solve)
+
+    cpg.generate_code(problem, code_dir='ex_store_xs', solver='explicit', prefix='ex_store_xs', solver_opts = {'stored_vars':[xs]})
+    from ex_store_xs.cpg_solver import cpg_solve
+    problem.register_solve('cpg_explicit_xs', cpg_solve)
+
+    np.random.seed(2)
+
+    b.value = -1 + 2 * np.random.rand(q)
+
+    problem.solve(solver='OSQP')
+    X_ref = X.value
+    xs_ref = xs.value
+    obj_ref = obj.value
+
+    problem.solve(method='cpg_explicit_X')
+    Xv = X.value.reshape((2,2,2),order='F') # Due to cvxpygen 0.6.1 flattening if len(shape) > 2
+    assert np.allclose(Xv[0,:,[1]], X_ref[0,:,[1]])
+    assert np.allclose(Xv[1,:,0], np.zeros(2))
+    assert np.allclose(Xv[1,:,1], np.zeros(2))
+    assert np.allclose(Xv[0,:,0], np.zeros(2))
+    assert np.allclose(Xv[0,:,0], np.zeros(2))
+    assert xs.value is None
+
+    problem.solve(method='cpg_explicit_xs')
+    assert X.value is None
+    assert np.allclose(xs.value, xs_ref)
 
 def test_dual():
 
@@ -246,3 +346,4 @@ def test_dual():
     assert np.allclose(beta.value, beta_ref)
     assert np.allclose(constr[0].dual_value, dual_ref)
     assert np.allclose(obj.value, obj_ref)
+
