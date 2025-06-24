@@ -28,9 +28,10 @@ class AffineMap:
 
 @dataclass
 class ParameterCanon:
+    """Represents first affine form"""
     p: dict = field(default_factory=dict)
     p_csc: Dict[str, sp.csc_matrix] = field(default_factory=dict)
-    p_id_to_mapping: Dict[str, sp.csr_matrix] = field(default_factory=dict)
+    p_id_to_mapping: Dict[str, sp.csr_matrix] = field(default_factory=dict)  # Represents A slice to canonical parameter
     p_id_to_changes: Dict[str, bool] = field(default_factory=dict)
     p_id_to_size: Dict[str, int] = field(default_factory=dict)
     nonzero_d: bool = True
@@ -44,9 +45,14 @@ class ParameterCanon:
 
 @dataclass
 class ParameterInfo:
-    col_to_name_usp: Dict[int, str]
+    """
+    All info about a user defined parameter and how to convert from
+    the user-defined parameter to the canonicalized vector that is
+    passed to A.
+    """
+    col_to_name_usp: Dict[int, str]  # usp: user-defined sparsity
     flat_usp: np.ndarray
-    id_to_col: Dict[int, int]
+    id_to_col: Dict[int, int]  # Maps parameter id to column of the start of the parameter
     ids: List[int]
     name_to_shape: Dict[str, tuple]
     name_to_size_usp: Dict[str, int]
@@ -72,12 +78,14 @@ class VariableInfo:
 
 @dataclass
 class PrimalVariableInfo(VariableInfo):
+    """Info for primal variable retrival from a canonical solution"""
     name_to_sym: Dict[str, bool]
     sym: List[bool]
 
 
 @dataclass
 class DualVariableInfo(VariableInfo):
+    """Info for dual variable retrival from a canonical solution"""
     name_to_vec: Dict[str, str]
 
 
@@ -118,6 +126,9 @@ class ParameterUpdateLogic:
 
 @dataclass
 class Canon:
+    """
+    All info for the ASA representation
+    """
     prim_variable_info: PrimalVariableInfo
     dual_variable_info: DualVariableInfo
     parameter_info: ParameterInfo
