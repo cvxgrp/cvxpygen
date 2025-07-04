@@ -120,6 +120,9 @@ def extract_canonicalization(problem, solver, solver_opts, enable_settings) -> C
         solver_opts=solver_opts
     )
     param_prob = data['param_prob']
+    
+    if not param_prob.parameters:
+        raise ValueError('Solution does not depend on parameters. Aborting code generation.')
 
     # cone problems check
     if hasattr(param_prob, 'cone_dims'):
