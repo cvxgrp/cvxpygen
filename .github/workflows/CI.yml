@@ -59,16 +59,16 @@ jobs:
       if: runner.os == 'Linux'
       run: |
         cd tests
-        $CONDA/bin/pytest test_E2E_LP.py test_E2E_QP.py test_E2E_SOCP.py test_diff.py
+        $CONDA/bin/pytest test_invalid_input.py test_E2E_LP.py test_E2E_QP.py test_E2E_SOCP.py test_diff.py
 
     - name: Test with pytest (macOS)
       if: runner.os == 'macOS'
       run: |
         cd tests
-        python -m pytest test_E2E_LP.py test_E2E_QP.py test_E2E_SOCP.py test_MPQP.py
+        python -m pytest test_invalid_input.py test_E2E_LP.py test_E2E_QP.py test_E2E_SOCP.py test_MPQP.py
 
     - name: Test with pytest (Windows)
       if: runner.os == 'Windows'
       run: |
         cd tests
-        python -m pytest test_E2E_LP.py::test test_E2E_QP.py::test test_E2E_QP.py::test_OSQP_verbose test_E2E_SOCP.py::test test_E2E_LP.py::test_qocogen test_unsupported_solvers.py
+        python -m pytest test_invalid_input.py test_E2E_LP.py::test test_E2E_QP.py::test test_E2E_QP.py::test_OSQP_verbose test_E2E_SOCP.py::test test_E2E_LP.py::test_qocogen test_unsupported_solvers.py
