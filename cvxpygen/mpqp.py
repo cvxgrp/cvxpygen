@@ -18,6 +18,8 @@ import numpy as np
 import cvxpy as cp
 from scipy import sparse
 from pdaqp import MPQP
+from itertools import product
+from cvxpy.utilities import key_utils as ku
 
 
 def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, solver_opts, explicit_flag):
@@ -81,19 +83,60 @@ def offline_solve_and_codegen_explicit(problem, canon, solver_code_dir, solver_o
                      f'{len(eq_inds)} linear equality constraints,\n'
                      f'{len(b)-len(eq_inds)} linear inequality constraints, and\n'
                      f'{len(thmin)} parameters ...\n')
-    # do not store auxiliary variables
-    name_offset_size = []
-    for name in canon.prim_variable_info.name_to_offset:
-        name_offset_size.append((name, canon.prim_variable_info.name_to_offset[name], canon.prim_variable_info.name_to_size[name]))
-    name_offset_size = sorted(name_offset_size, key=lambda x: x[1])
-    
+
+    # extract variables to store
+    all_names = [name for name in canon.prim_variable_info.name_to_offset]
+    stored_vars = solver_opts.get('stored_vars', None) if solver_opts else None
+    names_and_inds = []
+    if stored_vars is not None:
+        for s in stored_vars:
+            v = s.variables()[0]
+            sl  =  s.get_data()
+            if sl is None: # Variable => store all
+                names_and_inds.append((v.name(), None))
+            else:
+                sl = [ku.format_slice(key,sh,len(v.shape)) if not ku.is_special_slice(key) else key
+                              for key,sh in zip(sl[0],v.shape)]
+                ranges = [np.arange(s.start,s.stop,s.step) if type(s) == slice else s for s in sl]
+                inds = [np.ravel_multi_index(id, v.shape,order='F') for id in product(*ranges)]
+                names_and_inds.append((v.name(), inds))
+    else: # by default, store all variables
+        for name in all_names: names_and_inds.append((name,None))
+
+    shift=0
     out_inds = np.empty(0, dtype=int)
-    shift = 0
-    for name, offset, size in name_offset_size:
-        out_inds = np.append(out_inds, np.arange(offset, offset + size))
-        canon.prim_variable_info.name_to_offset[name] = shift
-        canon.prim_variable_info.name_to_indices[name] -= offset - shift
-        shift += size
+    added_names = []
+    for name,inds in names_and_inds:
+        offset = canon.prim_variable_info.name_to_offset.get(name,None)
+        if offset is not None:
+            size = canon.prim_variable_info.name_to_size[name]
+            inds = np.array(inds,dtype='int') if inds else np.arange(0,size)
+
+            out_inds = np.append(out_inds, offset+inds)
+
+            canon.prim_variable_info.name_to_offset[name] = shift
+            if size == 1:
+                canon.prim_variable_info.name_to_indices[name] = np.array([shift])
+            else:
+                canon.prim_variable_info.name_to_indices[name] = np.full(size,-1)
+                canon.prim_variable_info.name_to_indices[name][inds] = np.arange(0,len(inds))
+            added_names.append(name)
+            shift+=len(inds)
+        #else:
+            # XXX wanted to store variable that does not exist
+
+    # Remove non-stored variables from canonicalization
+    for i,name in enumerate(all_names):
+        if name not in added_names:
+            del canon.prim_variable_info.name_to_offset[name]
+            del canon.prim_variable_info.name_to_indices[name]
+            del canon.prim_variable_info.name_to_size[name]
+            del canon.prim_variable_info.name_to_shape[name]
+            del canon.prim_variable_info.name_to_init[name]
+            del canon.prim_variable_info.name_to_sym[name]
+            del canon.prim_variable_info.sizes[i]
+            del canon.prim_variable_info.sym[i]
+            canon.prim_variable_info.reduced = True
 
     # construct explicit solution
     mpqp = MPQP(H, f, F, A, b, B, thmin, thmax, eq_inds=eq_inds, out_inds=out_inds)

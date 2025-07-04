@@ -81,6 +81,7 @@ class PrimalVariableInfo(VariableInfo):
     """Info for primal variable retrival from a canonical solution"""
     name_to_sym: Dict[str, bool]
     sym: List[bool]
+    reduced: bool = False
 
 
 @dataclass

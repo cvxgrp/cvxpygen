@@ -563,6 +563,12 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
                 f.write('\n')
 
     p_ids = list(parameter_canon.p.keys())
+
+    if configuration.explicit:
+        p_ids.remove('A') # Constraints not needed for explicit
+        if variable_info.reduced:
+            p_ids.remove('P') # Objective cannot be computed if variables have  been removed
+
     canon_casts = []
     f.write('// Canonical parameters\n')
     for p_id in p_ids:
@@ -580,7 +586,10 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
                 
     if configuration.explicit:
         write_vec_def(f, np.zeros(parameter_canon.n_param_reduced), f'{configuration.prefix}cpg_theta', 'cpg_float')
-        write_vec_def(f, np.zeros(solver_interface.n_var), 'sol_x', 'cpg_float')
+        if variable_info.reduced:
+            write_vec_def(f, np.zeros(sum(variable_info.sizes)), 'sol_x', 'cpg_float')
+        else:
+            write_vec_def(f, np.zeros(solver_interface.n_var), 'sol_x', 'cpg_float')
     if configuration.explicit == 2:
         write_vec_def(f, np.zeros(parameter_canon.n_dual_reduced), 'sol_y', 'cpg_float')
 
@@ -904,7 +913,10 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
                 
     if configuration.explicit:
         write_vec_prot(f, np.zeros(parameter_canon.n_param_reduced), f'{prefix}cpg_theta', 'cpg_float')
-        write_vec_prot(f, np.zeros(solver_interface.n_var), 'sol_x', 'cpg_float')
+        if variable_info.reduced:
+            write_vec_prot(f, np.zeros(sum(variable_info.sizes)), 'sol_x', 'cpg_float')
+        else:
+            write_vec_prot(f, np.zeros(solver_interface.n_var), 'sol_x', 'cpg_float')
     if configuration.explicit == 2:
         write_vec_prot(f, np.zeros(parameter_canon.n_dual_reduced), 'sol_y', 'cpg_float')
 
@@ -1167,18 +1179,21 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
     f.write('}\n\n')
     
     if configuration.explicit:
-        f.write(f'cpg_float {configuration.prefix}cpg_obj(){{\n')
-        f.write(f'  obj_val = 0.0;\n')
-        f.write(f'  for (i=0; i<{solver_interface.n_var}; i++){{\n')
-        f.write(f'    for (j={configuration.prefix}Canon_Params.P->p[i]; j<{configuration.prefix}Canon_Params.P->p[i+1]; j++){{\n')
-        f.write(f'      obj_val += 0.5 * {configuration.prefix}Canon_Params.P->x[j] * sol_x[{configuration.prefix}Canon_Params.P->i[j]] * sol_x[i];\n')
-        f.write('    }\n')
-        f.write('  }\n')
-        f.write(f'  for (i=0; i<{solver_interface.n_var}; i++){{\n')
-        f.write(f'    obj_val += {configuration.prefix}Canon_Params.q[i] * sol_x[i];\n')
-        f.write('  }\n')
-        f.write(f'  return obj_val;\n')
-        f.write('}\n\n')
+        if not variable_info.reduced:
+            f.write(f'cpg_float {configuration.prefix}cpg_obj(){{\n')
+            f.write(f'  obj_val = 0.0;\n')
+            f.write(f'  for (i=0; i<{solver_interface.n_var}; i++){{\n')
+            f.write(f'    for (j={configuration.prefix}Canon_Params.P->p[i]; j<{configuration.prefix}Canon_Params.P->p[i+1]; j++){{\n')
+            f.write(f'      obj_val += 0.5 * {configuration.prefix}Canon_Params.P->x[j] * sol_x[{configuration.prefix}Canon_Params.P->i[j]] * sol_x[i];\n')
+            f.write('    }\n')
+            f.write('  }\n')
+            f.write(f'  for (i=0; i<{solver_interface.n_var}; i++){{\n')
+            f.write(f'    obj_val += {configuration.prefix}Canon_Params.q[i] * sol_x[i];\n')
+            f.write('  }\n')
+            f.write(f'  return obj_val;\n')
+            f.write('}\n\n')
+
+
 
     if not configuration.explicit:  # TODO: explicit case
         f.write('// Update solver settings\n')
@@ -1243,8 +1258,9 @@ def write_solve_prot(f, configuration, variable_info, dual_variable_info, parame
     f.write(f'extern void {configuration.prefix}cpg_solve();\n')
     
     if configuration.explicit:
-        f.write('\n// Compute value of the objective\n')
-        f.write(f'extern cpg_float {configuration.prefix}cpg_obj();\n')
+        if not variable_info.reduced:
+            f.write('\n// Compute value of the objective\n')
+            f.write(f'extern cpg_float {configuration.prefix}cpg_obj();\n')
 
     if not configuration.explicit:  # TODO: explicit case
         f.write('\n// Update solver settings\n')
@@ -1430,9 +1446,14 @@ def write_module_def(f, configuration, variable_info, dual_variable_info, parame
         if is_mathematical_scalar(var):
             f.write(f'    CPG_Prim_cpp.{name} = {configuration.prefix}CPG_Prim.{name};\n')
         else:
-            f.write(f'    for(i=0; i<{var.size}; i++) {{\n')
-            f.write(f'        CPG_Prim_cpp.{name}[i] = {configuration.prefix}CPG_Prim.{name}[i];\n')
-            f.write('    }\n')
+            if configuration.explicit:
+                for i, idx in enumerate(variable_info.name_to_indices[name]):
+                    if idx >= 0:
+                        f.write(f'    CPG_Prim_cpp.{name}[%d] = {configuration.prefix}CPG_Prim.{name}[%d];\n' % (i,idx))
+            else:
+                f.write(f'    for(i=0; i<{var.size}; i++) {{\n')
+                f.write(f'        CPG_Prim_cpp.{name}[i] = {configuration.prefix}CPG_Prim.{name}[i];\n')
+                f.write('    }\n')
 
     if configuration.explicit != 1:
         if len(dual_variable_info.name_to_init) > 0:
