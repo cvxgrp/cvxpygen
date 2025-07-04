@@ -2,6 +2,8 @@
 import cvxpy as cp
 import numpy as np
 import torch
+import importlib
+import pytest
 import jax
 import jax.numpy as jnp
 from cvxpylayers.torch import CvxpyLayer as LayerTorch
@@ -9,10 +11,10 @@ from cvxpylayers.jax import CvxpyLayer as LayerJax
 from cvxpygen import cpg
 
 
-def test_torch():
+@pytest.mark.parametrize("m, n", [(10, 5), (1, 1)])
+def test_torch(m, n):
 
     # parametrized nonneg LS problem
-    m, n = 10, 5
     x = cp.Variable(n, nonneg=True, name='x')
     A = cp.Parameter((m, n), name='A')
     b = cp.Parameter(m, name='b')
@@ -23,14 +25,14 @@ def test_torch():
     b.value = np.random.randn(m)
     
     # generate code
-    cpg.generate_code(prob, code_dir="code_torch", solver='OSQP', prefix='torch', gradient=True, wrapper=True)
-    from code_torch.cpg_solver import forward, backward
+    cpg.generate_code(prob, code_dir=f'code_torch_{m}_{n}', solver='OSQP', prefix=f'torch_{m}_{n}', gradient=True)
+    mod = importlib.import_module(f'code_torch_{m}_{n}.cpg_solver')
     
     # torch function
     A_tch = torch.tensor(A.value, requires_grad=True)
     b_tch = torch.tensor(b.value, requires_grad=True)
     layer_torch = LayerTorch(prob, parameters=[A, b], variables=[x])
-    layer_torch_gen = LayerTorch(prob, parameters=[A, b], variables=[x], custom_method=(forward, backward))
+    layer_torch_gen = LayerTorch(prob, parameters=[A, b], variables=[x], custom_method=(mod.forward, mod.backward))
     
     sol_torch, = layer_torch(A_tch, b_tch)
     sum_torch = 0.1 * sol_torch.sum()
@@ -81,7 +83,7 @@ def test_jax():
     b.value = np.random.randn(m)
     
     # generate code
-    cpg.generate_code(prob, code_dir="code_jax", solver='OSQP', prefix='jax', gradient=True, wrapper=True)
+    cpg.generate_code(prob, code_dir="code_jax", solver='OSQP', prefix='jax', gradient=True)
     from code_jax.cpg_solver import forward, backward
     
     # jax function

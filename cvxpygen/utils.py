@@ -1398,7 +1398,7 @@ def write_module_def(f, configuration, variable_info, dual_variable_info, parame
             max(parameter_info.name_to_size_usp.values(), default=0),
             max(variable_info.name_to_size.values(), default=0),
             max(dual_variable_info.name_to_size.values(), default=0)
-    ) > 1:
+    ) > 1 or configuration.gradient:
         f.write('static int i;\n\n')
 
     # cpp function that maps parameters to results
