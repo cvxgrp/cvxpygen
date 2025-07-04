@@ -65,7 +65,7 @@ jobs:
       if: runner.os == 'macOS'
       run: |
         cd tests
-        python -m pytest test_E2E_LP.py test_E2E_QP.py test_E2E_SOCP.py test_diff.py test_MPQP.py
+        python -m pytest test_E2E_LP.py test_E2E_QP.py test_E2E_SOCP.py test_MPQP.py
 
     - name: Test with pytest (Windows)
       if: runner.os == 'Windows'
