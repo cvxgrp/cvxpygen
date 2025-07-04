@@ -173,7 +173,7 @@ To enable this feature, set `gradient=True` when generating code.
 You can use the generated code together with [CVXPYlayers](https://github.com/cvxgrp/cvxpylayers) as
 
 ```python
-cpg.generate_code(problem, code_dir='code_diff', gradient=True, wrapper=True)
+cpg.generate_code(problem, code_dir='code_diff', gradient=True)
 
 from code_diff.cpg_solver import forward, backward
 from cvxpylayers.torch import CvxpyLayer
