@@ -29,7 +29,8 @@ keywords: convex optimization, open source, software
             font-weight: bold; 
             box-shadow: 0 4px 15px rgba(88, 101, 242, 0.3);
             transition: all 0.3s ease;
-            border: none;"
+            border: none;
+            margin-right: 10px;"
      onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(88, 101, 242, 0.4)';"
      onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 15px rgba(88, 101, 242, 0.3)';">
     🚀 Join our CVXPY Discord Community
@@ -37,6 +38,17 @@ keywords: convex optimization, open source, software
   <p style="margin-top: 8px; font-style: italic; color: #666;">Discuss with fellow optimization enthusiasts.</p>
 </div>
 ```
+
+**CVXPYgen** is a tool for generating custom C code, suitable for embedded applications,
+that solves a parametrized class of convex optimization problems.
+
+## Installation
+
+```
+pip install cvxpygen
+```
+
+## About
 
 **CVXPYgen** takes a convex optimization problem family modeled with **CVXPY** and
 generates a custom solver implementation in C. This generated solver is specific to the
@@ -48,23 +60,25 @@ wrapper for prototyping and desktop (non-embedded) applications.
 autonomous driving, dynamic energy management, real-time trading, precision landing
 (e.g., all SpaceX Falcon 9 and Falcon Heavy landings).
 
+Its predecessor, CVXGEN, [has been used in all SpaceX Falcon 9 first stage landings.](http://larsblackmore.com/nae_bridge_2016.pdf#%5B%7B%22num%22%3A75%2C%22gen%22%3A0%7D%2C%7B%22name%22%3A%22XYZ%22%7D%2C-68%2C792%2C0.850006%5D)
+
 <img src="_static/falcon-heavy-demo-mission.jpg" alt="CVXPYgen" width="600" height="400" style="display: block; margin: 20px auto;">
 
 *Side boosters from a SpaceX Falcon Heavy rocket land at Cape Canaveral’s Landing Zone 1
 and Landing Zone 2 in Florida on February 6, 2018. Photo credit: SpaceX*
 
-## Overview
+## Architecture overview
 
-An overview of **CVXPYgen** can be found in our [slides and manuscript](https://web.stanford.edu/~boyd/papers/cvxpygen.html).
+An in-depth overview of **CVXPYgen** can be found in our [slides and manuscript](https://web.stanford.edu/~boyd/papers/cvxpygen.html).
 
-Parser-solvers canonicalize each time the problem is solved. Parser-solvers compile a 
+Parser-solvers canonicalize each time the problem is solved. Parser-solvers compile a
 problem instance into a canonicalized problem instance, then solve it.
 
 *Almost all DSLs are parser-solvers!*
 
 <img src="_static/parser-solver.png" alt="CVXPYgen" width="600" height="400" style="display: block; margin: 20px auto;">
 
-Code generators like **CVXPYgen** compile a problem family into source code for a *custom 
+Code generators like **CVXPYgen** compile a problem family into source code for a *custom
 solver*. This is useful for:
 – embedded applications, possibly with hard real-time deadlines
 – speeding up the solution of many different problem instances
@@ -82,18 +96,6 @@ problem.
 As of today, **CVXPYgen** works with linear, quadratic, and second-order cone programs.
 It also supports differentiating through quadratic programs and computing an
 explicit solution to linear and quadratic programs.
-
-## Installation
-
-```
-pip install cvxpygen
-```
-
-If you wish to use the `Clarabel` solver, you need to install [`Rust`](https://www.rust-lang.org/tools/install) and [`Eigen`](https://github.com/oxfordcontrol/Clarabel.cpp#installation).
-
-The example notebooks located in [``examples/``](https://github.com/cvxgrp/cvxpygen/blob/master/examples/) require ``matplotlib``.
-
-Windows users: CVXPYgen is tested with Visual Studio 2019 and 2022, newer and older versions might work as well.
 
 ## Example
 
