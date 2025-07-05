@@ -10,3 +10,4 @@ dist/
 cvxpygen/cvxpygen.egg-info/
 cvxpygen.egg-info/
 doc/_build
+uv.lock
