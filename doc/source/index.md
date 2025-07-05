@@ -85,6 +85,8 @@ and Landing Zone 2 in Florida on February 6, 2018. Photo credit: SpaceX*
 
 An in-depth overview of **CVXPYgen** can be found in our [slides and manuscript](https://web.stanford.edu/~boyd/papers/cvxpygen.html).
 
+### Parser-solvers
+
 &rarr; Parser-solvers compile a problem instance into a canonicalized problem instance, then solve it.
 
 &rarr; Parser-solvers canonicalize *each time* the problem is solved.
@@ -92,6 +94,8 @@ An in-depth overview of **CVXPYgen** can be found in our [slides and manuscript]
 *Almost all DSLs are parser-solvers!*
 
 <img src="_static/parser-solver.png" alt="CVXPYgen" width="600" height="400" style="display: block; margin: 20px auto;">
+
+### Code generators
 
 Code generators like **CVXPYgen** compile a problem family into source code for a *custom
 solver*. This is useful for:

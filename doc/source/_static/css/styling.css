@@ -35,6 +35,16 @@ nav.md-tabs li:hover{
     display: none;
 }
 
+/* Hide the page title from the left sidebar */
+.md-nav--primary .md-nav__item--active > .md-nav__link--active {
+    display: none;
+}
+
+/* Hide the page title link in active navigation item */
+.md-nav--primary .md-nav__item--active > a.md-nav__link--active {
+    display: none;
+}
+
 .search-result-objlabel{
     border-radius: 25px;
     float: right;
