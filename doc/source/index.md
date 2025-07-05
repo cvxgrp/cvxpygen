@@ -11,7 +11,6 @@ keywords: convex optimization, open source, software
 
 install
 user-guide
-functions
 api-documentation
 examples/index
 contributing
@@ -75,7 +74,7 @@ wrapper for prototyping and desktop (non-embedded) applications.
 autonomous driving, dynamic energy management, real-time trading, precision landing
 (e.g., all SpaceX Falcon 9 and Falcon Heavy landings).
 
-Its predecessor, CVXGEN, [has been used in all SpaceX Falcon 9 first stage landings.](http://larsblackmore.com/nae_bridge_2016.pdf#%5B%7B%22num%22%3A75%2C%22gen%22%3A0%7D%2C%7B%22name%22%3A%22XYZ%22%7D%2C-68%2C792%2C0.850006%5D)
+Its predecessor, [CVXGEN](https://cvxgen.com/docs/index.html), has been used in [all SpaceX Falcon 9 first stage landings.](http://larsblackmore.com/nae_bridge_2016.pdf#%5B%7B%22num%22%3A75%2C%22gen%22%3A0%7D%2C%7B%22name%22%3A%22XYZ%22%7D%2C-68%2C792%2C0.850006%5D)
 
 <img src="_static/falcon-heavy-demo-mission.jpg" alt="CVXPYgen" width="600" height="400" style="display: block; margin: 20px auto;">
 
@@ -86,8 +85,9 @@ and Landing Zone 2 in Florida on February 6, 2018. Photo credit: SpaceX*
 
 An in-depth overview of **CVXPYgen** can be found in our [slides and manuscript](https://web.stanford.edu/~boyd/papers/cvxpygen.html).
 
-Parser-solvers canonicalize each time the problem is solved. Parser-solvers compile a
-problem instance into a canonicalized problem instance, then solve it.
+&rarr; Parser-solvers compile a problem instance into a canonicalized problem instance, then solve it.
+
+&rarr; Parser-solvers canonicalize *each time* the problem is solved.
 
 *Almost all DSLs are parser-solvers!*
 
@@ -95,8 +95,11 @@ problem instance into a canonicalized problem instance, then solve it.
 
 Code generators like **CVXPYgen** compile a problem family into source code for a *custom
 solver*. This is useful for:
-– embedded applications, possibly with hard real-time deadlines
-– speeding up the solution of many different problem instances
+
+&rarr; Embedded applications, possibly with hard real-time deadlines
+
+&rarr; Speeding up the solution of many different problem instances
+
 <img src="_static/code-generator.png" alt="CVXPYgen" width="600" height="400" style="display: block; margin: 20px auto;">
 
 **CVXPYgen** accepts CVXPY problems that are compliant with
