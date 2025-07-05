@@ -184,6 +184,8 @@ html_theme_options = {
         "content.tabs.link",
         "announce.dismiss",
     ],
+    "globaltoc_collapse": False,
+    "globaltoc_includehidden": True,
     "toc_title": "On this page",
     # "site_url": "https://www.cvxpygen.org/",
     "repo_url": "https://github.com/cvxgrp/cvxpygen/",

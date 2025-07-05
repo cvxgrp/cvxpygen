@@ -5,6 +5,21 @@ keywords: convex optimization, open source, software
 
 # CVXPYgen: Code generation with CVXPY
 
+```{toctree}
+:maxdepth: 1
+:hidden:
+
+install
+user-guide
+functions
+api-documentation
+examples/index
+contributing
+changelog
+faq
+resources
+```
+
 ```{raw} html
 <script type="application/ld+json">
 {
