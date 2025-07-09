@@ -1854,65 +1854,60 @@ def write_method(f, configuration, variable_info, dual_variable_info, parameter_
         f.write('    val, _, _ = cpg_solve_and_gradient_info(prob, updated_params, **kwargs)\n')
         f.write('    return val\n\n\n')
     
-    f.write('def cpg_gradient(prob, gradient_sol_primal=None, gradient_sol_dual=None):\n\n')
-    f.write('    # set gradient primal and dual solutions if provided\n')
-    f.write(f'    gradient_sol = cpg_module.{configuration.prefix}cpg_gsol()\n')
-    f.write('    if gradient_sol_primal is not None and gradient_sol_dual is not None:\n')
-    f.write('        gradient_sol.primal = list(gradient_sol_primal)\n')
-    f.write('        gradient_sol.dual = list(gradient_sol_dual)\n')
-    f.write('        use_sol = True\n')
-    f.write('    else:\n')
-    f.write(f'        gradient_sol.primal = [0] * {gradient_interface.n_var}\n')
-    f.write(f'        gradient_sol.dual = [0] * {gradient_interface.n_eq + gradient_interface.n_ineq}\n')
-    f.write('        use_sol = False\n\n')
-    f.write('    # set variable deltas\n')
-    f.write(f'    vdelta = cpg_module.{configuration.prefix}cpg_vdelta()\n')
-    for name, size in variable_info.name_to_size.items():
-        if size == 1:
-            f.write(f'    vdelta.{name} = squeeze_scalar(prob.var_dict["{name}"].gradient)\n')
-        else:
-            f.write(f'    vdelta.{name} = list(prob.var_dict["{name}"].gradient.flatten(order="F"))\n')
-    f.write('    pdelta = cpg_module.gradient(vdelta, gradient_sol, use_sol)\n')
-    for name, shape in parameter_info.name_to_shape.items():
-        if name in parameter_info.name_to_sparsity.keys():
-            if parameter_info.name_to_sparsity_type[name] == 'diag':
-                f.write(f'    {name}_sparsity = (np.arange(n), np.arange(n))\n')
+        f.write('def cpg_gradient(prob, gradient_sol_primal=None, gradient_sol_dual=None):\n\n')
+        f.write('    # set gradient primal and dual solutions if provided\n')
+        f.write(f'    gradient_sol = cpg_module.{configuration.prefix}cpg_gsol()\n')
+        f.write('    if gradient_sol_primal is not None and gradient_sol_dual is not None:\n')
+        f.write('        gradient_sol.primal = list(gradient_sol_primal)\n')
+        f.write('        gradient_sol.dual = list(gradient_sol_dual)\n')
+        f.write('        use_sol = True\n')
+        f.write('    else:\n')
+        f.write(f'        gradient_sol.primal = [0] * {gradient_interface.n_var}\n')
+        f.write(f'        gradient_sol.dual = [0] * {gradient_interface.n_eq + gradient_interface.n_ineq}\n')
+        f.write('        use_sol = False\n\n')
+        f.write('    # set variable deltas\n')
+        f.write(f'    vdelta = cpg_module.{configuration.prefix}cpg_vdelta()\n')
+        for name, size in variable_info.name_to_size.items():
+            if size == 1:
+                f.write(f'    vdelta.{name} = squeeze_scalar(prob.var_dict["{name}"].gradient)\n')
             else:
-                f.write(f'    {name}_sparsity = prob.param_dict["{name}"].attributes["sparsity"]\n')
-            f.write(f'    prob.param_dict["{name}"].gradient = np.zeros(prob.param_dict["{name}"].shape)\n')
-            f.write(f'    prob.param_dict["{name}"].gradient[{name}_sparsity] = pdelta.{name}\n')
-        else:
-            if len(shape) == 2:
+                f.write(f'    vdelta.{name} = list(prob.var_dict["{name}"].gradient.flatten(order="F"))\n')
+        f.write('    pdelta = cpg_module.gradient(vdelta, gradient_sol, use_sol)\n')
+        for name, shape in parameter_info.name_to_shape.items():
+            if name in parameter_info.name_to_sparsity.keys():
+                if parameter_info.name_to_sparsity_type[name] == 'diag':
+                    f.write(f'    {name}_sparsity = (np.arange(n), np.arange(n))\n')
+                else:
+                    f.write(f'    {name}_sparsity = prob.param_dict["{name}"].attributes["sparsity"]\n')
+                f.write(f'    prob.param_dict["{name}"].gradient = np.zeros(prob.param_dict["{name}"].shape)\n')
+                f.write(f'    prob.param_dict["{name}"].gradient[{name}_sparsity] = pdelta.{name}\n')
+            else:
                 f.write(f'    prob.param_dict[\'{name}\'].gradient = np.array(pdelta.{name}).reshape({shape}, order=\'F\')\n')
-            elif len(shape) == 1:
-                f.write(f'    prob.param_dict[\'{name}\'].gradient = np.array(pdelta.{name}).reshape({shape[0]})\n')
-            else:
-                f.write(f'    prob.param_dict[\'{name}\'].gradient = np.array(pdelta.{name})\n')
-    f.write('\n\n')
-                
-    f.write('def forward(params, context):\n\n')
-    f.write('    info = {}\n')
-    f.write('    kwargs = context.solver_args.copy()\n')
-    f.write('    prob = kwargs.pop("problem")\n')
-    f.write('    parameters = prob.parameters()\n')
-    f.write('    for pid, val in zip(context.param_ids, params):\n')
-    f.write('        next(p for p in parameters if p.id == pid).value = val\n')
-    f.write('    updated_params = kwargs.pop("updated_params", None)\n')
-    f.write('    _, info["gradient_primal"], info["gradient_dual"] = cpg_solve_and_gradient_info(prob, updated_params, **kwargs)\n')
-    f.write('    info["prob"] = prob\n\n')
-    f.write('    vars = prob.variables()\n')
-    f.write('    return [next(v for v in vars if v.id == variable.id).value for variable in context.variables], info\n\n\n')
-    
-    f.write('def backward(dvars, context):\n\n')
-    f.write('    prob = context.info["prob"]\n')
-    f.write('    vars = prob.variables()\n')
-    f.write('    for variable, dv in zip(context.variables, dvars):\n')
-    f.write('        next(v for v in vars if v.id == variable.id).gradient = dv\n')
-    f.write('    gradient_primal = context.info["gradient_primal"]\n')
-    f.write('    gradient_dual = context.info["gradient_dual"]\n')
-    f.write('    cpg_gradient(prob, gradient_primal, gradient_dual)\n\n')
-    f.write('    params = prob.parameters()\n')
-    f.write('    return [next(p for p in params if p.id == pid).gradient for pid in context.param_ids], {}\n')
+        f.write('\n\n')
+                    
+        f.write('def forward(params, context):\n\n')
+        f.write('    info = {}\n')
+        f.write('    kwargs = context.solver_args.copy()\n')
+        f.write('    prob = kwargs.pop("problem")\n')
+        f.write('    parameters = prob.parameters()\n')
+        f.write('    for pid, val in zip(context.param_ids, params):\n')
+        f.write('        next(p for p in parameters if p.id == pid).value = val\n')
+        f.write('    updated_params = kwargs.pop("updated_params", None)\n')
+        f.write('    _, info["gradient_primal"], info["gradient_dual"] = cpg_solve_and_gradient_info(prob, updated_params, **kwargs)\n')
+        f.write('    info["prob"] = prob\n\n')
+        f.write('    vars = prob.variables()\n')
+        f.write('    return [next(v for v in vars if v.id == variable.id).value for variable in context.variables], info\n\n\n')
+        
+        f.write('def backward(dvars, context):\n\n')
+        f.write('    prob = context.info["prob"]\n')
+        f.write('    vars = prob.variables()\n')
+        f.write('    for variable, dv in zip(context.variables, dvars):\n')
+        f.write('        next(v for v in vars if v.id == variable.id).gradient = dv\n')
+        f.write('    gradient_primal = context.info["gradient_primal"]\n')
+        f.write('    gradient_dual = context.info["gradient_dual"]\n')
+        f.write('    cpg_gradient(prob, gradient_primal, gradient_dual)\n\n')
+        f.write('    params = prob.parameters()\n')
+        f.write('    return [next(p for p in params if p.id == pid).gradient for pid in context.param_ids], {}\n')
     
 
 
