@@ -415,7 +415,7 @@ def get_dual_variable_info(inverse_data, solver_interface, cvxpy_interface_class
     elif solver_interface.solver_type == 'conic':
         con_canon = inverse_data[-1][cvxpy_interface_class.EQ_CONSTR] + inverse_data[-1][cvxpy_interface_class.NEQ_CONSTR]
     con_canon_dict = {c.id: c for c in con_canon}
-    d_canon_offsets = np.cumsum([0] + [c.args[0].size for c in con_canon[:-1]])
+    d_canon_offsets = np.cumsum([0] + [c.size for c in con_canon[:-1]])
     if solver_interface.dual_var_split:
         n_split = len(inverse_data[-1][cvxpy_interface_class.EQ_CONSTR])
         d_canon_vectors = [solver_interface.dual_var_names[0]] * n_split + [solver_interface.dual_var_names[1]] * (len(d_canon_offsets) - n_split)
@@ -430,6 +430,8 @@ def get_dual_variable_info(inverse_data, solver_interface, cvxpy_interface_class
     d_vectors = [d_canon_vectors_dict[i] for i in dual_ids]
     d_sizes = [con_canon_dict[i].size for i in dual_ids]
     d_shapes = [con_canon_dict[i].shape for i in dual_ids]
+    # adjust shapes when size does not match shape of constraint (e.g., for cp.SOC)
+    d_shapes = [sh if np.prod(sh) == si else sh + (int(si // np.prod(sh)),)  for sh, si in zip(d_shapes, d_sizes)]
     d_names = [f'd{i}' for i in range(len(dual_ids))]
     d_i_to_name = {i: f'd{i}' for i in range(len(dual_ids))}
     d_name_to_shape = {n: d_shapes[i] for i, n in d_i_to_name.items()}

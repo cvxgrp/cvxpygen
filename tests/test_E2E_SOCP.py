@@ -13,7 +13,7 @@ sys.path.append('../')
 from cvxpygen import cpg
 
 
-def ADP_problem():
+def ADP_problem(use_soc_class=False):
 
     # define dimensions
     n, m = 6, 3
@@ -27,10 +27,10 @@ def ADP_problem():
     G = cp.Parameter((n, m), name='G')
 
     # define objective
-    objective = cp.Minimize(cp.sum_squares(f + G @ u) + cp.sum_squares(Rsqrt @ u)+98)
+    objective = cp.Minimize(cp.sum_squares(f + G @ u) + cp.sum_squares(Rsqrt @ u))
 
     # define constraints
-    constraints = [cp.norm(u, 2) <= 1]
+    constraints = [cp.SOC(0.1, u)] if use_soc_class else [cp.norm(u, 2) <= 0.1]
 
     # define problem
     return cp.Problem(objective, constraints)
@@ -68,18 +68,18 @@ def assign_data(prob, name, seed):
 
 
 def get_primal_vec(prob, name):
-    if name == 'ADP':
+    if name == 'ADP' or name == 'ADP_soc_class':
         return prob.var_dict['u'].value
 
 
-N_RAND = 2
+N_RAND = 1
 
-name_solver_style_seed = [['ADP'],
+name_solver_style_seed = [['ADP', 'ADP_soc_class'],
                           ['SCS', 'ECOS', 'QOCO', 'QOCOGEN'],
                           ['unroll', 'loops'],
                           list(np.arange(N_RAND))]
 
-name_to_prob = {'ADP': ADP_problem()}
+name_to_prob = {'ADP': ADP_problem(), 'ADP_soc_class': ADP_problem(use_soc_class=True)}
 
 
 @pytest.mark.parametrize('name, solver, style, seed', list(itertools.product(*name_solver_style_seed)))

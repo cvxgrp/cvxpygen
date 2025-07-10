@@ -5,10 +5,11 @@ import numpy as np
 def get_dual_vec(prob):
     dual_values = []
     for constr in prob.constraints:
-        if constr.args[0].size == 1:
-            dual_values.append(np.atleast_1d(constr.dual_value).flatten())
+        if type(constr.dual_value) == list and type(constr.dual_value[0]) == np.ndarray:
+            for dv in constr.dual_value:
+                dual_values.append(np.atleast_1d(dv).flatten())
         else:
-            dual_values.append(constr.dual_value.flatten())
+            dual_values.append(np.atleast_1d(constr.dual_value).flatten())
     return np.concatenate(dual_values)
 
 
