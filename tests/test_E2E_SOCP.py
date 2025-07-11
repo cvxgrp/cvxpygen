@@ -19,7 +19,7 @@ def ADP_problem(use_soc_class=False):
     n, m = 6, 3
 
     # define variables
-    u = cp.Variable(m, name='u')
+    u = cp.Variable((2, m), name='u')
 
     # define parameters
     Rsqrt = cp.Parameter((m, m), name='Rsqrt', diag=True)
@@ -27,10 +27,10 @@ def ADP_problem(use_soc_class=False):
     G = cp.Parameter((n, m), name='G')
 
     # define objective
-    objective = cp.Minimize(cp.sum_squares(f + G @ u) + cp.sum_squares(Rsqrt @ u))
+    objective = cp.Minimize(cp.sum_squares(f + G @ u[0]) + cp.sum_squares(Rsqrt @ u[0]))
 
     # define constraints
-    constraints = [cp.SOC(0.1, u)] if use_soc_class else [cp.norm(u, 2) <= 0.1]
+    constraints = [cp.SOC(0.1 * np.ones(2), u, axis=1)] if use_soc_class else [cp.norm(u, 2, axis=1) <= 0.1]
 
     # define problem
     return cp.Problem(objective, constraints)
