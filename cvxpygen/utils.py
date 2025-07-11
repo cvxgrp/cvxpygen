@@ -277,7 +277,9 @@ def write_problem_summary(name_to_shape, name_to_size):
 
     string = ''
     for n, sh in name_to_shape.items():
-        if sh == ():
+        if sh is None:
+            shape_str = str(name_to_size[n])
+        elif sh == ():
             shape_str = '1'
         elif len(sh) == 1:
             shape_str = str(sh[0])
@@ -676,7 +678,7 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
                     else:
                         dual_cast.append('(cpg_float *) ')
                         if not solver_interface.sol_statically_allocated:
-                            write_vec_def(f, value.flatten(order='F'), prefix + name, 'cpg_float')
+                            write_vec_def(f, value, prefix + name, 'cpg_float')
                             f.write('\n')
 
                 f.write('// Struct containing dual solution\n')
@@ -943,7 +945,7 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
             f.write('\n// Dual variables associated with user-defined constraints\n')
             for name, value in dual_variable_info.name_to_init.items():
                 if not is_mathematical_scalar(value):
-                    write_vec_prot(f, value.flatten(order='F'), f'{prefix}cpg_{name}', 'cpg_float')
+                    write_vec_prot(f, value, f'{prefix}cpg_{name}', 'cpg_float')
 
         f.write('\n// Struct containing primal solution\n')
         write_struct_prot(f, f'{prefix}CPG_Prim', 'CPG_Prim_t')
@@ -1820,7 +1822,8 @@ def write_method(f, configuration, variable_info, dual_variable_info, parameter_
 
     if configuration.explicit != 1:
         for i, (name, shape) in enumerate(dual_variable_info.name_to_shape.items()):
-            f.write(f'    prob.constraints[{i}].save_dual_value(np.array(res.cpg_dual.{name}).reshape({shape}, order=\'F\'))\n')
+            reshape_str = f".reshape({shape}, order='F')" if shape else ""
+            f.write(f"    prob.constraints[{i}].save_dual_value(np.array(res.cpg_dual.{name}){reshape_str})\n")
 
     if not configuration.explicit:  # TODO: explicit case
         f.write('\n    # store additional solver information in problem object\n')

@@ -429,25 +429,23 @@ def get_dual_variable_info(inverse_data, solver_interface, cvxpy_interface_class
     d_offsets = [d_canon_offsets_dict[i] for i in dual_ids]
     d_vectors = [d_canon_vectors_dict[i] for i in dual_ids]
     d_sizes = [con_canon_dict[i].size for i in dual_ids]
-    d_shapes = [con_canon_dict[i].shape for i in dual_ids]
-    # adjust shapes when size does not match shape of constraint (e.g., for cp.SOC)
-    d_shapes = [sh if np.prod(sh) == si else sh + (int(si // np.prod(sh)),)  for sh, si in zip(d_shapes, d_sizes)]
+    d_shapes = [con_canon_dict[i].shape if np.prod(con_canon_dict[i].shape) == con_canon_dict[i].size else None for i in dual_ids]
     d_names = [f'd{i}' for i in range(len(dual_ids))]
     d_i_to_name = {i: f'd{i}' for i in range(len(dual_ids))}
+    d_name_to_size = {n: s for n, s in zip(d_names, d_sizes)}
     d_name_to_shape = {n: d_shapes[i] for i, n in d_i_to_name.items()}
-    d_name_to_indices = {n: (v, o + np.arange(np.prod(d_name_to_shape[n])))
+    d_name_to_indices = {n: (v, o + np.arange(d_name_to_size[n]))
                          for n, v, o in zip(d_names, d_vectors, d_offsets)}
     d_name_to_vec = {n: v for n, v in zip(d_names, d_vectors)}
     d_name_to_offset = {n: o for n, o in zip(d_names, d_offsets)}
-    d_name_to_size = {n: s for n, s in zip(d_names, d_sizes)}
 
     # initialize values to zero
     d_name_to_init = dict()
-    for name, shape in d_name_to_shape.items():
-        if len(shape) == 0:
+    for name, size in d_name_to_size.items():
+        if size == 1:
             d_name_to_init[name] = 0
         else:
-            d_name_to_init[name] = np.zeros(shape=shape)
+            d_name_to_init[name] = np.zeros(size)
 
     dual_variable_info = DualVariableInfo(d_name_to_offset, d_name_to_indices, d_name_to_size,
                                           d_sizes, d_name_to_shape, d_name_to_init, d_name_to_vec)
