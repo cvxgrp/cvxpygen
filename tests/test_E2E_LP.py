@@ -70,7 +70,7 @@ def assign_data(prob, name, seed):
 
     if name == 'network':
 
-        n, m = 100, 10
+        n, m = 50, 10
         prob.param_dict['R'].value = np.round(np.random.rand(m, n))
         prob.param_dict['c'].value = n * (0.1 + 0.1 * np.random.rand(m))
         prob.param_dict['w'].value = np.random.rand(n)

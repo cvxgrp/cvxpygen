@@ -148,7 +148,7 @@ def assign_data(prob, name, seed):
 
     elif name == 'portfolio':
 
-        n, m = 100, 10
+        n, m = 50, 10
         gamma = 1
         alpha = np.random.randn(n)
         kappa_tc = 0.01 * np.ones(n)
