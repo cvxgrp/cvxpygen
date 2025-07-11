@@ -16,7 +16,7 @@ from cvxpygen import cpg
 def network_problem():
 
     # define dimensions
-    n, m = 100, 10
+    n, m = 50, 10
 
     # define variable
     f = cp.Variable(n, name='f')

@@ -77,7 +77,7 @@ def MPC_problem():
 def portfolio_problem():
 
     # define dimensions
-    n, m = 100, 10
+    n, m = 50, 10
 
     # define variables
     w = cp.Variable(n, name='w')
