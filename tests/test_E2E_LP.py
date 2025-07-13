@@ -6,7 +6,7 @@ import glob
 import os
 import importlib
 import itertools
-import pickle
+import dill as pickle
 import utils_test
 import sys
 sys.path.append('../')
