@@ -14,7 +14,7 @@ limitations under the License.
 import os
 import sys
 import shutil
-import pickle
+import dill as pickle
 import warnings
 import copy
 import importlib
