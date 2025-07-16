@@ -59,7 +59,7 @@ jobs:
       if: runner.os == 'Linux'
       run: |
         cd tests
-        $CONDA/bin/pytest test_invalid_input.py test_E2E_LP.py test_E2E_QP.py test_E2E_SOCP.py test_diff.py
+        $CONDA/bin/pytest test_invalid_input.py test_E2E_LP.py test_E2E_QP.py test_E2E_SOCP.py test_MPQP.py test_diff.py
 
     - name: Test with pytest (macOS)
       if: runner.os == 'macOS'
