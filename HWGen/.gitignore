@@ -1,0 +1,15 @@
+# Vivado
+*.dcp
+*.wdb
+*.log
+*.runs/
+*.sim/
+project_1/
+
+# Verilator
+obj_dir/
+*.vcd
+
+# Python
+__pycache__/
+*.pyc
