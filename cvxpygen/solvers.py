@@ -1220,16 +1220,63 @@ class ClarabelInterface(SolverInterface):
     stgs_requires_extra_struct_type = True
     stgs_direct_write_ptr = None
     stgs_reset_function = None
-    # TODO: extend to all available settings
+    # Comprehensive Clarabel settings (matched to Clarabel v0.6+ defaults)
     stgs = {
-        'max_iter': Setting(type='cpg_int', default='50', name_cvxpy='max_iters'),
-        'time_limit': Setting(type='cpg_float', default='1e6'),
+        # Main algorithm settings
+        'max_iter': Setting(type='cpg_int', default='200', name_cvxpy='max_iters'),
+        'time_limit': Setting(type='cpg_float', default='1e10'),  # Inf not supported, use very large number
         'verbose': Setting(type='cpg_int', default='1'),
         'max_step_fraction': Setting(type='cpg_float', default='0.99'),
+
+        # Full accuracy tolerance settings
+        'tol_gap_abs': Setting(type='cpg_float', default='1e-8'),
+        'tol_gap_rel': Setting(type='cpg_float', default='1e-8'),
+        'tol_feas': Setting(type='cpg_float', default='1e-8'),
+        'tol_infeas_abs': Setting(type='cpg_float', default='1e-8'),
+        'tol_infeas_rel': Setting(type='cpg_float', default='1e-8'),
+        'tol_ktratio': Setting(type='cpg_float', default='1e-6'),
+
+        # Reduced accuracy tolerance settings
+        'reduced_tol_gap_abs': Setting(type='cpg_float', default='5e-5'),
+        'reduced_tol_gap_rel': Setting(type='cpg_float', default='5e-5'),
+        'reduced_tol_feas': Setting(type='cpg_float', default='1e-4'),
+        'reduced_tol_infeas_abs': Setting(type='cpg_float', default='5e-5'),
+        'reduced_tol_infeas_rel': Setting(type='cpg_float', default='5e-5'),
+        'reduced_tol_ktratio': Setting(type='cpg_float', default='1e-4'),
+
+        # Equilibration settings
         'equilibrate_enable': Setting(type='cpg_int', default='1'),
         'equilibrate_max_iter': Setting(type='cpg_int', default='10'),
         'equilibrate_min_scaling': Setting(type='cpg_float', default='1e-4'),
-        'equilibrate_max_scaling': Setting(type='cpg_float', default='1e4')
+        'equilibrate_max_scaling': Setting(type='cpg_float', default='1e4'),
+
+        # Step size settings
+        'linesearch_backtrack_step': Setting(type='cpg_float', default='0.8'),
+        'min_switch_step_length': Setting(type='cpg_float', default='0.1'),
+        'min_terminate_step_length': Setting(type='cpg_float', default='1e-4'),
+
+        # Linear solver settings
+        'direct_kkt_solver': Setting(type='cpg_int', default='1'),
+        # Note: direct_solve_method is an enum in C API, not easily configurable
+        # Note: max_threads not available in Clarabel C API
+
+        # Regularization settings
+        'static_regularization_enable': Setting(type='cpg_int', default='1'),
+        'static_regularization_constant': Setting(type='cpg_float', default='1e-8'),
+        'static_regularization_proportional': Setting(type='cpg_float', default='2.2e-16'),
+        'dynamic_regularization_enable': Setting(type='cpg_int', default='1'),
+        'dynamic_regularization_eps': Setting(type='cpg_float', default='1e-13'),
+        'dynamic_regularization_delta': Setting(type='cpg_float', default='2e-7'),
+
+        # Iterative refinement
+        'iterative_refinement_enable': Setting(type='cpg_int', default='1'),
+        'iterative_refinement_reltol': Setting(type='cpg_float', default='1e-13'),
+        'iterative_refinement_abstol': Setting(type='cpg_float', default='1e-12'),
+        'iterative_refinement_max_iter': Setting(type='cpg_int', default='10'),
+        'iterative_refinement_stop_ratio': Setting(type='cpg_float', default='5.0'),
+
+        # Presolve
+        'presolve_enable': Setting(type='cpg_int', default='1')
     }
 
     # dual variables split into two vectors
@@ -1844,9 +1891,9 @@ class QOCOInterface(SolverInterface):
             5 * indent + "os.path.join('c', 'solver_code', 'lib', 'amd'),\n" +
             5 * indent + "os.path.join('c', 'solver_code', 'lib', 'qdldl', 'include'),"),
             ("license='Apache 2.0'", "license='BSD 3-Clause'"),
-            ("lib_name = 'cpg.lib'", "lib_name = os.path.join('cpg.lib')\n" + "    libqoco_name = os.path.join('Release', 'qocostatic.lib')\n" + "    libqdldl_name = os.path.join('Release', 'qdldl.lib')"),
-            ("lib_name = 'libcpg.a'", "lib_name = 'libcpg.a'\n" + "    libqoco_name = 'libqocostatic.a'\n" + "    libqdldl_name = 'libqdldl.a'"),
-            ('extra_objects=[cpg_lib]', "extra_objects=[cpg_lib, os.path.join(cpg_dir, 'build', 'out', libqoco_name), os.path.join(cpg_dir, 'build', 'solver_code', 'lib', 'qdldl', 'out', libqdldl_name)]")
+            ("lib_name = 'cpg.lib'", "lib_name = os.path.join('cpg.lib')\n" + "    libqoco_name = os.path.join('Release', 'qocostatic.lib')"),
+            ("lib_name = 'libcpg.a'", "lib_name = 'libcpg.a'\n" + "    libqoco_name = 'libqocostatic.a'"),
+            ('extra_objects=[cpg_lib]', "extra_objects=[cpg_lib, os.path.join(cpg_dir, 'build', 'out', libqoco_name)]")
         ]
         read_write_file(os.path.join(code_dir, 'setup.py'),
                         lambda x: multiple_replace(x, setup_replacements))
