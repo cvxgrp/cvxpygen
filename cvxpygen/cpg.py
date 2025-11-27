@@ -32,6 +32,8 @@ from subprocess import call
 from cvxpy.problems.objective import Maximize
 from cvxpy.cvxcore.python import canonInterface as cI
 from cvxpy.atoms.affine.upper_tri import upper_tri_to_full
+from cvxpy.reductions import InverseData
+from cvxpy.reductions.solvers.solver_inverse_data import SolverInverseData
 
 
 def generate_code(problem, code_dir='cpg_code', solver=None, solver_opts=None,
@@ -392,15 +394,11 @@ def get_dual_variable_info(inverse_data, solver_interface, cvxpy_interface_class
     
     # get chain of constraint id maps for 'CvxAttr2Constr' and 'Canonicalization' objects
     dual_id_maps = []
-    if solver_interface.solver_type == 'quadratic':
-        if inverse_data[-4]:
-            dual_id_maps.append(inverse_data[-4][2])
-        dual_id_maps.append(inverse_data[-3].cons_id_map)
-    elif solver_interface.solver_type == 'conic':
-        dual_id_maps.append(inverse_data[-4].cons_id_map)
-        if inverse_data[-3]:
-            dual_id_maps.append(inverse_data[-3][2])
-        dual_id_maps.append(inverse_data[-2].cons_id_map)
+    for inv in inverse_data:
+        if isinstance(inv, InverseData) and not isinstance(inv, SolverInverseData):
+            dual_id_maps.append(inv.cons_id_map)
+        if isinstance(inv, tuple) and len(inv) == 3:
+            dual_id_maps.append(inv[2])
     
     # recurse chain of constraint ids to get ordered list of constraint ids
     dual_ids = []
