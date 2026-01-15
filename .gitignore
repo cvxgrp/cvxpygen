@@ -9,3 +9,4 @@ __pycache__
 dist/
 cvxpygen/cvxpygen.egg-info/
 cvxpygen.egg-info/
+uv.lock
