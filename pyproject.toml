@@ -21,7 +21,7 @@ urls = { Homepage = "https://github.com/cvxgrp/cvxpygen" }
 
 dependencies = [
   "cmake >= 3.5",
-  "cvxpy >= 1.7.4",
+  "cvxpy >= 1.8.0",
   "pybind11 >= 2.8",
   "osqp >= 1.0.0b3",
   "ecos >= 2.0.14",
