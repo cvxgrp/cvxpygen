@@ -1187,7 +1187,7 @@ class ClarabelInterface(SolverInterface):
     gradient_supported = False
 
     # header and source files
-    header_files = ['<Clarabel>']
+    header_files = ['<clarabel.h>']
     cmake_headers, cmake_sources = [], []
 
     # preconditioning of problem data happening in-memory
@@ -1448,7 +1448,7 @@ class ClarabelInterface(SolverInterface):
                         lambda x: multiple_replace(x, replacements))
 
         # adjust Clarabel
-        read_write_file(os.path.join(code_dir, 'c', 'solver_code', 'include', 'Clarabel'),
+        read_write_file(os.path.join(code_dir, 'c', 'solver_code', 'include', 'clarabel.h'),
                         lambda x: x.replace('cpp/', 'c/'))
 
         # adjust setup.py
