@@ -13,3 +13,40 @@ obj_dir/
 # Python
 __pycache__/
 *.pyc
+
+# ========================================
+# Hardware generation and test outputs
+# Added: 2026-01-29
+# ========================================
+
+# All regression test folders
+regression/
+regression_fp16/
+regression_fp32/
+regression_old/
+
+# Code generation outputs
+codegen_pid/
+codegen_pid_fp16/
+codegen_pid_fp32/
+codegen_pid_old/
+
+# Floating point modules
+fp_mac/
+fp_ops/
+
+# Build files
+mk/
+Makefile
+
+# MPC examples
+mpc_drone/
+
+# Power analysis outputs
+power/
+power_fp16/
+power_fp32/
+power_old/
+
+# Old scripts backup
+scripts_old/

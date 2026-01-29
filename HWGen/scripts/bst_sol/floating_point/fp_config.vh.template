@@ -1,0 +1,17 @@
+// Floating-point configuration header
+// Auto-generated for {{FORMAT}} format
+`ifndef FP_CONFIG_VH
+`define FP_CONFIG_VH
+
+// Format: {{FORMAT}}
+`define FP_FORMAT_{{FORMAT_UPPER}}
+
+// Auto-configured parameters
+`define FP_DATA_WIDTH {{DATA_WIDTH}}
+`define FP_MULT_LATENCY {{MULT_LATENCY}}
+`define FP_ADD_LATENCY {{ADD_LATENCY}}
+`define FP_COMP_LATENCY {{COMP_LATENCY}}
+
+`define FP_METADATA_WIDTH 32
+
+`endif // FP_CONFIG_VH
