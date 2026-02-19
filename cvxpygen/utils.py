@@ -1759,6 +1759,16 @@ def write_method(f, configuration, variable_info, dual_variable_info, parameter_
     f.write('        if val.shape == ():\n')
     f.write('            return val.item()\n')
     f.write('    return val\n\n\n')
+    
+    f.write('def get_param_value(param):\n')
+    f.write('    if param.size == 1:\n')
+    f.write('        return squeeze_scalar(param.value)\n')
+    f.write('    elif param.attributes["diag"]:\n')
+    f.write('        return list(np.diag(param.value))\n')
+    f.write('    elif param._has_dim_reducing_attr:\n')
+    f.write('        return list(param.value_sparse.data)\n')
+    f.write('    else:\n')
+    f.write('        return list(param.value.flatten(order="F"))\n\n\n')
 
     f.write(f'def cpg_solve{"_and_gradient_info" if configuration.gradient else ""}(prob, updated_params=None, **kwargs):\n\n')
     f.write('    # set flags for updated parameters\n')
@@ -1785,30 +1795,7 @@ def write_method(f, configuration, variable_info, dual_variable_info, parameter_
     f.write(f'    par = cpg_module.{configuration.prefix}cpg_params()\n')
     f.write('    param_dict = prob.param_dict\n')
     for name, size in parameter_info.name_to_size_usp.items():
-        if name in parameter_info.name_to_sparsity.keys():
-            f.write(f'    n = param_dict["{name}"].shape[0]\n')
-            if parameter_info.name_to_sparsity_type[name] == 'diag':
-                f.write(f'    {name}_coordinates = np.arange(0, n**2, n+1)\n')
-            else:
-                f.write(f'    {name}_coordinates = np.unique([r+c*n for r, c in '
-                        f'zip(*param_dict["{name}"].attributes["sparsity"])])\n')
-            if size == 1:
-                f.write(f'    par.{name} = param_dict["{name}"].value[{name}_coordinates]\n')
-            else:
-                f.write(f'    {name}_value = []\n')
-                f.write(f'    {name}_flat = param_dict["{name}"].value.flatten(order="F")\n')
-                f.write(f'    for coord in {name}_coordinates:\n')
-                f.write(f'        {name}_value.append({name}_flat[coord])\n')
-                f.write(f'        {name}_flat[coord] = 0\n')
-                f.write(f'    if np.sum(np.abs({name}_flat)) > 0:\n')
-                f.write(f'        warnings.warn(\'Ignoring nonzero value outside of sparsity pattern for '
-                        f'parameter {name}!\')\n')
-                f.write(f'    par.{name} = list({name}_value)\n')
-        else:
-            if size == 1:
-                f.write(f'    par.{name} = squeeze_scalar(param_dict["{name}"].value)\n')
-            else:
-                f.write(f'    par.{name} = list(param_dict["{name}"].value.flatten(order="F"))\n')
+        f.write(f'    par.{name} = get_param_value(param_dict["{name}"])\n')
 
     f.write('\n    # solve\n')
     f.write('    t0 = time.time()\n')
@@ -1877,15 +1864,7 @@ def write_method(f, configuration, variable_info, dual_variable_info, parameter_
                 f.write(f'    vdelta.{name} = list(prob.var_dict["{name}"].gradient.flatten(order="F"))\n')
         f.write('    pdelta = cpg_module.gradient(vdelta, gradient_sol, use_sol)\n')
         for name, shape in parameter_info.name_to_shape.items():
-            if name in parameter_info.name_to_sparsity.keys():
-                if parameter_info.name_to_sparsity_type[name] == 'diag':
-                    f.write(f'    {name}_sparsity = (np.arange(n), np.arange(n))\n')
-                else:
-                    f.write(f'    {name}_sparsity = prob.param_dict["{name}"].attributes["sparsity"]\n')
-                f.write(f'    prob.param_dict["{name}"].gradient = np.zeros(prob.param_dict["{name}"].shape)\n')
-                f.write(f'    prob.param_dict["{name}"].gradient[{name}_sparsity] = pdelta.{name}\n')
-            else:
-                f.write(f'    prob.param_dict[\'{name}\'].gradient = np.array(pdelta.{name}).reshape({shape}, order=\'F\')\n')
+            f.write(f'    prob.param_dict[\'{name}\'].gradient = np.array(pdelta.{name}).reshape({shape}, order=\'F\')\n')
         f.write('\n\n')
                     
         f.write('def forward(params, context):\n\n')

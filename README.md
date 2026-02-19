@@ -63,12 +63,10 @@ Assign parameter values and test-solve.
 
 ```python
 import numpy as np
+import scipy.sparse as sp
 
-np.random.seed(0)
-A.value = np.zeros((m, n))
-A.value[0, 0] = np.random.randn()
-A.value[0, 1] = np.random.randn()
-A.value[1, 1] = np.random.randn()
+np.random.seed(1)
+A.value_sparse = sp.coo_array((np.random.randn(3), A.sparse_idx), shape=(m, n))
 b.value = np.random.randn(m)
 problem.solve()
 ```
@@ -78,10 +76,10 @@ Generating C code for this problem is as simple as,
 ```python
 from cvxpygen import cpg
 
-cpg.generate_code(problem, code_dir='nonneg_LS', solver='SCS')
+cpg.generate_code(problem, code_dir='nonneg_LS', solver='OSQP')
 ```
 
-where the generated code is stored inside `nonneg_LS` and the `SCS` solver is used. 
+where the generated code is stored inside `nonneg_LS` and the `OSQP` solver is used. 
 Next to the positional argument `problem`, all keyword arguments for the `generate_code()` method are summarized below.
 
 | Argument         | Meaning       | Type          | Default       |
@@ -111,7 +109,7 @@ problem.register_solve('CPG', cpg_solve)
 
 # solve problem conventionally
 t0 = time.time()
-val = problem.solve(solver='SCS')
+val = problem.solve(solver='OSQP')
 t1 = time.time()
 print('\nCVXPY\nSolve time: %.3f ms\n' % (1000*(t1-t0)))
 print('Primal solution: x = [%.6f, %.6f]\n' % tuple(x.value))
@@ -120,7 +118,7 @@ print('Objective function value: %.6f\n' % val)
 
 # solve problem with C code via python wrapper
 t0 = time.time()
-val = problem.solve(method='CPG', updated_params=['A', 'b'], verbose=False)
+val = problem.solve(method='CPG', updated_params=['A', 'b'])
 t1 = time.time()
 print('\nCVXPYgen\nSolve time: %.3f ms\n' % (1000 * (t1 - t0)))
 print('Primal solution: x = [%.6f, %.6f]\n' % tuple(x.value))
@@ -132,8 +130,7 @@ The argument `updated_params` specifies which user-defined parameter values are 
 If the argument is omitted, all parameter values are assumed to be new.
 If only a subset of the user-defined parameters have new values, use this argument to speed up the solver.
 
-**Most solver settings can be specified as keyword arguments** like without code generation. 
-Here, we use `verbose=False` to suppress printing.
+**Most solver settings can be specified as keyword arguments** like without code generation.
 The list of changeable settings differs by solver and is documented in `<code_dir>/README.html` after code generation.
 
 Comparing the standard and codegen methods for this example, both the solutions and objective values are close.
@@ -170,7 +167,8 @@ Release\cpg_example
 
 CVXPYgen supports differentiating through quadratic programs.
 To enable this feature, set `gradient=True` when generating code.
-You can use the generated code together with [CVXPYlayers](https://github.com/cvxgrp/cvxpylayers) as
+You can use the generated code together with [CVXPYlayers](https://github.com/cvxgrp/cvxpylayers)
+(version `<=0.1.9`) as
 
 ```python
 cpg.generate_code(problem, code_dir='code_diff', gradient=True)

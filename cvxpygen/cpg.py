@@ -131,8 +131,6 @@ def extract_canonicalization(problem, solver, solver_opts, enable_settings) -> C
         cone_dims = param_prob.cone_dims
         interface_class.check_unsupported_cones(cone_dims)
 
-    handle_sparsity(param_prob)
-
     solver_interface = interface_class(data, param_prob, enable_settings)  # noqa
     prim_variable_info = get_primal_variable_info(problem, inverse_data)
     dual_variable_info = get_dual_variable_info(inverse_data, solver_interface, cvxpy_interface_class)
@@ -280,7 +278,6 @@ def process_canonical_parameters(
 
             adjacency = update_adjacency_matrix(adjacency, i, parameter_info, affine_map.mapping)
             affine_map.mapping = sparse.csc_matrix(affine_map.mapping.toarray() * affine_map.sign)
-            affine_map.mapping = affine_map.mapping[:, parameter_info.sparsity_mask]
             affine_map, parameter_canon = set_default_values(affine_map, p_id, parameter_canon, parameter_info, solver_interface)
             
             parameter_canon.p_id_to_mapping[p_id] = affine_map.mapping.tocsr()
@@ -645,21 +642,6 @@ def get_parameter_info(p_prob) -> ParameterInfo:
                             for p_id in user_p_id_to_size.keys()}
     user_p_name_to_size_usp = {user_p_id_to_param[p_id].name(): size for p_id, size in
                                user_p_id_to_size.items()}
-    user_p_name_to_sparsity = {}
-    user_p_name_to_sparsity_type = {}
-    user_p_sparsity_mask = np.ones(user_p_total_size + 1, dtype=bool)
-    for p in p_prob.parameters:
-        if p.attributes['sparsity']:
-            user_p_name_to_size_usp[p.name()] = len(p.attributes['sparsity'][0])
-            user_p_name_to_sparsity[p.name()] = np.sort([r + p.shape[0] * c
-                                                         for r, c in zip(*p.attributes['sparsity'])])
-            if p.attributes['diag']:
-                user_p_name_to_sparsity_type[p.name()] = 'diag'
-            else:
-                user_p_name_to_sparsity_type[p.name()] = 'general'
-            user_p_sparsity_mask[
-            user_p_id_to_col[p.id]:user_p_id_to_col[p.id] + user_p_id_to_size[p.id]] = False
-            user_p_sparsity_mask[user_p_id_to_col[p.id] + user_p_name_to_sparsity[p.name()]] = True
     user_p_col_to_name_usp = {}
     cum_sum = 0
     for name, size in user_p_name_to_size_usp.items():
@@ -676,14 +658,7 @@ def get_parameter_info(p_prob) -> ParameterInfo:
             user_p_writable[p_name] = p.value
         else:
             # dealing with matrix
-            if p_name in user_p_name_to_sparsity.keys():
-                dense_value = p.value.flatten(order='F')
-                sparse_value = np.zeros(len(user_p_name_to_sparsity[p_name]))
-                for i, idx in enumerate(user_p_name_to_sparsity[p_name]):
-                    sparse_value[i] = dense_value[idx]
-                user_p_writable[p_name] = sparse_value
-            else:
-                user_p_writable[p_name] = p.value.flatten(order='F')
+            user_p_writable[p_name] = p.value.flatten(order='F')
 
     def user_p_value(user_p_id):
         """
@@ -691,48 +666,12 @@ def get_parameter_info(p_prob) -> ParameterInfo:
         """
         return np.array(user_p_id_to_param[user_p_id].value)
 
-    user_p_flat = cI.get_parameter_vector(user_p_total_size, user_p_id_to_col, user_p_id_to_size,
+    user_p_flat_usp = cI.get_parameter_vector(user_p_total_size, user_p_id_to_col, user_p_id_to_size,
                                           user_p_value)
-    user_p_flat_usp = user_p_flat[user_p_sparsity_mask]
     parameter_info = ParameterInfo(user_p_col_to_name_usp, user_p_flat_usp, user_p_id_to_col,
                                    user_p_ids, user_p_name_to_shape, user_p_name_to_size_usp,
-                                   user_p_name_to_sparsity, user_p_name_to_sparsity_type,
-                                   user_p_names, user_p_num, user_p_sparsity_mask, user_p_writable, None, None)
+                                   user_p_names, user_p_num, user_p_writable, None, None)
     return parameter_info
-
-
-def handle_sparsity(p_prob: cp.Problem) -> None:
-    for param in p_prob.parameters:
-        # Check and warn about inappropriate sparsity for scalar and vector
-        if param.attributes['sparsity']:
-            if param.size == 1 or max(param.shape) == param.size:
-                param_type = 'scalar' if param.size == 1 else 'vector'
-                warnings.warn(f'Ignoring sparsity pattern for {param_type} parameter {param.name()}!')
-                param.attributes['sparsity'] = None
-            else:
-                invalid_sparsity = False
-                for r, c in zip(*param.attributes['sparsity']):
-                    if r < 0 or c < 0 or r >= param.shape[0] or c >= param.shape[1]:
-                        warnings.warn(f'Invalid sparsity pattern for parameter {param.name()} - out of range! Ignoring sparsity pattern.')
-                        param.attributes['sparsity'] = None
-                        invalid_sparsity = True
-                        break
-                if not invalid_sparsity:
-                    coo_unique = set(zip(*param.attributes['sparsity']))
-                    coo_unique_sorted = sorted(coo_unique, key=lambda x: (x[1], x[0]))
-                    param.attributes['sparsity'] = tuple(zip(*coo_unique_sorted))
-        elif param.attributes['diag']:
-            size = param.shape[0]
-            param.attributes['sparsity'] = (np.arange(size), np.arange(size))
-
-        # Zero out non-sparse values
-        if param.attributes['sparsity'] and param.value is not None:
-            for i in range(param.shape[0]):
-                for j in range(param.shape[1]):
-                    if (i, j) not in zip(*param.attributes['sparsity']) and param.value[i, j] != 0:
-                        warnings.warn(f'Ignoring nonzero value outside of sparsity pattern for parameter {param.name()}!')
-                        param.value[i, j] = 0
-
 
 
 def compile_python_module(code_dir: str):

@@ -2,6 +2,7 @@
 import cvxpy as cp
 from cvxpygen import cpg
 import numpy as np
+import scipy.sparse as sp
 import time
 import sys
 
@@ -19,16 +20,13 @@ if __name__ == "__main__":
     problem = cp.Problem(cp.Minimize(cp.sum_squares(A @ x - b)), [x >= 0])
 
     # assign parameter values and test-solve
-    np.random.seed(0)
-    A.value = np.zeros((m, n))
-    A.value[0, 0] = np.random.randn()
-    A.value[0, 1] = np.random.randn()
-    A.value[1, 1] = np.random.randn()
+    np.random.seed(1)
+    A.value_sparse = sp.coo_array((np.random.randn(3), A.sparse_idx), shape=(m, n))
     b.value = np.random.randn(m)
-    problem.solve(solver='SCS')
+    problem.solve(solver='OSQP')
 
     # generate code
-    cpg.generate_code(problem, code_dir='nonneg_LS', solver='SCS')
+    cpg.generate_code(problem, code_dir='nonneg_LS', solver='OSQP')
 
     '''
     2. Solve & Compare
@@ -36,7 +34,7 @@ if __name__ == "__main__":
 
     # solve problem conventionally
     t0 = time.time()
-    val = problem.solve(solver='SCS')
+    val = problem.solve(solver='OSQP')
     t1 = time.time()
     sys.stdout.write('\nCVXPY\nSolve time: %.3f ms\n' % (1000*(t1-t0)))
     sys.stdout.write('Primal solution: x = [%.6f, %.6f]\n' % tuple(x.value))
@@ -45,7 +43,7 @@ if __name__ == "__main__":
 
     # solve problem with C code via python wrapper
     t0 = time.time()
-    val = problem.solve(method='CPG', updated_params=['A', 'b'], verbose=False)
+    val = problem.solve(method='CPG', updated_params=['A', 'b'])
     t1 = time.time()
     sys.stdout.write('\nCVXPYgen\nSolve time: %.3f ms\n' % (1000 * (t1 - t0)))
     sys.stdout.write('Primal solution: x = [%.6f, %.6f]\n' % tuple(x.value))
