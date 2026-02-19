@@ -56,11 +56,8 @@ class ParameterInfo:
     ids: List[int]
     name_to_shape: Dict[str, tuple]
     name_to_size_usp: Dict[str, int]
-    name_to_sparsity: Dict[str, np.ndarray]
-    name_to_sparsity_type: Dict[str, str]
     names: List[str]
     num: int
-    sparsity_mask: np.ndarray
     writable: Dict[str, np.ndarray]
     lower: np.ndarray
     upper: np.ndarray

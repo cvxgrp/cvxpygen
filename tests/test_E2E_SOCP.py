@@ -40,29 +40,27 @@ def assign_data(prob, name, seed):
 
     np.random.seed(seed)
 
-    if name == 'ADP':
+    def dynamics(x):
+        # continuous-time dynmaics
+        A_cont = np.array([[0, 0, 0, 1, 0, 0],
+                            [0, 0, 0, 0, 1, 0],
+                            [0, 0, 0, 0, 0, 1],
+                            [0, 0, 0, -x[3], 0, 0],
+                            [0, 0, 0, 0, -x[4], 0],
+                            [0, 0, 0, 0, 0, -x[5]]])
+        mass = 1
+        B_cont = np.concatenate((np.zeros((3, 3)),
+                                    (1 / mass) * np.diag(x[3:])), axis=0)
+        # discrete-time dynamics
+        td = 0.1
+        return np.eye(6) + td * A_cont, td * B_cont
 
-        def dynamics(x):
-            # continuous-time dynmaics
-            A_cont = np.array([[0, 0, 0, 1, 0, 0],
-                               [0, 0, 0, 0, 1, 0],
-                               [0, 0, 0, 0, 0, 1],
-                               [0, 0, 0, -x[3], 0, 0],
-                               [0, 0, 0, 0, -x[4], 0],
-                               [0, 0, 0, 0, 0, -x[5]]])
-            mass = 1
-            B_cont = np.concatenate((np.zeros((3, 3)),
-                                     (1 / mass) * np.diag(x[3:])), axis=0)
-            # discrete-time dynamics
-            td = 0.1
-            return np.eye(6) + td * A_cont, td * B_cont
-
-        state = -2*np.ones(6) + 4*np.random.rand(6)
-        Psqrt = np.eye(6)
-        A, B = dynamics(state)
-        prob.param_dict['Rsqrt'].value = np.sqrt(0.1) * np.eye(3)
-        prob.param_dict['f'].value = np.matmul(Psqrt, np.matmul(A, state))
-        prob.param_dict['G'].value = np.matmul(Psqrt, B)
+    state = -2*np.ones(6) + 4*np.random.rand(6)
+    Psqrt = np.eye(6)
+    A, B = dynamics(state)
+    prob.param_dict['Rsqrt'].value = np.sqrt(0.1) * np.eye(3)
+    prob.param_dict['f'].value = np.matmul(Psqrt, np.matmul(A, state))
+    prob.param_dict['G'].value = np.matmul(Psqrt, B)
 
     return prob
 
