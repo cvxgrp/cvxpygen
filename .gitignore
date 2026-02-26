@@ -1,6 +1,6 @@
 *code/
-tests/*/
-tests/hwgen/*/
+tests/__pycache__/
+tests/**/__pycache__/
 .python-version
 *.so
 __pycache__
