@@ -1,17 +1,18 @@
 """
-PDAQP Top Module Generator with Configurable Input Buffering
+PDAQP Top Module Generator with Configurable Input Buffering and Cache Support
 Generates top-level wrapper with AXI4-Stream interface and optional input buffer
-BST interface remains simple and flat (param_in_0, param_in_1, ...)
+Supports both cache-enabled and non-cache BST designs
 """
 
 import os
 from datetime import datetime
+from pathlib import Path
 
 
 class TopModuleGenerator:
     """Generator for PDAQP top module with pipelined AXI4-Stream interface"""
     
-    def __init__(self, config, strategy, enable_input_buffer=True):
+    def __init__(self, config, strategy, enable_input_buffer=True, use_cache=None):
         """
         Initialize top module generator
         
@@ -19,10 +20,12 @@ class TopModuleGenerator:
             config: Configuration object from VerilogConfigParser
             strategy: PackingStrategy object
             enable_input_buffer: Enable input buffering (default: True)
+            use_cache: Enable cache features (auto-detect if None)
         """
         self.config = config
         self.strategy = strategy
         self.enable_input_buffer = enable_input_buffer
+        self.use_cache = use_cache  # None = auto-detect
         
     def generate(self, output_file, config_include_path, timing_include_path):
         """
@@ -33,6 +36,10 @@ class TopModuleGenerator:
             config_include_path: Relative path to pdaqp_config.vh
             timing_include_path: Relative path to pdaqp_timing.vh
         """
+        # Auto-detect cache if not specified
+        if self.use_cache is None:
+            self.use_cache = self._detect_cache_from_bst(output_file)
+        
         with open(output_file, 'w') as f:
             self._write_header(f, config_include_path, timing_include_path)
             self._write_module_declaration(f)
@@ -42,6 +49,47 @@ class TopModuleGenerator:
             self._write_bst_instantiation(f)
             self._write_output_packing(f)
             self._write_module_end(f)
+    
+    def _detect_cache_from_bst(self, top_file_path):
+        """
+        Auto-detect if BST module has cache features
+        
+        Args:
+            top_file_path: Path to top module (used to find BST module)
+        
+        Returns:
+            True if cache features detected, False otherwise
+        """
+        # Try to find BST module in same directory
+        top_dir = Path(top_file_path).parent
+        bst_file = top_dir / 'pdaqp_bst_lut.v'
+        
+        if not bst_file.exists():
+            print(f"⚠️  Warning: Could not find {bst_file} for cache detection")
+            print(f"   Assuming non-cache design")
+            return False
+        
+        try:
+            with open(bst_file, 'r') as f:
+                content = f.read()
+                
+            # Check for cache-specific signals
+            has_rom = 'hp_rom_addr' in content and 'coeff_rom_addr' in content
+            has_stats = 'stat_queries' in content and 'stat_cache_hits' in content
+            
+            detected = has_rom and has_stats
+            
+            if detected:
+                print(f"✅ Detected cache-enabled BST design")
+            else:
+                print(f"✅ Detected non-cache BST design")
+            
+            return detected
+            
+        except Exception as e:
+            print(f"⚠️  Warning: Error reading {bst_file}: {e}")
+            print(f"   Assuming non-cache design")
+            return False
     
     def _write_header(self, f, config_path, timing_path):
         """Write file header"""
@@ -71,6 +119,7 @@ class TopModuleGenerator:
             f.write(f"({output_info['num_ports']} port(s), {output_info['port_width']}-bit)\n")
         
         f.write(f"// Input Buffer: {'ENABLED' if self.enable_input_buffer else 'DISABLED'}\n")
+        f.write(f"// BST Cache: {'ENABLED' if self.use_cache else 'DISABLED'}\n")
         f.write("//=======================================================================\n\n")
         
         f.write(f'`include "{config_path}"\n')
@@ -100,11 +149,9 @@ class TopModuleGenerator:
         if input_mode == 'tdm':
             batch_id_width = self.strategy.input_strategy['batch_id_width']
             f.write(f"    input wire [{port_width-1}:0] s_axis_tdata,\n")
-            # Fix: Use correct bit width for TID
             if batch_id_width > 0:
                 f.write(f"    input wire [{batch_id_width-1}:0] s_axis_tid,\n")
             else:
-                # Special case: only 1 batch, TID can be omitted or single bit
                 f.write(f"    input wire s_axis_tid,\n")
             f.write(f"    input wire s_axis_tvalid,\n")
             f.write(f"    output wire s_axis_tready,\n")
@@ -131,7 +178,6 @@ class TopModuleGenerator:
         if output_mode == 'tdm':
             batch_id_width = self.strategy.output_strategy['batch_id_width']
             f.write(f"    output wire [{port_width-1}:0] m_axis_tdata,\n")
-            # Fix: Use correct bit width for TID
             if batch_id_width > 0:
                 f.write(f"    output wire [{batch_id_width-1}:0] m_axis_tid,\n")
             else:
@@ -159,17 +205,18 @@ class TopModuleGenerator:
         
         # BST inputs
         for i in range(self.config.n_parameters):
-            f.write(f"    wire [`PDAQP_PARAM_{i}_WIDTH-1:0] bst_param_in_{i};\n")
+            f.write(f"    wire [`INPUT_DATA_WIDTH-1:0] bst_param_in_{i};\n")
         f.write("    wire bst_valid_in;\n")
         f.write("    wire bst_ready_out;\n")
         f.write("    \n")
         
         # BST outputs
         for i in range(self.config.n_solutions):
-            f.write(f"    wire [`PDAQP_SOL_{i}_WIDTH-1:0] bst_solution_{i};\n")
+            f.write(f"    wire [`OUTPUT_DATA_WIDTH-1:0] bst_solution_{i};\n")
         f.write("    wire bst_valid_out;\n")
         f.write("    \n")
     
+    # [Pipeline control methods remain the same as original]
     def _write_pipeline_control(self, f):
         """Write pipeline control logic"""
         input_mode = self.strategy.input_strategy['mode']
@@ -194,7 +241,6 @@ class TopModuleGenerator:
         f.write("    wire can_accept = (requests_in_flight < PIPELINE_CAPACITY);\n")
         f.write("    \n")
         
-        # Input valid signal
         num_input_ports = self.strategy.input_strategy['num_ports']
         if num_input_ports == 1:
             f.write("    wire all_input_valid = s_axis_tvalid;\n")
@@ -205,7 +251,6 @@ class TopModuleGenerator:
         
         f.write("    wire input_fire = all_input_valid && can_accept;\n")
         
-        # Output fire signal
         num_output_ports = self.strategy.output_strategy['num_ports']
         if num_output_ports == 1:
             f.write("    wire output_fire = m_axis_tvalid && m_axis_tready;\n")
@@ -247,19 +292,17 @@ class TopModuleGenerator:
         f.write("    reg [COUNTER_WIDTH-1:0] requests_in_flight;\n")
         f.write("    wire can_accept = (requests_in_flight < PIPELINE_CAPACITY);\n")
         
-        # Fix: Define output_fire first (needed by both input modes)
         f.write("    wire output_fire = m_axis_tvalid && m_axis_tready;\n")
         
-        # Fix: For TDM input, accept individual batches but only count when BST starts
         if input_mode == 'tdm':
             f.write("    wire batch_fire = s_axis_tvalid && can_accept;\n")
-            f.write("    wire bst_start;\n")  # Will be defined in input buffering section
+            f.write("    wire bst_start;\n")
             f.write("    \n")
             f.write("    always @(posedge clk or negedge rst_n) begin\n")
             f.write("        if (!rst_n) begin\n")
             f.write("            requests_in_flight <= {COUNTER_WIDTH{1'b0}};\n")
             f.write("        end else begin\n")
-            f.write("            case ({bst_start, output_fire})\n")  # Use bst_start instead of batch_fire
+            f.write("            case ({bst_start, output_fire})\n")
             f.write("                2'b10: requests_in_flight <= requests_in_flight + 1'd1;\n")
             f.write("                2'b01: requests_in_flight <= requests_in_flight - 1'd1;\n")
             f.write("                default: requests_in_flight <= requests_in_flight;\n")
@@ -284,6 +327,7 @@ class TopModuleGenerator:
         f.write("    \n")
         f.write("    assign s_axis_tready = can_accept;\n\n")
     
+    # [Input buffering methods remain the same - keeping original code]
     def _write_input_buffering(self, f):
         """Write input unpacking and buffering"""
         input_mode = self.strategy.input_strategy['mode']
@@ -304,15 +348,14 @@ class TopModuleGenerator:
         f.write("    \n")
         
         if self.enable_input_buffer:
-            # Buffered path
             for i in range(self.config.n_parameters):
-                f.write(f"    reg [`PDAQP_PARAM_{i}_WIDTH-1:0] param_buf_{i};\n")
+                f.write(f"    reg [`INPUT_DATA_WIDTH-1:0] param_buf_{i};\n")
             f.write("    \n")
             
             f.write("    always @(posedge clk or negedge rst_n) begin\n")
             f.write("        if (!rst_n) begin\n")
             for i in range(self.config.n_parameters):
-                f.write(f"            param_buf_{i} <= `PDAQP_PARAM_{i}_WIDTH'b0;\n")
+                f.write(f"            param_buf_{i} <= `INPUT_DATA_WIDTH'b0;\n")
             f.write("        end else if (input_fire) begin\n")
             
             self._write_input_extraction(f, "param_buf", indent="            ")
@@ -325,7 +368,6 @@ class TopModuleGenerator:
                 f.write(f"    assign bst_param_in_{i} = param_buf_{i};\n")
             f.write("    \n")
         else:
-            # Direct connection
             self._write_input_extraction(f, "bst_param_in", indent="    ", use_assign=True)
             f.write("    \n")
         
@@ -348,7 +390,7 @@ class TopModuleGenerator:
         f.write("    \n")
         
         for i in range(self.config.n_parameters):
-            f.write(f"    reg [`PDAQP_PARAM_{i}_WIDTH-1:0] tdm_param_buf_{i};\n")
+            f.write(f"    reg [`INPUT_DATA_WIDTH-1:0] tdm_param_buf_{i};\n")
         
         f.write("    reg [BATCH_COUNT_WIDTH-1:0] batch_count;\n")
         
@@ -357,7 +399,6 @@ class TopModuleGenerator:
         else:
             f.write("    wire last_batch = 1'b1;\n")
         
-        # Fix: Define bst_start signal used in control logic
         f.write("    wire start_processing = batch_fire && last_batch;\n")
         f.write("    assign bst_start = start_processing;\n")
         f.write("    \n")
@@ -365,7 +406,7 @@ class TopModuleGenerator:
         f.write("        if (!rst_n) begin\n")
         f.write("            batch_count <= {BATCH_COUNT_WIDTH{1'b0}};\n")
         for i in range(self.config.n_parameters):
-            f.write(f"            tdm_param_buf_{i} <= `PDAQP_PARAM_{i}_WIDTH'b0;\n")
+            f.write(f"            tdm_param_buf_{i} <= `INPUT_DATA_WIDTH'b0;\n")
         f.write("        end else if (batch_fire) begin\n")
         
         if num_batches > 1:
@@ -373,7 +414,6 @@ class TopModuleGenerator:
         else:
             f.write("            batch_count <= {BATCH_COUNT_WIDTH{1'b0}};\n")
         
-        # Fix: Use batch_id_width for case statement
         batch_id_width = self.strategy.input_strategy['batch_id_width']
         if batch_id_width > 0:
             case_width = batch_id_width
@@ -382,7 +422,6 @@ class TopModuleGenerator:
         
         f.write("            case (s_axis_tid)\n")
         
-        # Batch unpacking
         param_idx = 0
         for batch_id in range(num_batches):
             f.write(f"                {case_width}'d{batch_id}: begin\n")
@@ -441,12 +480,16 @@ class TopModuleGenerator:
                     
                     param_idx += 1
 
+    # [NEW] Enhanced BST instantiation with cache support
     def _write_bst_instantiation(self, f):
-        """Write BST instantiation"""
+        """Write BST instantiation with optional cache support"""
         f.write("    //===================================================================\n")
         f.write("    // BST LUT Instantiation\n")
         f.write("    //===================================================================\n")
         f.write("    \n")
+        
+        if self.use_cache:
+            self._write_cache_signals(f)
         
         f.write("    pdaqp_bst_lut u_bst_lut (\n")
         f.write("        .clk(clk),\n")
@@ -454,20 +497,66 @@ class TopModuleGenerator:
         f.write("        .valid_in(bst_valid_in),\n")
         f.write("        \n")
         
+        # Input parameters
         for i in range(self.config.n_parameters):
             f.write(f"        .param_in_{i}(bst_param_in_{i}),\n")
         f.write("        \n")
         
+        # Output control
         f.write("        .ready_out(bst_ready_out),\n")
         f.write("        \n")
         
+        # Solutions
         for i in range(self.config.n_solutions):
             f.write(f"        .solution_{i}(bst_solution_{i}),\n")
         
-        f.write("        .valid_out(bst_valid_out)\n")
+        f.write("        .valid_out(bst_valid_out)")
+        
+        # Cache-specific ports
+        if self.use_cache:
+            f.write(",\n")
+            f.write("        \n")
+            f.write("        // ROM interfaces\n")
+            f.write("        .hp_rom_addr(hp_rom_addr),\n")
+            f.write("        .hp_rom_data(hp_rom_data),\n")
+            f.write("        .hp_rom_rd(hp_rom_rd),\n")
+            f.write("        \n")
+            f.write("        .coeff_rom_addr(coeff_rom_addr),\n")
+            f.write("        .coeff_rom_data(coeff_rom_data),\n")
+            f.write("        .coeff_rom_rd(coeff_rom_rd),\n")
+            f.write("        \n")
+            f.write("        // Statistics\n")
+            f.write("        .stat_queries(stat_queries),\n")
+            f.write("        .stat_cache_hits(stat_cache_hits),\n")
+            f.write("        .stat_cache_misses(stat_cache_misses)\n")
+        else:
+            f.write("\n")
+        
         f.write("    );\n")
         f.write("    \n")
+    
+    def _write_cache_signals(self, f):
+        """Write cache-related signal declarations"""
+        f.write("    // ROM interface signals (for cache miss handling)\n")
+        f.write("    wire [2:0] hp_rom_addr;\n")
+        f.write("    wire [`PDAQP_N_PARAMETER*`INPUT_DATA_WIDTH-1:0] hp_rom_data;\n")
+        f.write("    wire hp_rom_rd;\n")
+        f.write("    \n")
+        f.write("    wire [4:0] coeff_rom_addr;\n")
+        f.write("    wire [`OUTPUT_DATA_WIDTH-1:0] coeff_rom_data;\n")
+        f.write("    wire coeff_rom_rd;\n")
+        f.write("    \n")
+        f.write("    // Tie off ROM data inputs (external ROM if needed)\n")
+        f.write("    assign hp_rom_data = {`PDAQP_N_PARAMETER{`INPUT_DATA_WIDTH'b0}};\n")
+        f.write("    assign coeff_rom_data = `OUTPUT_DATA_WIDTH'b0;\n")
+        f.write("    \n")
+        f.write("    // Statistics outputs\n")
+        f.write("    wire [31:0] stat_queries;\n")
+        f.write("    wire [31:0] stat_cache_hits;\n")
+        f.write("    wire [31:0] stat_cache_misses;\n")
+        f.write("    \n")
 
+    # [Output packing methods remain the same - keeping all original code]
     def _write_output_packing(self, f):
         """Write output packing"""
         output_mode = self.strategy.output_strategy['mode']
@@ -538,24 +627,22 @@ class TopModuleGenerator:
         
         f.write("    \n")
         
-        # Add solution buffers to store BST output
         f.write("    // Store BST output\n")
         for i in range(self.config.n_solutions):
-            f.write(f"    reg [`PDAQP_SOL_{i}_WIDTH-1:0] bst_solution_buf_{i};\n")
+            f.write(f"    reg [`OUTPUT_DATA_WIDTH-1:0] bst_solution_buf_{i};\n")
         f.write("    \n")
         
         f.write("    reg [OUT_BATCH_ID_WIDTH-1:0] out_batch_id;\n")
         f.write("    reg out_batch_valid;\n")
         f.write("    \n")
         
-        # State machine with buffering
         f.write("    // Capture BST output and manage output state\n")
         f.write("    always @(posedge clk or negedge rst_n) begin\n")
         f.write("        if (!rst_n) begin\n")
         f.write("            out_batch_id <= {OUT_BATCH_ID_WIDTH{1'b0}};\n")
         f.write("            out_batch_valid <= 1'b0;\n")
         for i in range(self.config.n_solutions):
-            f.write(f"            bst_solution_buf_{i} <= `PDAQP_SOL_{i}_WIDTH'b0;\n")
+            f.write(f"            bst_solution_buf_{i} <= `OUTPUT_DATA_WIDTH'b0;\n")
         f.write("        end else begin\n")
         f.write("            // Capture new BST output when available and we're idle\n")
         f.write("            if (bst_valid_out && !out_batch_valid) begin\n")
@@ -583,7 +670,6 @@ class TopModuleGenerator:
         f.write("    end\n")
         f.write("    \n")
         
-        # Packing logic using buffered values
         f.write(f"    reg [{port_width-1}:0] batch_data;\n")
         f.write("    \n")
         f.write("    always @(*) begin\n")
@@ -596,13 +682,11 @@ class TopModuleGenerator:
             bits_used = sols_this_batch * self.config.output_width
             padding_bits = port_width - bits_used
             
-            # Fix: Use correct case width
             f.write(f"            {case_width}'d{batch_id}: batch_data = {{")
             
             if padding_bits > 0:
                 f.write(f"{padding_bits}'d0, ")
             
-            # Use buffered solutions instead of direct BST outputs
             for local_idx in range(sols_this_batch - 1, -1, -1):
                 comma = ", " if local_idx > 0 else ""
                 f.write(f"bst_solution_buf_{sol_idx + local_idx}{comma}")

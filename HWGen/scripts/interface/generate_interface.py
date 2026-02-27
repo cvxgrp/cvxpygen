@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-PDAQP Interface Generator with 2-Tier Adaptive Packing
+PDAQP Interface Generator with 2-Tier Adaptive Packing and Cache Support
 Generates top-level RTL with optimized AXI4-Stream interface
 Tier 1: Spatial Multiplexing (default)
 Tier 2: Time Division Multiplexing (IOB-constrained)
+Supports both cache-enabled and non-cache BST designs
 """
 
 import argparse
@@ -38,6 +39,10 @@ Examples:
   # With IOB constraint (auto-selects Tier 2 TDM if needed)
   python generate_interface.py -c config/pdaqp_config.vh -o output/ --max-iob 200
 
+  # Force cache mode (or disable cache)
+  python generate_interface.py -c config/pdaqp_config.vh -o output/ --enable-cache
+  python generate_interface.py -c config/pdaqp_config.vh -o output/ --disable-cache
+
   # Verbose output with strategy details
   python generate_interface.py -c config/pdaqp_config.vh -o output/ -v
 
@@ -48,6 +53,11 @@ Packing Tiers:
 Input Buffering:
   Default: ENABLED  - Adds 1-cycle pipeline stage for better timing closure
   --no-input-buffer - Direct connection, lower latency but may affect timing
+
+Cache Support:
+  Default: AUTO-DETECT - Automatically detects cache from BST module
+  --enable-cache       - Force cache mode (adds ROM and statistics ports)
+  --disable-cache      - Force non-cache mode
         """
     )
     
@@ -59,6 +69,10 @@ Input Buffering:
                        help='Maximum IOB pin count (default: unlimited, uses Tier 1)')
     parser.add_argument('--no-input-buffer', action='store_true',
                        help='Disable input buffering (lower latency, may affect timing)')
+    parser.add_argument('--enable-cache', action='store_true',
+                       help='Enable cache support in BST module (auto-detect if not specified)')
+    parser.add_argument('--disable-cache', action='store_true',
+                       help='Disable cache support (force non-cache mode)')
     parser.add_argument('-v', '--verbose', action='store_true',
                        help='Enable verbose output with strategy details')
     
@@ -74,6 +88,10 @@ def validate_inputs(args):
     if args.max_iob is not None and args.max_iob < 1:
         print(f"Error: max-iob must be positive, got {args.max_iob}")
         sys.exit(1)
+    
+    if args.enable_cache and args.disable_cache:
+        print("Error: Cannot specify both --enable-cache and --disable-cache")
+        sys.exit(1)
 
 
 def create_output_directory(output_dir):
@@ -85,7 +103,7 @@ def create_output_directory(output_dir):
     return rtl_dir, include_dir
 
 
-def print_summary(config, strategy, args):
+def print_summary(config, strategy, args, use_cache_mode):
     """Print generation summary"""
     print(f"\n{'='*70}")
     print("Configuration Summary")
@@ -143,6 +161,19 @@ def print_summary(config, strategy, args):
     else:
         print("  → Pipeline stage (+1 cycle latency, better timing closure)")
     
+    # Cache status
+    print(f"\n{'='*70}")
+    print("BST Cache Support")
+    print(f"{'='*70}")
+    if use_cache_mode is None:
+        print("  Mode: AUTO-DETECT (will check BST module)")
+    elif use_cache_mode:
+        print("  Mode: ENABLED (forced)")
+        print("  → Includes ROM interfaces and statistics ports")
+    else:
+        print("  Mode: DISABLED (forced)")
+        print("  → Non-cache BST design")
+    
     print()
 
 
@@ -173,7 +204,16 @@ def main():
             data_width=config.input_width,
             max_iob=args.max_iob
         )
-        print_summary(config, strategy, args)
+        
+        # Determine cache mode
+        if args.enable_cache:
+            use_cache_mode = True
+        elif args.disable_cache:
+            use_cache_mode = False
+        else:
+            use_cache_mode = None  # Auto-detect
+        
+        print_summary(config, strategy, args, use_cache_mode)
     except Exception as e:
         print(f"  ✗ Error creating packing strategy: {e}")
         import traceback
@@ -212,14 +252,29 @@ def main():
         config_rel_path = os.path.relpath(config_abs, rtl_abs)
         timing_rel_path = os.path.relpath(timing_abs, rtl_abs)
         
-        # Generate top module WITH BUFFER OPTION
+        # Generate top module with buffer and cache options
         enable_buffer = not args.no_input_buffer
-        top_gen = TopModuleGenerator(config, strategy, enable_input_buffer=enable_buffer)
+        
+        top_gen = TopModuleGenerator(
+            config=config,
+            strategy=strategy,
+            enable_input_buffer=enable_buffer,
+            use_cache=use_cache_mode  # Pass cache mode (None = auto-detect)
+        )
+        
         top_gen.generate(top_file, config_rel_path, timing_rel_path)
         
         print(f"  ✓ Created: {top_file}")
+        
+        # Report actual cache detection result
+        if use_cache_mode is None:
+            actual_cache = top_gen.use_cache
+            cache_status = "CACHE-ENABLED" if actual_cache else "NON-CACHE"
+            print(f"  ✓ Detected: {cache_status} BST design")
+        
         buffer_msg = "with input buffering" if enable_buffer else "without input buffering (direct mode)"
         print(f"  ✓ Mode: {buffer_msg}")
+        
     except Exception as e:
         print(f"  ✗ Error generating top module: {e}")
         if args.verbose:
@@ -256,6 +311,13 @@ def main():
         print("\n⚠️  Warning: Input buffering disabled")
         print("  Monitor timing paths carefully during synthesis.")
         print("  Consider adding timing constraints for combinational input paths.")
+    
+    if use_cache_mode is None and hasattr(top_gen, 'use_cache'):
+        if top_gen.use_cache:
+            print("\n💡 Info: Cache-enabled BST detected")
+            print("  - ROM interfaces included for external data storage")
+            print("  - Statistics ports available for performance monitoring")
+            print("  - Consider connecting external ROM if needed")
     
     print()
 
