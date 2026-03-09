@@ -1,0 +1,13 @@
+#pragma once
+#include <cstdint>
+
+#include "fixed_math.hpp"
+#include "log2ceil.hpp"
+
+constexpr uint16_t n_parameter = {{ problem_size.n_parameter }};
+constexpr uint16_t n_solution = {{ problem_size.n_solution }};
+
+using DataFormat = math::fixed<int16_t, {{ Q }}>;
+using AccuDataFormat = math::fixed<int32_t, {{ Q }} * 2 - log2ceil(n_parameter) - 1>;
+
+static_assert(DataFormat::_Q <= AccuDataFormat::_Q, "Insufficient precision for the numerical product");

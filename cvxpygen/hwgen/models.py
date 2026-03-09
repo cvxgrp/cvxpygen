@@ -42,9 +42,19 @@ class MultiplyAddFix16:
 
 
 @dataclass
+class BinaryTree:
+    halfplane_or_feedback_id: NDArray[uint16]
+    jump: NDArray[uint16]
+
+    @property
+    def size(self) -> int:
+        return self.jump.size
+
+
+@dataclass
 class PDAQPAlgoConfig:
     problem_size: ProblemSize
-    tree_nodes: NDArray[uint16]
+    tree_nodes: BinaryTree
     half_planes: MultiplyAddFP32
     feedbacks: MultiplyAddFP32
 

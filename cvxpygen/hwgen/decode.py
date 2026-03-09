@@ -5,7 +5,7 @@ from numpy import uint16
 from cvxpygen.hwgen.c_parsing.array_visitor import FloatArrayVisitor, IntArrayVisitor
 from cvxpygen.hwgen.c_parsing.grammars import pdaqp_c_grammar, pdaqp_header_grammar
 from cvxpygen.hwgen.c_parsing.header_visitor import HeaderVisitor
-from cvxpygen.hwgen.models import MultiplyAddFP32, PDAQPAlgoConfig
+from cvxpygen.hwgen.models import BinaryTree, MultiplyAddFP32, PDAQPAlgoConfig
 
 
 def decode(c_path: Path, h_path: Path) -> PDAQPAlgoConfig:
@@ -41,19 +41,32 @@ def decode(c_path: Path, h_path: Path) -> PDAQPAlgoConfig:
         == 0
     )
     feedbacks = float_arrays.arrays["pdaqp_feedbacks"].data.reshape(
-        -1, n_parameter + 1, n_solution
+        -1, n_solution, n_parameter + 1
     )
 
     assert "pdaqp_hp_list" in int_arrays.arrays
     assert int_arrays.arrays["pdaqp_hp_list"].data.max() <= 65535
 
+    assert "pdaqp_jump_list" in int_arrays.arrays
+    assert int_arrays.arrays["pdaqp_jump_list"].data.max() <= 65535
+
+    assert (
+        int_arrays.arrays["pdaqp_hp_list"].data.size
+        == int_arrays.arrays["pdaqp_jump_list"].data.size
+    )
+
     return PDAQPAlgoConfig(
         header_visitor.problem_size,
-        tree_nodes=int_arrays.arrays["pdaqp_hp_list"].data.astype(uint16),
+        tree_nodes=BinaryTree(
+            halfplane_or_feedback_id=int_arrays.arrays["pdaqp_hp_list"].data.astype(
+                uint16
+            ),
+            jump=int_arrays.arrays["pdaqp_jump_list"].data.astype(uint16),
+        ),
         half_planes=MultiplyAddFP32(
             halfplanes[:, :n_parameter], halfplanes[:, n_parameter]
         ),
         feedbacks=MultiplyAddFP32(
-            feedbacks[:, :n_parameter], feedbacks[:, n_parameter]
+            feedbacks[..., :n_parameter], feedbacks[..., n_parameter]
         ),
     )

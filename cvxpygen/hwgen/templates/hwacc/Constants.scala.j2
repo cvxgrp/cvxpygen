@@ -1,0 +1,45 @@
+object Constants {
+    // BEGIN compile-time constants (already quantized)
+    final val nSolution = {{ config.problem_size.n_solution }}
+    final val nParameter    = {{ config.problem_size.n_parameter }}
+    final val nNodes     = {{ config.n_tree_nodes }}
+    final val nFeedbacks = {{ config.n_feedbacks }}
+    final val Q           = {{ config.feedback_module.param.Q }}
+
+    final val hyperplane_normal = Seq(
+        {% for item in config.half_planes_module.param.scale.ravel() -%}
+                {{ item }},
+        {% endfor -%}
+    )
+
+    final val hyperplane_offset = Seq(
+        {% for item in config.half_planes_module.param.offset.ravel() -%}
+                {{ item }},
+        {% endfor -%}
+    )
+
+    final val feedbackA = Seq(
+        {% for item in config.feedback_module.param.scale.ravel() -%}
+                {{ item }},
+        {% endfor -%}
+    )
+
+    final val feedbackC = Seq(
+        {% for item in config.feedback_module.param.offset.ravel() -%}
+                {{ item }},
+        {% endfor -%}
+    )
+
+    final val hpList   = Seq(
+        {% for item in config.tree_walker.tree_nodes.halfplane_or_feedback_id -%}
+                {{ item }},
+        {% endfor -%}
+    )
+
+    final val jumpList = Seq(
+        {% for item in config.tree_walker.tree_nodes.jump -%}
+                {{ item }},
+        {% endfor -%}
+    )
+    // END compile-time constants (already quantized)
+}

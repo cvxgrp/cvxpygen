@@ -1,16 +1,18 @@
 from dataclasses import dataclass
 
-from numpy import uint16
-from numpy.typing import NDArray
-
-from cvxpygen.hwgen.models import MultiplyAddFix16, MultiplyAddFP32, ProblemSize
+from cvxpygen.hwgen.models import (
+    BinaryTree,
+    MultiplyAddFix16,
+    MultiplyAddFP32,
+    ProblemSize,
+)
 
 
 @dataclass
 class TreeWalkerFSM:
     """A tree walking module implemented as finite state machine."""
 
-    tree_nodes: NDArray[uint16]
+    tree_nodes: BinaryTree
 
 
 @dataclass
