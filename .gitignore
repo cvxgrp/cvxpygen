@@ -1,5 +1,6 @@
 *code/
-tests/*/
+tests/__pycache__/
+tests/**/__pycache__/
 .python-version
 *.so
 __pycache__
