@@ -1,0 +1,25 @@
+#pragma once
+#include <array>
+#include <cstdint>
+
+constexpr std::array<float, {{ half_planes.size }}> pdaqp_halfplanes{
+    {% for item in half_planes.ravel() -%}
+        {{ item }}f,
+    {% endfor -%}
+};
+constexpr std::array<float, {{ feedbacks.size }}> pdaqp_feedbacks = {
+    {% for item in feedbacks.ravel() -%}
+        {{ item }}f,
+    {% endfor -%}
+};
+
+constexpr std::array<uint16_t, {{ tree_nodes.halfplane_or_feedback_id.size }}> pdaqp_hp_list{
+    {% for item in tree_nodes.halfplane_or_feedback_id.ravel() -%}
+        {{ item }},
+    {% endfor -%}
+};
+constexpr std::array<uint16_t, {{ tree_nodes.jump.size }}> pdaqp_jump_list{
+    {% for item in tree_nodes.jump.ravel() -%}
+        {{ item }},
+    {% endfor -%}
+};
