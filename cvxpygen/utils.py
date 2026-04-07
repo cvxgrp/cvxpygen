@@ -1,14 +1,6 @@
 """
-Copyright 2022 Maximilian Schaller
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-    http://www.apache.org/licenses/LICENSE-2.0
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+Copyright 2022-2026 Maximilian Schaller
+Licensed under the Apache License, Version 2.0
 """
 
 import numpy as np
@@ -204,22 +196,6 @@ def replace_inf(v):
         v[idx] = 1e30 * sign[idx]
 
     return v
-
-
-def zeros(n, dtype=float):
-    """
-    Return zero vector of length n
-    """
-
-    return np.zeros(n, dtype=dtype)
-
-
-def ones(n, dtype=float):
-    """
-    Return ones vector of length n
-    """
-
-    return np.ones(n, dtype=dtype)
 
 
 def param_is_empty(param):
@@ -743,7 +719,7 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
         if configuration.gradient:
             
             f.write('\n// Derivative workspace\n')
-            write_vec_def(f, zeros(len(parameter_info.flat_usp)), f'{prefix}cpg_dp', 'cpg_float')
+            write_vec_def(f, np.zeros(len(parameter_info.flat_usp)), f'{prefix}cpg_dp', 'cpg_float')
             
             delta_cast = []
             f.write('// User-defined parameter deltas\n')
@@ -770,11 +746,8 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
 
     write_description(f, 'c', 'Type definitions and variable declarations')
     if full:
-        if configuration.explicit:
-            f.write('#include "pdaqp.h"\n')
-        else:
-            for header_file in solver_interface.header_files:
-                f.write(f'#include {header_file}\n')
+        for header_file in solver_interface.header_files:
+            f.write(f'#include {header_file}\n')
     else:
         f.write('#include "cpg_workspace.h"\n\n')
 
@@ -972,7 +945,7 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
         if configuration.gradient:
             
             f.write('\n// Derivative workspace\n')
-            write_vec_prot(f, zeros(len(parameter_info.flat_usp)), f'{prefix}cpg_dp', 'cpg_float')
+            write_vec_prot(f, np.zeros(len(parameter_info.flat_usp)), f'{prefix}cpg_dp', 'cpg_float')
             
             f.write('\n// Struct containing parameter deltas\n')
             write_struct_prot(f, f'{prefix}CPG_Delta', 'CPG_Delta_t')
@@ -1155,15 +1128,8 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
         for name in solver_interface.stgs_names_to_type.keys():
             f.write(f'  {configuration.prefix}{solver_interface.ws_ptrs.settings.format(setting_name=name)} = {configuration.prefix}Canon_Settings.{name};\n')
 
-    if configuration.explicit:
-        f.write(f'  // Solve with PDAQP explicit solver\n')
-        if configuration.explicit == 1:
-            f.write(f'  pdaqp_evaluate({configuration.prefix}cpg_theta, sol_x);\n')
-        elif configuration.explicit == 2:
-            f.write(f'  pdaqp_evaluate({configuration.prefix}cpg_theta, sol_x, sol_y);\n')
-    else:
-        f.write(f'  // Solve with {configuration.solver_name}\n')
-        f.write(f'  {solver_interface.solve_function_call.format(prefix=configuration.prefix)};\n')
+    f.write(f'  // Solve with {configuration.solver_name}\n')
+    f.write(f'  {solver_interface.solve_function_call.format(prefix=configuration.prefix)};\n')
 
     f.write('  // Retrieve results\n')
     if solver_interface.ret_prim_func_exists(variable_info):
@@ -1223,7 +1189,8 @@ def write_solve_prot(f, configuration, variable_info, dual_variable_info, parame
     write_description(f, 'c', 'Function declarations')
     f.write('#include "cpg_workspace.h"\n')
     if configuration.explicit:
-        f.write('#include "pdaqp.h"\n')
+        for header_file in solver_interface.header_files:
+            f.write(f'#include {header_file}\n')
 
     f.write('\n// Update user-defined parameter values\n')
     for name, size in parameter_info.name_to_size_usp.items():

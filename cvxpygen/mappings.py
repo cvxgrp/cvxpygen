@@ -1,3 +1,8 @@
+"""
+Copyright 2023-2026 Maximilian Schaller
+Licensed under the Apache License, Version 2.0
+"""
+
 from dataclasses import dataclass, field
 from typing import Dict, List
 

@@ -7,7 +7,6 @@ import os
 import io
 import importlib
 import itertools
-import pickle
 import utils_test
 import sys
 sys.path.append('../')
@@ -202,9 +201,6 @@ def test(name, solver, style, seed):
                               prefix='%s_%s_im' % (name, solver))
             assert len(glob.glob(os.path.join('test_%s_%s_loops' % (name, solver), 'cpg_module.*'))) > 0
 
-    with open('test_%s_%s_%s/problem.pickle' % (name, solver, style), 'rb') as f:
-        prob = pickle.load(f)
-
     #module = importlib.import_module('test_%s_%s_%s.cpg_solver' % (name, solver, style))
     #prob.register_solve('CPG', module.cpg_solve)
 
@@ -241,9 +237,6 @@ def test_OSQP_verbose():
 
     cpg.generate_code(prob, code_dir='test_actuator_OSQP_verbose', solver='OSQP', unroll=False, prefix='actuator_OSQP_verbose', enable_settings=['verbose'])
     assert len(glob.glob(os.path.join('test_actuator_OSQP_verbose', 'cpg_module.*'))) > 0
-
-    with open('test_actuator_OSQP_verbose/problem.pickle', 'rb') as f:
-        prob = pickle.load(f)
 
     module = importlib.import_module('test_actuator_OSQP_verbose.cpg_solver')
     prob.register_solve('CPG', module.cpg_solve)

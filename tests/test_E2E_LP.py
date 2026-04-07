@@ -6,7 +6,6 @@ import glob
 import os
 import importlib
 import itertools
-import pickle
 import utils_test
 import sys
 sys.path.append('../')
@@ -121,9 +120,6 @@ def test(name, solver, style, seed):
             cpg.generate_code(prob, code_dir='test_%s_%s_loops' % (name, solver), solver=solver, unroll=False,
                               prefix='%s_%s_im' % (name, solver))
             assert len(glob.glob(os.path.join('test_%s_%s_loops' % (name, solver), 'cpg_module.*'))) > 0
-
-    with open('test_%s_%s_%s/problem.pickle' % (name, solver, style), 'rb') as f:
-        prob = pickle.load(f)
 
     #module = importlib.import_module('test_%s_%s_%s.cpg_solver' % (name, solver, style))
     #prob.register_solve('CPG', module.cpg_solve)

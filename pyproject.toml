@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cvxpygen"
-version = "0.7.0"
+version = "1.0.0"
 description = "Code generation with CVXPY"
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.11"
@@ -37,6 +37,6 @@ dependencies = [
 dev = ["pytest == 6.2.4"]
 
 [tool.setuptools]
-packages = ["cvxpygen"]
+packages = ["cvxpygen", "cvxpygen.solvers"]
 include-package-data = true
-py-modules = ["cpg", "utils", "mappings", "solvers", "mpqp"]
+py-modules = ["canonicalizer", "compiler", "cpg", "generator", "mappings", "utils", "writer"]
