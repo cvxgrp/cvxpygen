@@ -175,33 +175,26 @@ def get_primal_vec(prob, name):
 
 N_RAND = 2
 
-name_solver_style_seed = [['actuator', 'MPC', 'portfolio'],
-                          ['OSQP', 'SCS', 'QOCO', 'QOCOGEN'],
-                          ['loops'],
-                          list(np.arange(N_RAND))]
+name_solver_seed = [['actuator', 'MPC', 'portfolio'],
+                    ['OSQP', 'SCS', 'QOCO', 'QOCOGEN'],
+                    list(np.arange(N_RAND))]
 
 name_to_prob = {'actuator': actuator_problem(),
                 'MPC': MPC_problem(),
                 'portfolio': portfolio_problem()}
 
 
-@pytest.mark.parametrize('name, solver, style, seed', list(itertools.product(*name_solver_style_seed)))
-def test(name, solver, style, seed):
+@pytest.mark.parametrize('name, solver, seed', list(itertools.product(*name_solver_seed)))
+def test(name, solver, seed):
 
     prob = name_to_prob[name]
 
     if seed == 0:
         prob = assign_data(prob, name, 0)
-        if style == 'unroll':
-            cpg.generate_code(prob, code_dir='test_%s_%s_unroll' % (name, solver), solver=solver, unroll=True,
-                              prefix='%s_%s_ex' % (name, solver))
-            assert len(glob.glob(os.path.join('test_%s_%s_unroll' % (name, solver), 'cpg_module.*'))) > 0
-        if style == 'loops':
-            cpg.generate_code(prob, code_dir='test_%s_%s_loops' % (name, solver), solver=solver, unroll=False,
-                              prefix='%s_%s_im' % (name, solver))
-            assert len(glob.glob(os.path.join('test_%s_%s_loops' % (name, solver), 'cpg_module.*'))) > 0
+        cpg.generate_code(prob, code_dir=f'test_{name}_{solver}', solver=solver, prefix=f'{name}_{solver}')
+        assert len(glob.glob(os.path.join(f'test_{name}_{solver}', 'cpg_module.*'))) > 0
 
-    #module = importlib.import_module('test_%s_%s_%s.cpg_solver' % (name, solver, style))
+    #module = importlib.import_module(f'test_{name}_{solver}.cpg_solver')
     #prob.register_solve('CPG', module.cpg_solve)
 
     prob = assign_data(prob, name, seed)
@@ -235,7 +228,7 @@ def test_OSQP_verbose():
     prob = actuator_problem()
     prob = assign_data(prob, 'actuator', 0)
 
-    cpg.generate_code(prob, code_dir='test_actuator_OSQP_verbose', solver='OSQP', unroll=False, prefix='actuator_OSQP_verbose', enable_settings=['verbose'])
+    cpg.generate_code(prob, code_dir='test_actuator_OSQP_verbose', solver='OSQP', prefix='actuator_OSQP_verbose', enable_settings=['verbose'])
     assert len(glob.glob(os.path.join('test_actuator_OSQP_verbose', 'cpg_module.*'))) > 0
 
     module = importlib.import_module('test_actuator_OSQP_verbose.cpg_solver')
@@ -256,5 +249,5 @@ def test_OSQP_verbose():
 
 
 def test_clarabel():
-    test('actuator', 'CLARABEL', 'loops', 0)
-    test('actuator', 'CLARABEL', 'loops', 1)
+    test('actuator', 'CLARABEL', 0)
+    test('actuator', 'CLARABEL', 1)

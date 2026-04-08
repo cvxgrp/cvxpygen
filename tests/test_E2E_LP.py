@@ -97,31 +97,24 @@ def get_primal_vec(prob, name):
 
 N_RAND = 2
 
-name_solver_style_seed = [['network', 'resource'],
-                          ['ECOS', 'QOCO'],
-                          ['loops'],
-                          list(np.arange(N_RAND))]
+name_solver_seed = [['network', 'resource'],
+                    ['ECOS', 'QOCO'],
+                    list(np.arange(N_RAND))]
 
 
 name_to_prob = {'network': network_problem(), 'resource': resource_problem()}
 
 
-@pytest.mark.parametrize('name, solver, style, seed', list(itertools.product(*name_solver_style_seed)))
-def test(name, solver, style, seed):
+@pytest.mark.parametrize('name, solver, seed', list(itertools.product(*name_solver_seed)))
+def test(name, solver, seed):
 
     prob = name_to_prob[name]
 
     if seed == 0:
-        if style == 'unroll':
-            cpg.generate_code(prob, code_dir='test_%s_%s_unroll' % (name, solver), solver=solver, unroll=True,
-                              prefix='%s_%s_ex' % (name, solver))
-            assert len(glob.glob(os.path.join('test_%s_%s_unroll' % (name, solver), 'cpg_module.*'))) > 0
-        if style == 'loops':
-            cpg.generate_code(prob, code_dir='test_%s_%s_loops' % (name, solver), solver=solver, unroll=False,
-                              prefix='%s_%s_im' % (name, solver))
-            assert len(glob.glob(os.path.join('test_%s_%s_loops' % (name, solver), 'cpg_module.*'))) > 0
+        cpg.generate_code(prob, code_dir=f'test_{name}_{solver}', solver=solver, prefix=f'{name}_{solver}')
+        assert len(glob.glob(os.path.join(f'test_{name}_{solver}', 'cpg_module.*'))) > 0
 
-    #module = importlib.import_module('test_%s_%s_%s.cpg_solver' % (name, solver, style))
+    #module = importlib.import_module(f'test_{name}_{solver}.cpg_solver')
     #prob.register_solve('CPG', module.cpg_solve)
 
     prob = assign_data(prob, name, seed)
@@ -150,9 +143,9 @@ def test(name, solver, style, seed):
     assert sol_cg.opt_val == val_cg
 
 def test_clarabel():
-    test('network', 'CLARABEL', 'loops', 0)
-    test('network', 'CLARABEL', 'loops', 1)
+    test('network', 'CLARABEL', 0)
+    test('network', 'CLARABEL', 1)
 
 def test_qocogen():
-    test('network', 'QOCOGEN', 'loops', 0)
-    test('network', 'QOCOGEN', 'loops', 1)
+    test('network', 'QOCOGEN', 0)
+    test('network', 'QOCOGEN', 1)

@@ -43,14 +43,12 @@ class Generator:
         solver: Optional[str] = None,
         solver_opts: Optional[dict] = None,
         enable_settings: List[str] = [],
-        unroll: bool = False,
         prefix: str = '',
         gradient: bool = False,
     ) -> None:
         self._solver = solver
         self._solver_opts = solver_opts
         self._enable_settings = enable_settings
-        self._unroll = unroll
         self._prefix = prefix
         self._gradient = gradient
 
@@ -188,6 +186,5 @@ class Generator:
             prefix = f'_{prefix}'
         prefix = f'{prefix}_' if prefix else ''
         return Configuration(
-            code_dir, solver_name, self._unroll, prefix,
-            self._gradient, gradient_two_stage, explicit,
+            code_dir, solver_name, prefix, self._gradient, gradient_two_stage, explicit,
         )
