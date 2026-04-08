@@ -15,7 +15,7 @@ from cvxpygen.generator import Generator
 
 
 def generate_code(problem, code_dir='cpg_code', solver=None, solver_opts=None,
-                  enable_settings=[], unroll=False, prefix='', gradient=False, wrapper=True):
+                  enable_settings=[], prefix='', gradient=False, wrapper=True):
     """
     Generate C code to solve a CVXPY problem.
 
@@ -25,7 +25,6 @@ def generate_code(problem, code_dir='cpg_code', solver=None, solver_opts=None,
         solver=solver,
         solver_opts=solver_opts,
         enable_settings=enable_settings,
-        unroll=unroll,
         prefix=prefix,
         gradient=gradient,
     ).generate(problem, code_dir=code_dir, wrapper=wrapper)

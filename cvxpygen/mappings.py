@@ -14,7 +14,6 @@ import numpy as np
 class Configuration:
     code_dir: str
     solver_name: str
-    unroll: bool
     prefix: str
     gradient: bool
     gradient_two_stage: bool
