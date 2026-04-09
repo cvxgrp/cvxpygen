@@ -91,7 +91,6 @@ $CODEDIR
         cpg_module.cpp
     setup.py
     cpg_solver.py
-    problem.pickle
     LICENSE
     README.html
   </code></pre>
@@ -134,9 +133,7 @@ $CPGSETTINGSDECLARATIONS
       <dt><code>c/src/cpg_example.c</code> contains example code that initializes the problem data and solves a problem instance.</dt>
       <dt><code>c/CMakeLists.txt</code> contains instructions for build file generation inside the <code>c/build</code> directory with CMake.</dt>
       <dt><code>cpp/</code> contains binding code for the python wrapper generated with <a href="https://github.com/pybind/pybind11" target="_blank">pybind11</a> and <code>setup.py</code>.</dt>
-      <dt><code>cpg_solver.py</code> contains a custom CVXPY solve method that uses the python wrapper to solve your problem.</dt>
-      <dt>Finally, <code>problem.pickle</code> is the serialized version of your CVXPY problem object.</dt>
-    </dl>
+      <dt><code>cpg_solver.py</code> contains a custom CVXPY solve method that uses the python wrapper to solve your problem.</dt>    </dl>
   </p>
 
   <h3>Using Generated Code</h3>
@@ -147,11 +144,7 @@ $CPGSETTINGSDECLARATIONS
       To use the CVXPY interface, run exemplarily,
   </p>
     <pre><code>
-import pickle
 from $CDPYTHON.cpg_solver import cpg_solve
-
-with open('$CODEDIR/problem.pickle', 'rb') as f:
-    prob = pickle.load(f)
 
 prob.param_dict['&lt;p_name&gt;'].value = &lt;p_value&gt;
 prob.register_solve('CPG', cpg_solve)

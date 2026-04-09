@@ -1,3 +1,8 @@
+"""
+Copyright 2023-2026 Maximilian Schaller
+Licensed under the Apache License, Version 2.0
+"""
+
 from dataclasses import dataclass, field
 from typing import Dict, List
 
@@ -9,7 +14,6 @@ import numpy as np
 class Configuration:
     code_dir: str
     solver_name: str
-    unroll: bool
     prefix: str
     gradient: bool
     gradient_two_stage: bool

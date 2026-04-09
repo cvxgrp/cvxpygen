@@ -1,14 +1,6 @@
 """
-Copyright 2022 Maximilian Schaller
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-    http://www.apache.org/licenses/LICENSE-2.0
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+Copyright 2022-2026 Maximilian Schaller
+Licensed under the Apache License, Version 2.0
 """
 
 import numpy as np
@@ -206,22 +198,6 @@ def replace_inf(v):
     return v
 
 
-def zeros(n, dtype=float):
-    """
-    Return zero vector of length n
-    """
-
-    return np.zeros(n, dtype=dtype)
-
-
-def ones(n, dtype=float):
-    """
-    Return ones vector of length n
-    """
-
-    return np.ones(n, dtype=dtype)
-
-
 def param_is_empty(param):
     """
     Check if parameter is empty
@@ -287,43 +263,6 @@ def write_problem_summary(name_to_shape, name_to_size):
             shape_str = f'{sh[0]} by {sh[1]} ({name_to_size[n]})'
         string += f'      <tr>\n        <td><code>{n}</code></td>\n        <td>{shape_str}</td>\n      </tr>\n'
     return string
-
-
-def write_canonicalize_explicit(f, p_id, s, mapping, user_p_col_to_name_usp, user_p_name_to_size_usp, prefix):
-    """
-    Write function to compute canonical parameter value
-    """
-
-    sign_to_str = {1: '', -1: '-'}
-
-    for row in range(len(mapping.indptr) - 1):
-        expr = ''
-        expr_is_const = True
-        data = mapping.data[mapping.indptr[row]:mapping.indptr[row + 1]]
-        columns = mapping.indices[mapping.indptr[row]:mapping.indptr[row + 1]]
-        for (datum, col) in zip(data, columns):
-            ex = '(%.20f)+' % datum
-            for user_p_col, user_name in user_p_col_to_name_usp.items():
-                if user_p_col + user_p_name_to_size_usp[user_name] > col:
-                    expr_is_const = False
-                    if user_p_name_to_size_usp[user_name] == 1:
-                        if abs(datum) == 1:
-                            ex = f'({sign_to_str[datum]}{prefix}CPG_Params.{user_name})+'
-                        else:
-                            ex = f'(%.20f*{prefix}CPG_Params.{user_name})+' % datum
-                    else:
-                        if abs(datum) == 1:
-                            ex = f'({sign_to_str[datum]}{prefix}CPG_Params.{user_name}[%d])+' % (col - user_p_col)
-                        else:
-                            ex = f'(%.20f*{prefix}CPG_Params.{user_name}[%d])+' % (datum, col - user_p_col)
-                    break
-            expr += ex
-        expr = expr[:-1]
-        if data.size > 0 and not expr_is_const:
-            if p_id == 'd':
-                f.write(f'  {prefix}Canon_Params.d = {expr};\n')
-            else:
-                f.write(f'  {prefix}Canon_Params.{p_id}{s}[%d] = {expr};\n' % row)
 
 
 def write_canonicalize(f, canon_name, s, mapping, prefix, prefix_params=None):
@@ -533,36 +472,18 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
         f.write('#include "cpg_gradient.h"\n')
         f.write('#include "cpg_gradient_workspace.h"\n')
 
-    if full and configuration.unroll:
-        f.write('\n// User-defined parameters\n')
-        user_casts = []
-        user_values = []
-        names = list(parameter_info.writable.keys())
-        for name in names:
-            value = parameter_info.writable[name]
-            if is_mathematical_scalar(value):
-                user_casts.append('')
-                user_values.append('%.20f' % value)
-            else:
-                write_vec_def(f, value, f'{prefix}cpg_{name}', 'cpg_float')
-                f.write('\n')
-                user_casts.append('(cpg_float *) ')
-                user_values.append(f'&{prefix}cpg_{name}')
-        f.write('// Struct containing all user-defined parameters\n')
-        write_struct_def(f, names, user_casts, user_values, f'{prefix}CPG_Params', 'CPG_Params_t')
-        f.write('\n')
-    else:
-        if full:
-            f.write('\n// Vector containing flattened user-defined parameters\n')
-            write_vec_def(f, parameter_info.flat_usp, f'{prefix}cpg_params_vec', 'cpg_float')
-            if configuration.explicit:
-                write_vec_def(f, parameter_info.lower, f'{prefix}cpg_params_vec_lower', 'cpg_float')
-                write_vec_def(f, parameter_info.upper, f'{prefix}cpg_params_vec_upper', 'cpg_float')
-        f.write('\n// Sparse mappings from user-defined to canonical parameters\n')
-        for p_id, mapping in parameter_canon.p_id_to_mapping.items():
-            if parameter_canon.p_id_to_changes[p_id]:
-                write_mat_def(f, mapping, f'{prefix}canon_{p_id}_map')
-                f.write('\n')
+    if full:
+        f.write('\n// Vector containing flattened user-defined parameters\n')
+        write_vec_def(f, parameter_info.flat_usp, f'{prefix}cpg_params_vec', 'cpg_float')
+        if configuration.explicit:
+            write_vec_def(f, parameter_info.lower, f'{prefix}cpg_params_vec_lower', 'cpg_float')
+            write_vec_def(f, parameter_info.upper, f'{prefix}cpg_params_vec_upper', 'cpg_float')
+    
+    f.write('\n// Sparse mappings from user-defined to canonical parameters\n')
+    for p_id, mapping in parameter_canon.p_id_to_mapping.items():
+        if parameter_canon.p_id_to_changes[p_id]:
+            write_mat_def(f, mapping, f'{prefix}canon_{p_id}_map')
+            f.write('\n')
 
     p_ids = list(parameter_canon.p.keys())
 
@@ -638,124 +559,126 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
             f.write(f'.{p_id} = {"0" if full else "1"},\n')
         f.write('};\n\n')
 
-    if full:
-        prim_cast = []
-        if any(variable_info.name_to_sym) or not solver_interface.sol_statically_allocated:
-            f.write('// User-defined variables\n')
-        for name, value in variable_info.name_to_init.items():
-            if is_mathematical_scalar(value):
-                prim_cast.append('')
-            else:
-                prim_cast.append('(cpg_float *) ')
-                if variable_info.name_to_sym[name] or not solver_interface.sol_statically_allocated:
-                    write_vec_def(f, value.flatten(order='F'), prefix + name, 'cpg_float')
-                    f.write('\n')
+    if not full:
+        return
+    
+    prim_cast = []
+    if any(variable_info.name_to_sym) or not solver_interface.sol_statically_allocated:
+        f.write('// User-defined variables\n')
+    for name, value in variable_info.name_to_init.items():
+        if is_mathematical_scalar(value):
+            prim_cast.append('')
+        else:
+            prim_cast.append('(cpg_float *) ')
+            if variable_info.name_to_sym[name] or not solver_interface.sol_statically_allocated:
+                write_vec_def(f, value.flatten(order='F'), prefix + name, 'cpg_float')
+                f.write('\n')
 
-        result_prefix = prefix if not solver_interface.ws_statically_allocated_in_solver_code else ''
+    result_prefix = prefix if not solver_interface.ws_statically_allocated_in_solver_code else ''
 
-        f.write('// Struct containing primal solution\n')
-        CPG_Prim_fields = list(variable_info.name_to_init.keys())
-        CPG_Prim_values = []
-        for name, var in variable_info.name_to_init.items():
-            offset = variable_info.name_to_offset[name]
-            if is_mathematical_scalar(var):
-                CPG_Prim_values.append('0')
+    f.write('// Struct containing primal solution\n')
+    CPG_Prim_fields = list(variable_info.name_to_init.keys())
+    CPG_Prim_values = []
+    for name, var in variable_info.name_to_init.items():
+        offset = variable_info.name_to_offset[name]
+        if is_mathematical_scalar(var):
+            CPG_Prim_values.append('0')
+        else:
+            if variable_info.name_to_sym[name] or not solver_interface.sol_statically_allocated:
+                CPG_Prim_values.append('&' + prefix + name)
             else:
-                if variable_info.name_to_sym[name] or not solver_interface.sol_statically_allocated:
-                    CPG_Prim_values.append('&' + prefix + name)
+                CPG_Prim_values.append(f'&{result_prefix}{solver_interface.ws_ptrs.primal_solution} + {offset}')
+    write_struct_def(f, CPG_Prim_fields, prim_cast, CPG_Prim_values, f'{prefix}CPG_Prim', 'CPG_Prim_t')
+
+    if configuration.explicit != 1:
+        if len(dual_variable_info.name_to_init) > 0:
+            dual_cast = []
+            if not solver_interface.sol_statically_allocated:
+                f.write('\n// Dual variables associated with user-defined constraints\n')
+            for name, value in dual_variable_info.name_to_init.items():
+                if is_mathematical_scalar(value):
+                    dual_cast.append('')
                 else:
-                    CPG_Prim_values.append(f'&{result_prefix}{solver_interface.ws_ptrs.primal_solution} + {offset}')
-        write_struct_def(f, CPG_Prim_fields, prim_cast, CPG_Prim_values, f'{prefix}CPG_Prim', 'CPG_Prim_t')
+                    dual_cast.append('(cpg_float *) ')
+                    if not solver_interface.sol_statically_allocated:
+                        write_vec_def(f, value, prefix + name, 'cpg_float')
+                        f.write('\n')
 
-        if configuration.explicit != 1:
-            if len(dual_variable_info.name_to_init) > 0:
-                dual_cast = []
-                if not solver_interface.sol_statically_allocated:
-                    f.write('\n// Dual variables associated with user-defined constraints\n')
-                for name, value in dual_variable_info.name_to_init.items():
-                    if is_mathematical_scalar(value):
-                        dual_cast.append('')
+            f.write('// Struct containing dual solution\n')
+            CPG_Dual_fields = dual_variable_info.name_to_init.keys()
+            CPG_Dual_values = []
+            for name, var in dual_variable_info.name_to_init.items():
+                vec = dual_variable_info.name_to_vec[name]
+                offset = dual_variable_info.name_to_offset[name]
+                if is_mathematical_scalar(var):
+                    CPG_Dual_values.append('0')
+                else:
+                    if not solver_interface.sol_statically_allocated:
+                        CPG_Dual_values.append('&' + prefix + name)
                     else:
-                        dual_cast.append('(cpg_float *) ')
-                        if not solver_interface.sol_statically_allocated:
-                            write_vec_def(f, value, prefix + name, 'cpg_float')
-                            f.write('\n')
+                        CPG_Dual_values.append(f'&{result_prefix}{solver_interface.ws_ptrs.dual_solution.format(dual_var_name=vec)} + {offset}')
+            write_struct_def(f, CPG_Dual_fields, dual_cast, CPG_Dual_values, f'{prefix}CPG_Dual', 'CPG_Dual_t')
 
-                f.write('// Struct containing dual solution\n')
-                CPG_Dual_fields = dual_variable_info.name_to_init.keys()
-                CPG_Dual_values = []
-                for name, var in dual_variable_info.name_to_init.items():
-                    vec = dual_variable_info.name_to_vec[name]
-                    offset = dual_variable_info.name_to_offset[name]
-                    if is_mathematical_scalar(var):
-                        CPG_Dual_values.append('0')
-                    else:
-                        if not solver_interface.sol_statically_allocated:
-                            CPG_Dual_values.append('&' + prefix + name)
-                        else:
-                            CPG_Dual_values.append(f'&{result_prefix}{solver_interface.ws_ptrs.dual_solution.format(dual_var_name=vec)} + {offset}')
-                write_struct_def(f, CPG_Dual_fields, dual_cast, CPG_Dual_values, f'{prefix}CPG_Dual', 'CPG_Dual_t')
+    if not configuration.explicit:
+        f.write('\n// Struct containing solver info\n')
+        CPG_Info_fields = ['obj_val', 'iter', 'status', 'pri_res', 'dua_res']
+        CPG_Info_values = ['0', '0', ('0' if solver_interface.status_is_int else '"unknown"'), '0', '0']
+        info_cast = ['', '', '', '', '']
+        write_struct_def(f, CPG_Info_fields, info_cast, CPG_Info_values, f'{prefix}CPG_Info', 'CPG_Info_t')
 
-        if not configuration.explicit:
-            f.write('\n// Struct containing solver info\n')
-            CPG_Info_fields = ['obj_val', 'iter', 'status', 'pri_res', 'dua_res']
-            CPG_Info_values = ['0', '0', ('0' if solver_interface.status_is_int else '"unknown"'), '0', '0']
-            info_cast = ['', '', '', '', '']
-            write_struct_def(f, CPG_Info_fields, info_cast, CPG_Info_values, f'{prefix}CPG_Info', 'CPG_Info_t')
-
-        f.write('\n// Struct containing solution and info\n')
-        if configuration.explicit == 1:
+    f.write('\n// Struct containing solution and info\n')
+    if configuration.explicit == 1:
+        CPG_Result_fields = ['prim']
+        result_cast = ['']
+        CPG_Result_values = [f'&{prefix}CPG_Prim']
+    elif configuration.explicit == 2:
+        if len(dual_variable_info.name_to_init) > 0:
+            CPG_Result_fields = ['prim', 'dual']
+            result_cast = ['', '']
+            CPG_Result_values = [f'&{prefix}CPG_Prim', f'&{prefix}CPG_Dual']
+        else:
             CPG_Result_fields = ['prim']
             result_cast = ['']
             CPG_Result_values = [f'&{prefix}CPG_Prim']
-        elif configuration.explicit == 2:
-            if len(dual_variable_info.name_to_init) > 0:
-                CPG_Result_fields = ['prim', 'dual']
-                result_cast = ['', '']
-                CPG_Result_values = [f'&{prefix}CPG_Prim', f'&{prefix}CPG_Dual']
-            else:
-                CPG_Result_fields = ['prim']
-                result_cast = ['']
-                CPG_Result_values = [f'&{prefix}CPG_Prim']
+    else:
+        if len(dual_variable_info.name_to_init) > 0:
+            CPG_Result_fields = ['prim', 'dual', 'info']
+            result_cast = ['', '', '']
+            CPG_Result_values = [f'&{prefix}CPG_Prim', f'&{prefix}CPG_Dual',
+                                f'&{prefix}CPG_Info']
         else:
-            if len(dual_variable_info.name_to_init) > 0:
-                CPG_Result_fields = ['prim', 'dual', 'info']
-                result_cast = ['', '', '']
-                CPG_Result_values = [f'&{prefix}CPG_Prim', f'&{prefix}CPG_Dual',
-                                    f'&{prefix}CPG_Info']
-            else:
-                CPG_Result_fields = ['prim', 'info']
-                result_cast = ['', '']
-                CPG_Result_values = [f'&{prefix}CPG_Prim', f'&{prefix}CPG_Info']
-        write_struct_def(f, CPG_Result_fields, result_cast, CPG_Result_values, f'{prefix}CPG_Result', 'CPG_Result_t')
+            CPG_Result_fields = ['prim', 'info']
+            result_cast = ['', '']
+            CPG_Result_values = [f'&{prefix}CPG_Prim', f'&{prefix}CPG_Info']
+    write_struct_def(f, CPG_Result_fields, result_cast, CPG_Result_values, f'{prefix}CPG_Result', 'CPG_Result_t')
 
-        if not configuration.explicit:  # TODO: explicit case
-            if solver_interface.stgs_requires_extra_struct_type:
-                f.write('\n// Struct containing solver settings\n')
-                f.write(f'Canon_Settings_t {prefix}Canon_Settings = {{\n')
-                for name, default in solver_interface.stgs_names_to_default.items():
-                    f.write(f'.{name} = {default},\n')
-                f.write('};\n')
+    if not configuration.explicit:  # TODO: explicit case
+        if solver_interface.stgs_requires_extra_struct_type:
+            f.write('\n// Struct containing solver settings\n')
+            f.write(f'Canon_Settings_t {prefix}Canon_Settings = {{\n')
+            for name, default in solver_interface.stgs_names_to_default.items():
+                f.write(f'.{name} = {default},\n')
+            f.write('};\n')
 
-        if not solver_interface.ws_statically_allocated_in_solver_code:
-            solver_interface.define_workspace(f, prefix, parameter_canon)
-            
-        if configuration.gradient:
-            
-            f.write('\n// Derivative workspace\n')
-            write_vec_def(f, zeros(len(parameter_info.flat_usp)), f'{prefix}cpg_dp', 'cpg_float')
-            
-            delta_cast = []
-            f.write('// User-defined parameter deltas\n')
-            for col, name in parameter_info.col_to_name_usp.items():
-                delta_cast.append('(cpg_float *) ')
-            
-            f.write('\n// Struct containing parameter deltas\n')
-            CPG_Delta_fields = list(parameter_info.col_to_name_usp.values())
-            CPG_Delta_values = []
-            for col, name in parameter_info.col_to_name_usp.items():
-                CPG_Delta_values.append(f'&{prefix}cpg_dp + {col}')
-            write_struct_def(f, CPG_Delta_fields, delta_cast, CPG_Delta_values, f'{prefix}CPG_Delta', 'CPG_Delta_t')
+    if not solver_interface.ws_statically_allocated_in_solver_code:
+        solver_interface.define_workspace(f, prefix, parameter_canon)
+        
+    if configuration.gradient:
+        
+        f.write('\n// Derivative workspace\n')
+        write_vec_def(f, np.zeros(len(parameter_info.flat_usp)), f'{prefix}cpg_dp', 'cpg_float')
+        
+        delta_cast = []
+        f.write('// User-defined parameter deltas\n')
+        for col, name in parameter_info.col_to_name_usp.items():
+            delta_cast.append('(cpg_float *) ')
+        
+        f.write('\n// Struct containing parameter deltas\n')
+        CPG_Delta_fields = list(parameter_info.col_to_name_usp.values())
+        CPG_Delta_values = []
+        for col, name in parameter_info.col_to_name_usp.items():
+            CPG_Delta_values.append(f'&{prefix}cpg_dp + {col}')
+        write_struct_def(f, CPG_Delta_fields, delta_cast, CPG_Delta_values, f'{prefix}CPG_Delta', 'CPG_Delta_t')
 
 
 def write_workspace_prot(f, configuration, variable_info, dual_variable_info, parameter_info, parameter_canon, solver_interface, full=True):
@@ -763,18 +686,12 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
     Write workspace initialization to file
     """
     
-    if full:
-        prefix = configuration.prefix
-    else:
-        prefix = f'gradient_{configuration.prefix}'
+    prefix = configuration.prefix if full else f'gradient_{configuration.prefix}'
 
     write_description(f, 'c', 'Type definitions and variable declarations')
     if full:
-        if configuration.explicit:
-            f.write('#include "pdaqp.h"\n')
-        else:
-            for header_file in solver_interface.header_files:
-                f.write(f'#include {header_file}\n')
+        for header_file in solver_interface.header_files:
+            f.write(f'#include {header_file}\n')
     else:
         f.write('#include "cpg_workspace.h"\n\n')
 
@@ -797,18 +714,6 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
         f.write('  cpg_float    *x;\n')
         f.write('  cpg_int      nnz;\n')
         f.write('} cpg_csc;\n\n')
-
-        if configuration.unroll:
-            f.write('// User-defined parameters\n')
-            f.write('typedef struct {\n')
-            # single user parameters
-            for name, size in parameter_info.name_to_size_usp.items():
-                if size == 1:
-                    s = ''
-                else:
-                    s = '*'
-                f.write(f'  cpg_float    {(s+name+";").ljust(9)}   // Your parameter {name}\n')
-            f.write('} CPG_Params_t;\n\n')
 
     f.write('// Canonical parameters\n')
     f.write('typedef struct {\n')
@@ -886,25 +791,16 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
 
     if full:
         f.write('#endif // ifndef CPG_TYPES_H\n')
-
-    if configuration.unroll and full:
-        f.write('\n// User-defined parameters\n')
-        for name, value in parameter_info.writable.items():
-            if not is_mathematical_scalar(value):
-                write_vec_prot(f, value, f'{prefix}cpg_{name}', 'cpg_float')
-        f.write('\n// Struct containing all user-defined parameters\n')
-        write_struct_prot(f, f'{prefix}CPG_Params', 'CPG_Params_t')
-    else:
-        if full:
-            f.write('\n// Vector containing flattened user-defined parameters\n')
-            write_vec_prot(f, parameter_info.flat_usp, f'{prefix}cpg_params_vec', 'cpg_float')
-            if configuration.explicit:
-                write_vec_prot(f, parameter_info.lower, f'{prefix}cpg_params_vec_lower', 'cpg_float')
-                write_vec_prot(f, parameter_info.upper, f'{prefix}cpg_params_vec_upper', 'cpg_float')
-        f.write('\n// Sparse mappings from user-defined to canonical parameters\n')
-        for p_id, mapping in parameter_canon.p_id_to_mapping.items():
-            if parameter_canon.p_id_to_changes[p_id]:
-                write_mat_prot(f, mapping, f'{prefix}canon_{p_id}_map')
+        f.write('\n// Vector containing flattened user-defined parameters\n')
+        write_vec_prot(f, parameter_info.flat_usp, f'{prefix}cpg_params_vec', 'cpg_float')
+        if configuration.explicit:
+            write_vec_prot(f, parameter_info.lower, f'{prefix}cpg_params_vec_lower', 'cpg_float')
+            write_vec_prot(f, parameter_info.upper, f'{prefix}cpg_params_vec_upper', 'cpg_float')
+    
+    f.write('\n// Sparse mappings from user-defined to canonical parameters\n')
+    for p_id, mapping in parameter_canon.p_id_to_mapping.items():
+        if parameter_canon.p_id_to_changes[p_id]:
+            write_mat_prot(f, mapping, f'{prefix}canon_{p_id}_map')
 
     f.write('\n// Canonical parameters\n')
     for p_id, p in parameter_canon.p.items():
@@ -972,7 +868,7 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
         if configuration.gradient:
             
             f.write('\n// Derivative workspace\n')
-            write_vec_prot(f, zeros(len(parameter_info.flat_usp)), f'{prefix}cpg_dp', 'cpg_float')
+            write_vec_prot(f, np.zeros(len(parameter_info.flat_usp)), f'{prefix}cpg_dp', 'cpg_float')
             
             f.write('\n// Struct containing parameter deltas\n')
             write_struct_prot(f, f'{prefix}CPG_Delta', 'CPG_Delta_t')
@@ -991,66 +887,44 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
         f.write('#include "cpg_gradient_workspace.h"\n')
     f.write('\n')
 
-    if not configuration.unroll:
-        f.write('static cpg_int i;\n')
-        f.write('static cpg_int j;\n')
-
-    if configuration.unroll and solver_interface.inmemory_preconditioning:
-        f.write('static cpg_int i;\n')
+    f.write('static cpg_int i;\n')
+    f.write('static cpg_int j;\n')
         
     if configuration.explicit:
         f.write('static cpg_float obj_val;\n')
 
     f.write('\n// Update user-defined parameters\n')
-    if configuration.unroll:
-        for user_p_name, Canon_outdated_names in parameter_canon.user_p_name_to_canon_outdated.items():
-            if parameter_info.name_to_size_usp[user_p_name] == 1:
-                f.write(f'void {configuration.prefix}cpg_update_{user_p_name}(cpg_float val){{\n')
-                f.write(f'  {configuration.prefix}CPG_Params.{user_p_name} = val;\n')
-            else:
-                f.write(f'void {configuration.prefix}cpg_update_{user_p_name}(cpg_int idx, cpg_float val){{\n')
-                f.write(f'  {configuration.prefix}CPG_Params.{user_p_name}[idx] = val;\n')
-            for Canon_outdated_name in Canon_outdated_names:
-                f.write(f'  {configuration.prefix}Canon_Outdated.{Canon_outdated_name} = 1;\n')
-                if configuration.gradient and not configuration.gradient_two_stage and Canon_outdated_name.isupper():
-                    f.write(f'  {configuration.prefix}Canon_Outdated_Grad.{Canon_outdated_name} = 1;\n')
-            if configuration.gradient_two_stage:
-                Canon_outdated_names_gradient = parameter_canon_gradient.user_p_name_to_canon_outdated[user_p_name]
-                for Canon_outdated_name in Canon_outdated_names_gradient:
-                    f.write(f'  gradient_{configuration.prefix}Canon_Outdated_Grad.{Canon_outdated_name} = 1;\n')
-            f.write('}\n\n')
-    else:
-        for base_col, name in parameter_info.col_to_name_usp.items():
-            Canon_outdated_names = parameter_canon.user_p_name_to_canon_outdated[name]
-            if parameter_info.name_to_size_usp[name] == 1:
-                f.write(f'void {configuration.prefix}cpg_update_{name}(cpg_float val){{\n')
-                if configuration.explicit:
-                    f.write(f'  if (val < {configuration.prefix}cpg_params_vec_lower[{base_col}]){{\n')
-                    f.write(f'    val = {configuration.prefix}cpg_params_vec_lower[{base_col}];\n')
-                    f.write('  }\n')
-                    f.write(f'  if (val > {configuration.prefix}cpg_params_vec_upper[{base_col}]){{\n')
-                    f.write(f'    val = {configuration.prefix}cpg_params_vec_upper[{base_col}];\n')
-                    f.write('  }\n')
-                f.write(f'  {configuration.prefix}cpg_params_vec[{base_col}] = val;\n')
-            else:
-                f.write(f'void {configuration.prefix}cpg_update_{name}(cpg_int idx, cpg_float val){{\n')
-                if configuration.explicit:
-                    f.write(f'  if (val < {configuration.prefix}cpg_params_vec_lower[idx+{base_col}]){{\n')
-                    f.write(f'    val = {configuration.prefix}cpg_params_vec_lower[idx+{base_col}];\n')
-                    f.write('  }\n')
-                    f.write(f'  if (val > {configuration.prefix}cpg_params_vec_upper[idx+{base_col}]){{\n')
-                    f.write(f'    val = {configuration.prefix}cpg_params_vec_upper[idx+{base_col}];\n')
-                    f.write('  }\n')
-                f.write(f'  {configuration.prefix}cpg_params_vec[idx+{base_col}] = val;\n')
-            for Canon_outdated_name in Canon_outdated_names:
-                f.write(f'  {configuration.prefix}Canon_Outdated.{Canon_outdated_name} = 1;\n')
-                if configuration.gradient and not configuration.gradient_two_stage and Canon_outdated_name.isupper():
-                    f.write(f'  {configuration.prefix}Canon_Outdated_Grad.{Canon_outdated_name} = 1;\n')
-            if configuration.gradient_two_stage:
-                Canon_outdated_names_gradient = parameter_canon_gradient.user_p_name_to_canon_outdated[name]
-                for Canon_outdated_name in Canon_outdated_names_gradient:
-                    f.write(f'  gradient_{configuration.prefix}Canon_Outdated_Grad.{Canon_outdated_name} = 1;\n')
-            f.write('}\n\n')
+    for base_col, name in parameter_info.col_to_name_usp.items():
+        Canon_outdated_names = parameter_canon.user_p_name_to_canon_outdated[name]
+        if parameter_info.name_to_size_usp[name] == 1:
+            f.write(f'void {configuration.prefix}cpg_update_{name}(cpg_float val){{\n')
+            if configuration.explicit:
+                f.write(f'  if (val < {configuration.prefix}cpg_params_vec_lower[{base_col}]){{\n')
+                f.write(f'    val = {configuration.prefix}cpg_params_vec_lower[{base_col}];\n')
+                f.write('  }\n')
+                f.write(f'  if (val > {configuration.prefix}cpg_params_vec_upper[{base_col}]){{\n')
+                f.write(f'    val = {configuration.prefix}cpg_params_vec_upper[{base_col}];\n')
+                f.write('  }\n')
+            f.write(f'  {configuration.prefix}cpg_params_vec[{base_col}] = val;\n')
+        else:
+            f.write(f'void {configuration.prefix}cpg_update_{name}(cpg_int idx, cpg_float val){{\n')
+            if configuration.explicit:
+                f.write(f'  if (val < {configuration.prefix}cpg_params_vec_lower[idx+{base_col}]){{\n')
+                f.write(f'    val = {configuration.prefix}cpg_params_vec_lower[idx+{base_col}];\n')
+                f.write('  }\n')
+                f.write(f'  if (val > {configuration.prefix}cpg_params_vec_upper[idx+{base_col}]){{\n')
+                f.write(f'    val = {configuration.prefix}cpg_params_vec_upper[idx+{base_col}];\n')
+                f.write('  }\n')
+            f.write(f'  {configuration.prefix}cpg_params_vec[idx+{base_col}] = val;\n')
+        for Canon_outdated_name in Canon_outdated_names:
+            f.write(f'  {configuration.prefix}Canon_Outdated.{Canon_outdated_name} = 1;\n')
+            if configuration.gradient and not configuration.gradient_two_stage and Canon_outdated_name.isupper():
+                f.write(f'  {configuration.prefix}Canon_Outdated_Grad.{Canon_outdated_name} = 1;\n')
+        if configuration.gradient_two_stage:
+            Canon_outdated_names_gradient = parameter_canon_gradient.user_p_name_to_canon_outdated[name]
+            for Canon_outdated_name in Canon_outdated_names_gradient:
+                f.write(f'  gradient_{configuration.prefix}Canon_Outdated_Grad.{Canon_outdated_name} = 1;\n')
+        f.write('}\n\n')
 
     f.write('// Map user-defined to canonical parameters\n')
 
@@ -1058,11 +932,7 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
         if parameter_canon.p_id_to_changes[p_id]:
             f.write(f'void {configuration.prefix}cpg_canonicalize_{p_id}(){{\n')
             s = '->x' if p_id.isupper() else ''
-            if configuration.unroll:
-                write_canonicalize_explicit(f, p_id, s, mapping, parameter_info.col_to_name_usp,
-                                            parameter_info.name_to_size_usp, configuration.prefix)
-            else:
-                write_canonicalize(f, p_id, s, mapping, configuration.prefix)
+            write_canonicalize(f, p_id, s, mapping, configuration.prefix)
             f.write('}\n\n')
 
     result_prefix = configuration.prefix if not solver_interface.ws_statically_allocated_in_solver_code else ''
@@ -1155,15 +1025,8 @@ def write_solve_def(f, configuration, variable_info, dual_variable_info, paramet
         for name in solver_interface.stgs_names_to_type.keys():
             f.write(f'  {configuration.prefix}{solver_interface.ws_ptrs.settings.format(setting_name=name)} = {configuration.prefix}Canon_Settings.{name};\n')
 
-    if configuration.explicit:
-        f.write(f'  // Solve with PDAQP explicit solver\n')
-        if configuration.explicit == 1:
-            f.write(f'  pdaqp_evaluate({configuration.prefix}cpg_theta, sol_x);\n')
-        elif configuration.explicit == 2:
-            f.write(f'  pdaqp_evaluate({configuration.prefix}cpg_theta, sol_x, sol_y);\n')
-    else:
-        f.write(f'  // Solve with {configuration.solver_name}\n')
-        f.write(f'  {solver_interface.solve_function_call.format(prefix=configuration.prefix)};\n')
+    f.write(f'  // Solve with {configuration.solver_name}\n')
+    f.write(f'  {solver_interface.solve_function_call.format(prefix=configuration.prefix)};\n')
 
     f.write('  // Retrieve results\n')
     if solver_interface.ret_prim_func_exists(variable_info):
@@ -1223,7 +1086,8 @@ def write_solve_prot(f, configuration, variable_info, dual_variable_info, parame
     write_description(f, 'c', 'Function declarations')
     f.write('#include "cpg_workspace.h"\n')
     if configuration.explicit:
-        f.write('#include "pdaqp.h"\n')
+        for header_file in solver_interface.header_files:
+            f.write(f'#include {header_file}\n')
 
     f.write('\n// Update user-defined parameter values\n')
     for name, size in parameter_info.name_to_size_usp.items():
