@@ -153,7 +153,7 @@ class Canonicalizer:
 
         return PrimalVariableInfo(
             var_name_to_offset, var_name_to_indices, var_name_to_size,
-            var_sizes, var_name_to_shape, var_name_to_init,
+            var_name_to_shape, var_name_to_init,
             var_name_to_sym, var_sym,
         )
 
@@ -220,7 +220,7 @@ class Canonicalizer:
 
         return DualVariableInfo(
             d_name_to_offset, d_name_to_indices, d_name_to_size,
-            d_sizes, d_name_to_shape, d_name_to_init, d_name_to_vec,
+            d_name_to_shape, d_name_to_init, d_name_to_vec,
         )
 
     def _get_parameter_info(self, param_prob) -> ParameterInfo:

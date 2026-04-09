@@ -63,7 +63,8 @@ class CCodeWriter:
         """Write all generated files."""
         self._write_workspace()
         self._write_solve()
-        self._write_gradient()
+        if self.configuration.gradient:
+            self._write_gradient()
         self._write_example()
         self._write_python_module()
         self._write_python_solver()
@@ -397,14 +398,117 @@ class CCodeWriter:
         OSQP_Grad_values = ['1'] + [f'{prefix}cpg_osqp_grad_{v}' for v in OSQP_Grad_fiels[1:]]
         utils.write_struct_def(f, OSQP_Grad_fiels, OSQP_Grad_casts, OSQP_Grad_values, f'{prefix}CPG_OSQP_Grad', 'CPG_OSQP_Grad_t')        
 
-    def _write_gradient(self) -> None:
-        if not self.configuration.gradient:
-            return
-
+    def _write_gradient_explicit(self) -> None:
+        """Write gradient C files for explicit mode."""
         cfg = self.configuration
         si = self.solver_interface
+        pc = self._pc
+        pvi = self._pvi
+        pi = self._pi
+
+        n_sol = sum(pvi.name_to_size_reduced.values())
+        n_params = pc.n_param_reduced   # = PDAQP_N_PARAMETER
+        NP = len(pi.flat_usp)
+        prefix = cfg.prefix
+
+        # ── cpg_gradient.h ──────────────────────────────────────────────────
+        def write_prot(f):
+            utils.write_description(f, 'c', 'Function declarations (explicit gradient)')
+            f.write('#include "cpg_workspace.h"\n')
+            f.write('\n// Update user-defined variable deltas\n')
+            for name, size in pvi.name_to_size.items():
+                if size == 1:
+                    f.write(f'extern void {prefix}cpg_update_d{name}(cpg_float val);\n')
+                else:
+                    f.write(f'extern void {prefix}cpg_update_d{name}(cpg_int idx, cpg_float val);\n')
+            f.write('\n// End-to-end gradient\n')
+            f.write(f'extern void {prefix}cpg_gradient();\n')
+
+        utils.write_file(
+            os.path.join(self._include_dir, 'cpg_gradient.h'), 'w', write_prot,
+        )
+
+        # ── cpg_gradient.c ──────────────────────────────────────────────────
+        def write_def(f):
+            utils.write_description(f, 'c', 'Function definitions (explicit gradient)')
+            f.write('#include "cpg_gradient.h"\n')
+            f.write('#include "cpg_workspace.h"\n')
+            f.write('#include "../solver_code/include/pdaqp.h"\n\n')
+            f.write('static cpg_int i, j, kk;\n')
+            f.write(f'static cpg_float cpg_dx[{n_sol}];\n')
+            f.write(f'static cpg_float cpg_dtheta[{n_params}];\n\n')
+
+            # cpg_update_d<name> functions
+            f.write('// Update user-defined variable deltas\n')
+            for name, size in pvi.name_to_size.items():
+                offset = pvi.name_to_offset[name]
+                if size == 1:
+                    f.write(f'void {prefix}cpg_update_d{name}(cpg_float val){{\n')
+                    f.write(f'  cpg_dx[{offset}] = val;\n')
+                else:  
+                    f.write(f'void {prefix}cpg_update_d{name}(cpg_int idx, cpg_float val){{\n')
+                    f.write(f'  cpg_dx[{offset}+idx] = val;\n')
+                f.write('}\n')
+
+            # cpg_gradient()
+            f.write('\n// End-to-end gradient\n')
+            f.write(f'void {prefix}cpg_gradient(){{\n')
+
+            # Canonical diff dtheta = Z_active[:, :n_params].T @ dx
+            f.write('  // Step 1: dtheta = Z_active[:, :n_params].T @ dx\n')
+            f.write('  int base = pdaqp_hp_list[pdaqp_active_region] * (PDAQP_N_PARAMETER+1) * PDAQP_N_SOLUTION;\n')
+            f.write(f'  for(j=0; j<{n_params}; j++){{\n')
+            f.write(f'    cpg_dtheta[j] = 0.0;\n')
+            f.write(f'    for(i=0; i<{n_sol}; i++){{\n')
+            f.write(f'      cpg_dtheta[j] += (cpg_float)pdaqp_feedbacks[base + i*(PDAQP_N_PARAMETER+1) + j] * cpg_dx[i];\n')
+            f.write('    }\n')
+            f.write('  }\n\n')
+
+            #  Un-canonicalize dtheta to dp via canon q/u maps and th_mask
+            f.write('  // Un-canonicalize\n')
+            f.write(f'  for(j=0; j<{NP}; j++) {prefix}cpg_dp[j] = 0.0;\n')
+            n_var = si.n_var
+            k = 0
+            for i, active in enumerate(pc.th_mask):
+                if not active:
+                    continue
+                if i < n_var:
+                    if pc.p_id_to_changes.get('q', False):
+                        f.write(f'  for(kk={prefix}canon_q_map.p[{i}];'
+                                f' kk<{prefix}canon_q_map.p[{i+1}]; kk++){{\n')
+                        f.write(f'    {prefix}cpg_dp[{prefix}canon_q_map.i[kk]]'
+                                f' += {prefix}canon_q_map.x[kk] * cpg_dtheta[{k}];\n')
+                        f.write('  }\n')
+                else:
+                    i_u = i - n_var
+                    if pc.p_id_to_changes.get('u', False):
+                        f.write(f'  for(kk={prefix}canon_u_map.p[{i_u}];'
+                                f' kk<{prefix}canon_u_map.p[{i_u+1}]; kk++){{\n')
+                        f.write(f'    {prefix}cpg_dp[{prefix}canon_u_map.i[kk]]'
+                                f' += {prefix}canon_u_map.x[kk] * cpg_dtheta[{k}];\n')
+                        f.write('  }\n')
+                k += 1
+
+            # reset dx
+            f.write(f'\n  // Reset dx\n')
+            f.write(f'  for(i=0; i<{n_sol}; i++) cpg_dx[i] = 0.0;\n')
+            f.write('}\n\n')
+
+        utils.write_file(
+            os.path.join(self._src_dir, 'cpg_gradient.c'), 'w', write_def,
+        )
+
+    def _write_gradient(self) -> None:
+
+        cfg = self.configuration
+
+        if cfg.explicit:
+            self._write_gradient_explicit()
+            return
+
+        si = self.solver_interface
         gi = self.gradient_interface
-        
+
         cvxpygen_dir = os.path.dirname(os.path.realpath(__file__))
         
         shutil.copy(os.path.join(cvxpygen_dir, 'template', 'grad', 'cpg_osqp_grad_compute.c'),
@@ -421,15 +525,15 @@ class CCodeWriter:
                 ('sol_y', f'{cfg.prefix}sol_y')
             ])
         utils.read_write_file(os.path.join(cfg.code_dir, 'c', 'src', 'cpg_osqp_grad_compute.c'),
-                        lambda x: utils.multiple_replace(x, replacements))
+                              lambda x: utils.multiple_replace(x, replacements))
         for f in ['cpg_osqp_grad_compute.h', 'cpg_osqp_grad_workspace.h']:
             shutil.copy(os.path.join(cvxpygen_dir, 'template', 'grad', f),
                         os.path.join(cfg.code_dir, 'c', 'include'))
         utils.read_write_file(os.path.join(cfg.code_dir, 'c', 'include', 'cpg_osqp_grad_workspace.h'),
-                        lambda x: x.replace('$workspace$', f'{cfg.prefix}CPG_OSQP_Grad'))
+                              lambda x: x.replace('$workspace$', f'{cfg.prefix}CPG_OSQP_Grad'))
         utils.write_file(os.path.join(cfg.code_dir, 'c', 'src', 'cpg_osqp_grad_workspace.c'), 'w', 
-                    self._write_gradient_workspace_def, 
-                    cfg.prefix, self._pc)
+                         self._write_gradient_workspace_def, 
+                         cfg.prefix, self._pc)
 
         if cfg.gradient_two_stage:
             cg = self.canon_gradient

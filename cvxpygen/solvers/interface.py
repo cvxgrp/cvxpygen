@@ -116,11 +116,11 @@ class SolverInterface(ABC):
 
     @staticmethod
     def ret_prim_func_exists(variable_info: PrimalVariableInfo) -> bool:
-        return any(variable_info.sym) or any([s == 1 for s in variable_info.sizes])
+        return any(variable_info.sym) or any([s == 1 for s in variable_info.name_to_size.values()])
 
     @staticmethod
     def ret_dual_func_exists(dual_variable_info: DualVariableInfo) -> bool:
-        return any([s == 1 for s in dual_variable_info.sizes])
+        return any([s == 1 for s in dual_variable_info.name_to_size.values()])
 
     def configure_settings(self) -> None:
         for s in self.stgs:
