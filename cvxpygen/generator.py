@@ -73,10 +73,8 @@ class Generator:
 
         solver, explicit = self._resolve_solver()
 
-        if explicit and self._gradient:
-            raise ValueError('Explicit mode: Gradient computation is not supported!')
-
-        gradient_two_stage = (self._gradient and solver != cp.OSQP)
+        # two-stage gradient (QP solved by conic solver) only applies to non-explicit mode
+        gradient_two_stage = (self._gradient and solver != cp.OSQP and not explicit)
         self.config = self._build_config(code_dir, solver, gradient_two_stage, explicit)
 
         self._setup_folder(code_dir)

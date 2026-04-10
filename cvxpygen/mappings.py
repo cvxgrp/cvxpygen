@@ -72,7 +72,6 @@ class VariableInfo:
     name_to_offset: Dict[str, int]
     name_to_indices: Dict[str, np.ndarray]
     name_to_size: Dict[str, int]
-    sizes: List[int]
     name_to_shape: Dict[str, tuple]
     name_to_init: Dict[str, np.ndarray]
 
@@ -83,6 +82,7 @@ class PrimalVariableInfo(VariableInfo):
     name_to_sym: Dict[str, bool]
     sym: List[bool]
     reduced: bool = False
+    name_to_size_reduced: Dict[str, np.ndarray] = field(default_factory=dict)
 
 
 @dataclass

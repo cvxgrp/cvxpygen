@@ -15,6 +15,7 @@ from pdaqp import MPQP
 from itertools import product
 from cvxpy.utilities import key_utils as ku
 
+from cvxpygen import utils
 from cvxpygen.solvers import SolverInterface, QPCanonMixin
 from cvxpygen.mappings import WorkspacePointerInfo
 
@@ -148,6 +149,8 @@ class PDAQPInterface(QPCanonMixin, SolverInterface):
                 sl = s.get_data()
                 if sl is None:  # Variable => store all
                     names_and_inds.append((v.name(), None))
+                elif len(v.shape) == 1:
+                    names_and_inds.append((v.name(), sl[0]))
                 else:
                     sl = [ku.format_slice(key, sh, len(v.shape)) if not ku.is_special_slice(key) else key
                           for key, sh in zip(sl[0], v.shape)]
@@ -160,11 +163,16 @@ class PDAQPInterface(QPCanonMixin, SolverInterface):
         shift = 0
         out_inds = np.empty(0, dtype=int)
         added_names = []
+        canon.prim_variable_info.name_to_size_reduced = canon.prim_variable_info.name_to_size.copy()
         for name, inds in names_and_inds:
             offset = canon.prim_variable_info.name_to_offset.get(name, None)
             if offset is not None:
-                size = canon.prim_variable_info.name_to_size[name]
-                inds = np.array(inds, dtype='int') if inds else np.arange(size)
+                size_orig = canon.prim_variable_info.name_to_size[name]
+                inds = np.array(inds, dtype='int') if inds else np.arange(size_orig)
+                size = inds.size
+                if size < size_orig:
+                    canon.prim_variable_info.reduced = True
+                canon.prim_variable_info.name_to_size_reduced[name] = size
 
                 out_inds = np.append(out_inds, offset + inds)
 
@@ -172,10 +180,10 @@ class PDAQPInterface(QPCanonMixin, SolverInterface):
                 if size == 1:
                     canon.prim_variable_info.name_to_indices[name] = np.array([shift])
                 else:
-                    canon.prim_variable_info.name_to_indices[name] = np.full(size, -1)
-                    canon.prim_variable_info.name_to_indices[name][inds] = np.arange(0, len(inds))
+                    canon.prim_variable_info.name_to_indices[name] = np.full(size_orig, -1)
+                    canon.prim_variable_info.name_to_indices[name][inds] = np.arange(size)
                 added_names.append(name)
-                shift += len(inds)
+                shift += size
             # TODO: Catch case when variable does not exist
 
         # Remove non-stored variables from canonicalization
@@ -187,7 +195,6 @@ class PDAQPInterface(QPCanonMixin, SolverInterface):
                 del canon.prim_variable_info.name_to_shape[name]
                 del canon.prim_variable_info.name_to_init[name]
                 del canon.prim_variable_info.name_to_sym[name]
-                del canon.prim_variable_info.sizes[i]
                 del canon.prim_variable_info.sym[i]
                 canon.prim_variable_info.reduced = True
 
@@ -206,8 +213,13 @@ class PDAQPInterface(QPCanonMixin, SolverInterface):
         src_dir = os.path.join(solver_code_dir, 'src')
         os.makedirs(include_dir, exist_ok=True)
         os.makedirs(src_dir, exist_ok=True)
-        shutil.move(os.path.join(solver_code_dir, 'pdaqp.c'), os.path.join(src_dir, 'pdaqp.c'))
-        shutil.move(os.path.join(solver_code_dir, 'pdaqp.h'), os.path.join(include_dir, 'pdaqp.h'))
+        h_file = os.path.join(include_dir, 'pdaqp.h')
+        c_file = os.path.join(src_dir, 'pdaqp.c')
+        shutil.move(os.path.join(solver_code_dir, 'pdaqp.h'), h_file)
+        shutil.move(os.path.join(solver_code_dir, 'pdaqp.c'), c_file)
+
+        if configuration.gradient:
+            self._patch_pdaqp_for_gradient(h_file, c_file)
 
         # create solver_code_dir/CMakeLists.txt
         with open(os.path.join(solver_code_dir, 'CMakeLists.txt'), 'w') as fl:
@@ -221,6 +233,32 @@ class PDAQPInterface(QPCanonMixin, SolverInterface):
         canon.parameter_canon.n_dual_reduced = len(b)
         canon.parameter_info.lower = lower
         canon.parameter_info.upper = upper
+
+    @staticmethod
+    def _patch_pdaqp_for_gradient(h_file, c_file):
+        """Post-process generated pdaqp.c/h to expose the active critical region index."""
+
+        # header: expose the global and array symbols needed by gradient code
+        utils.read_write_file(h_file, lambda text: text.replace(
+            '#endif // ifndef PDAQP_H',
+            'extern int pdaqp_active_region;\n'
+            'extern c_float_store pdaqp_feedbacks[];\n'
+            'extern c_int pdaqp_hp_list[];\n'
+            '#endif // ifndef PDAQP_H',
+        ))
+        
+        # source: add global and record active region before the feedback evaluation
+        utils.read_write_file(c_file, lambda text: text
+            .replace(
+                'void pdaqp_evaluate(',
+                'int pdaqp_active_region = -1;\nvoid pdaqp_evaluate(',
+            )
+            .replace(
+                '    // Leaf node reached -> evaluate affine function\n',
+                '    // Leaf node reached -> evaluate affine function\n'
+                '    pdaqp_active_region = id;\n',
+            )
+        )
 
     @staticmethod
     def _get_parameter_delta_bounds(problem, canon):
@@ -257,9 +295,6 @@ class PDAQPInterface(QPCanonMixin, SolverInterface):
                 canon.dual_variable_info.name_to_indices.pop(f'd{i}')
                 canon.dual_variable_info.name_to_size.pop(f'd{i}')
                 canon.dual_variable_info.name_to_shape.pop(f'd{i}')
-                canon.dual_variable_info.sizes[i] = -1
-
-        canon.dual_variable_info.sizes = [s for s in canon.dual_variable_info.sizes if s != -1]
 
         # map to Delta (q, u)
         id_to_mapping = parameter_canon.p_id_to_mapping

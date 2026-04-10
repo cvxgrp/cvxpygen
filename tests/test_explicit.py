@@ -2,6 +2,7 @@
 import cvxpy as cp
 import numpy as np
 import scipy.linalg as la
+
 from cvxpygen import cpg
 
 
@@ -206,6 +207,7 @@ def test_control_fp16():
     assert np.allclose(U.value, U_ref, rtol=rtol)
     assert np.allclose(obj.value, obj_ref, rtol=rtol)
 
+
 def test_control_reduced():
 
     np.random.seed(1)
@@ -263,6 +265,7 @@ def test_control_reduced():
     assert np.allclose(X.value[[1,2],:], X_ref[[1,2],:], rtol=rtol)
     assert np.allclose(X.value[[0,3,4,5],:], np.zeros((4,6)), rtol=rtol) # Not stored -> zero
 
+
 def test_stored_vars():
 
     np.random.seed(1)
@@ -307,6 +310,7 @@ def test_stored_vars():
     assert X.value is None
     assert np.allclose(xs.value, xs_ref)
 
+
 def test_dual():
 
     np.random.seed(1)
@@ -346,4 +350,3 @@ def test_dual():
     assert np.allclose(beta.value, beta_ref)
     assert np.allclose(constr[0].dual_value, dual_ref)
     assert np.allclose(obj.value, obj_ref)
-
