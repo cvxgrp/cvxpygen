@@ -77,8 +77,8 @@ class Generator:
         gradient_two_stage = (self._gradient and solver != cp.OSQP and not explicit)
         self.config = self._build_config(code_dir, solver, gradient_two_stage, explicit)
 
-        self._setup_folder(code_dir)
         self._run_canonicalization(problem, solver, gradient_two_stage)
+        self._setup_folder(code_dir)
         self._run_solver_code_generation(problem, code_dir, explicit)
         self._run_code_writing(problem)
 
@@ -90,7 +90,6 @@ class Generator:
     # ── private pipeline stages ───────────────────────────────────────────────
 
     def _setup_folder(self, code_dir: str) -> None:
-        cvxpygen_dir = os.path.dirname(os.path.realpath(__file__))
 
         shutil.rmtree(code_dir, ignore_errors=True)
         os.mkdir(code_dir)
@@ -100,11 +99,6 @@ class Generator:
         os.makedirs(os.path.join(code_dir, 'c', 'build'))
         os.makedirs(os.path.join(code_dir, 'cpp', 'src'))
         os.makedirs(os.path.join(code_dir, 'cpp', 'include'))
-
-        shutil.copy(os.path.join(cvxpygen_dir, 'template', 'CMakeLists.txt'),
-                    os.path.join(code_dir, 'c'))
-        for file in ['setup.py', 'README.html', '__init__.py']:
-            shutil.copy(os.path.join(cvxpygen_dir, 'template', file), code_dir)
 
     def _run_canonicalization(self, problem: cp.Problem, solver: str, gradient_two_stage: bool) -> None:
         canonicalizer = Canonicalizer(

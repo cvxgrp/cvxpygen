@@ -51,16 +51,17 @@ class CCodeWriter:
         # Directory shortcuts
         c_dir = os.path.join(configuration.code_dir, 'c')
         self._c_dir = c_dir
-        self._cpp_dir = os.path.join(configuration.code_dir, 'cpp')
         self._include_dir = os.path.join(c_dir, 'include')
         self._src_dir = os.path.join(c_dir, 'src')
         self._solver_code_dir = os.path.join(c_dir, 'solver_code')
         self._osqp_code_dir = os.path.join(c_dir, 'osqp_code')
+        self._cpp_dir = os.path.join(configuration.code_dir, 'cpp')
 
     # ── public entry point ────────────────────────────────────────────────────
 
     def write(self) -> None:
         """Write all generated files."""
+        self._write_top_level_files()
         self._write_workspace()
         self._write_solve()
         if self.configuration.gradient:
@@ -69,10 +70,26 @@ class CCodeWriter:
         self._write_python_module()
         self._write_python_solver()
         self._update_cmake()
-        self._update_setup()
         self._update_readme()
 
     # ── private writer methods ────────────────────────────────────────────────
+    
+    def _write_top_level_files(self) -> None:
+        si = self.solver_interface
+        utils.render_template_to_file(
+            'LICENSE.jinja2', self.configuration.code_dir
+        )
+        utils.render_template_to_file(
+            '__init__.py.jinja2', self.configuration.code_dir
+        )
+        utils.render_template_to_file(
+            'CMakeLists.txt.jinja2', self._c_dir,
+            {**utils.cmake_context(self.configuration), **si.cmake_context_extra()}
+        )
+        utils.render_template_to_file(
+            'setup.py.jinja2', self.configuration.code_dir,
+            {**utils.setup_context(), **si.setup_py_context()}
+        )
 
     def _write_workspace(self) -> None:
         cfg = self.configuration
@@ -509,28 +526,17 @@ class CCodeWriter:
         si = self.solver_interface
         gi = self.gradient_interface
 
-        cvxpygen_dir = os.path.dirname(os.path.realpath(__file__))
-        
-        shutil.copy(os.path.join(cvxpygen_dir, 'template', 'grad', 'cpg_osqp_grad_compute.c'),
-                    os.path.join(cfg.code_dir, 'c', 'src'))
-        replacements = [
-            ('$n$', str(si.n_var)),
-            ('$N$', str(si.n_var + si.n_eq + si.n_ineq)),
-            ('$workspace$', f'{cfg.prefix}CPG_OSQP_Grad')
-        ]
-        if cfg.gradient_two_stage:
-            replacements.extend([
-                ('#include "qdldl.h', '#include "cpg_gradient.h"\n#include "qdldl.h'),
-                ('sol_x', f'{cfg.prefix}sol_x'),
-                ('sol_y', f'{cfg.prefix}sol_y')
-            ])
-        utils.read_write_file(os.path.join(cfg.code_dir, 'c', 'src', 'cpg_osqp_grad_compute.c'),
-                              lambda x: utils.multiple_replace(x, replacements))
-        for f in ['cpg_osqp_grad_compute.h', 'cpg_osqp_grad_workspace.h']:
-            shutil.copy(os.path.join(cvxpygen_dir, 'template', 'grad', f),
-                        os.path.join(cfg.code_dir, 'c', 'include'))
-        utils.read_write_file(os.path.join(cfg.code_dir, 'c', 'include', 'cpg_osqp_grad_workspace.h'),
-                              lambda x: x.replace('$workspace$', f'{cfg.prefix}CPG_OSQP_Grad'))
+        utils.render_template_to_file(
+            'cpg_osqp_grad_compute.c.jinja2', self._src_dir,
+            utils.grad_compute_context(cfg, si)
+        )
+        utils.render_template_to_file(
+            'cpg_osqp_grad_compute.h.jinja2', self._include_dir
+        )
+        utils.render_template_to_file(
+            'cpg_osqp_grad_workspace.h.jinja2', self._include_dir,
+            utils.grad_workspace_h_context(cfg)
+        )
         utils.write_file(os.path.join(cfg.code_dir, 'c', 'src', 'cpg_osqp_grad_workspace.c'), 'w', 
                          self._write_gradient_workspace_def, 
                          cfg.prefix, self._pc)
@@ -582,20 +588,18 @@ class CCodeWriter:
             )
 
     def _write_example(self) -> None:
-        utils.write_file(
-            os.path.join(self._src_dir, 'cpg_example.c'), 'w',
-            utils.write_example_def,
-            self.configuration, self._pvi, self._dvi, self._pi,
+        utils.render_template_to_file(
+            'cpg_example.c.jinja2', self._src_dir,
+            utils.example_c_context(self.configuration, self._pvi, self._dvi, self._pi)
         )
 
     def _write_python_module(self) -> None:
         cfg = self.configuration
         si = self.solver_interface
         gi = self.gradient_interface
-        utils.write_file(
-            os.path.join(self._cpp_dir, 'include', 'cpg_module.hpp'), 'w',
-            utils.write_module_prot,
-            cfg, self._pi, self._pvi, self._dvi, si, gi,
+        utils.render_template_to_file(
+            'cpg_module.hpp.jinja2', os.path.join(self._cpp_dir, 'include'),
+            utils.module_hpp_context(cfg, self._pi, self._pvi, self._dvi, si, gi)
         )
         utils.write_file(
             os.path.join(self._cpp_dir, 'src', 'cpg_module.cpp'), 'w',
@@ -604,11 +608,10 @@ class CCodeWriter:
         )
 
     def _write_python_solver(self) -> None:
-        utils.write_file(
-            os.path.join(self.configuration.code_dir, 'cpg_solver.py'), 'w',
-            utils.write_method,
-            self.configuration, self._pvi, self._dvi, self._pi,
-            self.solver_interface, self.gradient_interface,
+        utils.render_template_to_file(
+            'cpg_solver.py.jinja2', self.configuration.code_dir,
+            utils.solver_py_context(self.configuration, self._pvi, self._dvi, self._pi,
+                                    self.solver_interface, self.gradient_interface)
         )
 
     def _update_cmake(self) -> None:
@@ -635,21 +638,9 @@ class CCodeWriter:
                 'osqp', self.gradient_interface,
             )
 
-        utils.read_write_file(
-            os.path.join(self._c_dir, 'CMakeLists.txt'),
-            utils.replace_cmake_data,
-            cfg,
-        )
-
-    def _update_setup(self) -> None:
-        utils.read_write_file(
-            os.path.join(self.configuration.code_dir, 'setup.py'),
-            utils.replace_setup_data,
-        )
-
     def _update_readme(self) -> None:
-        utils.read_write_file(
-            os.path.join(self.configuration.code_dir, 'README.html'),
-            utils.replace_html_data,
-            self.configuration, self._pvi, self._dvi, self._pi, self.solver_interface,
+        utils.render_template_to_file(
+            'README.html.jinja2', self.configuration.code_dir,
+            utils.readme_context(self.configuration, self._pvi, self._dvi, self._pi,
+                                 self.solver_interface)
         )

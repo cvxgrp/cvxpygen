@@ -202,6 +202,35 @@ class SolverInterface(ABC):
     def check_unsupported_cones(cone_dims: "ConeDims") -> None:
         pass
 
+    def cmake_context_extra(self) -> dict:
+        """Solver-specific additions to the top-level c/CMakeLists.txt context.
+
+        Solvers override this to express extra include directories, extra target_link_libraries calls, etc.
+        The solver's own CMakeLists.txt is edited directly in generate_code().
+        """
+        return {
+            'solver_code_cmake_include_dir': '${CMAKE_CURRENT_SOURCE_DIR}/solver_code/include',
+            'extra_cmake_include_dirs': [],
+            'packages': [],
+            'cmake_target_link_libs': [],
+            'cmake_definitions': [],
+        }
+
+    def setup_py_context(self) -> dict:
+        """Context dict merged into setup.py.jinja2 rendering.
+
+        Solvers override this to express solver-specific include directories, extra library names, etc.
+        """
+        return {
+            'solver_code_include_dir': "os.path.join('c', 'solver_code', 'include')",
+            'extra_solver_include_dirs': [],
+            'extra_cpp_include_dirs': [],
+            'extra_lib_names_windows': None,
+            'extra_lib_names_unix': None,
+            'extra_objects': [],
+            'license': 'Apache 2.0',
+        }
+
     @abstractmethod
     def generate_code(self, configuration, code_dir, solver_code_dir, cvxpygen_directory,
                       parameter_canon: ParameterCanon, gradient, prefix) -> None:

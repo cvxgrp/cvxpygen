@@ -133,41 +133,35 @@ class OSQPInterface(QPCanonMixin, SolverInterface):
         # copy license files
         shutil.copyfile(os.path.join(cvxpygen_directory, 'solvers', 'osqp-python', 'LICENSE'),
                         os.path.join(solver_code_dir, 'LICENSE'))
-        shutil.copy(os.path.join(cvxpygen_directory, 'template', 'LICENSE'), code_dir)
 
         # adjust workspace.h
         utils.read_write_file(os.path.join(solver_code_dir, 'workspace.h'),
-                        lambda x: x.replace('extern OSQPSolver solver;',
-                                            'extern OSQPSolver solver;\n'
-                                            + f'  extern OSQPFloat sol_x[{self.n_var}];\n'
-                                            + f'  extern OSQPFloat sol_y[{self.n_eq + self.n_ineq}];'))
+                              lambda x: x.replace('extern OSQPSolver solver;',
+                                        'extern OSQPSolver solver;\n'
+                                        + f'  extern OSQPFloat sol_x[{self.n_var}];\n'
+                                        + f'  extern OSQPFloat sol_y[{self.n_eq + self.n_ineq}];'))
 
         # modify CMakeLists.txt
         utils.read_write_file(os.path.join(solver_code_dir, 'CMakeLists.txt'),
-                        lambda x: utils.cut_from_expr(x, 'add_library').replace('src', '${CMAKE_CURRENT_SOURCE_DIR}/src'))
-        
-        main_folder = os.path.split(solver_code_dir)[-1]
-        
-        # adjust top-level CMakeLists.txt
-        sdir = f'${{CMAKE_CURRENT_SOURCE_DIR}}/{main_folder}'
-        indent = ' ' * 6
-        utils.read_write_file(os.path.join(code_dir, 'c', 'CMakeLists.txt'),
-                        lambda x: x.replace('${CMAKE_CURRENT_SOURCE_DIR}/solver_code/include',
-                                            '${CMAKE_CURRENT_SOURCE_DIR}/solver_code/include\n'
-                                            + indent + sdir + '\n'
-                                            + indent + sdir + '/inc/public\n'
-                                            + indent + sdir + '/inc/private'))
-        
-        # adjust setup.py
-        indent = ' ' * 30
-        utils.read_write_file(os.path.join(code_dir, 'setup.py'),
-                        lambda x: x.replace("os.path.join('cpp', 'include'),",
-                                            "os.path.join('cpp', 'include'),\n" +
-                                            indent + f"os.path.join('c', '{main_folder}'),\n" +
-                                            indent + f"os.path.join('c', '{main_folder}', 'inc', 'public'),\n" + 
-                                            indent + f"os.path.join('c', '{main_folder}', 'inc', 'private'),"))
+                              lambda x: utils.cut_from_expr(x, 'add_library').replace('src', '${CMAKE_CURRENT_SOURCE_DIR}/src'))
 
-        # modify for extra settings
-        if 'verbose' in self.enable_settings:
-            utils.read_write_file(os.path.join(code_dir, 'c', 'CMakeLists.txt'),
-                    lambda x: x.replace('project (cvxpygen)', 'project (cvxpygen)\nadd_definitions(-DOSQP_ENABLE_PRINTING)'))
+    def cmake_context_extra(self) -> dict:
+        sdir = '${CMAKE_CURRENT_SOURCE_DIR}/solver_code'
+        return {
+            **super().cmake_context_extra(),
+            'extra_cmake_include_dirs': [sdir, sdir + '/inc/public', sdir + '/inc/private'],
+            'cmake_definitions': (
+                ['add_definitions(-DOSQP_ENABLE_PRINTING)']
+                if 'verbose' in self.enable_settings else []
+            ),
+        }
+
+    def setup_py_context(self) -> dict:
+        return {
+            **super().setup_py_context(),
+            'extra_cpp_include_dirs': [
+                "os.path.join('c', 'solver_code')",
+                "os.path.join('c', 'solver_code', 'inc', 'public')",
+                "os.path.join('c', 'solver_code', 'inc', 'private')",
+            ],
+        }
