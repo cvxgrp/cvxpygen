@@ -233,18 +233,6 @@ class ClarabelInterface(SolverInterface):
         for fl in files_to_copy:
             shutil.copyfile(os.path.join(cvxpygen_directory, 'solvers', 'Clarabel.cpp', fl),
                             os.path.join(solver_code_dir, fl))
-        shutil.copy(os.path.join(cvxpygen_directory, 'template', 'LICENSE'), code_dir)
-
-        # adjust top-level CMakeLists.txt
-        with open(os.path.join(code_dir, 'c', 'CMakeLists.txt'), 'a') as f:
-            if is_sdp:
-                f.write('\nfind_package(BLAS REQUIRED)')
-                f.write('\nfind_package(LAPACK REQUIRED)')
-                link_libraries = 'libclarabel_c_static ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES}'
-            else:
-                link_libraries = 'libclarabel_c_static'
-            f.write(f'\ntarget_link_libraries(cpg_example PRIVATE {link_libraries})')
-            f.write(f'\ntarget_link_libraries(cpg PRIVATE {link_libraries})\n')
 
         # remove examples target from Clarabel.cpp/CMakeLists.txt and set build type to Release
         replacements = [
@@ -281,19 +269,33 @@ class ClarabelInterface(SolverInterface):
             )
         ]
         utils.read_write_file(os.path.join(code_dir, 'c', 'solver_code', 'rust_wrapper', 'CMakeLists.txt'),
-                        lambda x: utils.multiple_replace(x, replacements))
+                              lambda x: utils.multiple_replace(x, replacements))
 
         # adjust Clarabel
         utils.read_write_file(os.path.join(code_dir, 'c', 'solver_code', 'include', 'Clarabel'),
-                        lambda x: x.replace('cpp/', 'c/'))
+                              lambda x: x.replace('cpp/', 'c/'))
+        
+    def cmake_context_extra(self) -> dict:
+        packages = []
+        cmake_target_link_libs = ['libclarabel_c_static']
+        if len(self.canon_constants['cone_dims_psd']) > 0:  # sdp
+            packages = ['BLAS', 'LAPACK']
+            cmake_target_link_libs.extend(['${BLAS_LIBRARIES}', '${LAPACK_LIBRARIES}'])
+        return {
+            **super().cmake_context_extra(),
+            'packages': packages,
+            'cmake_target_link_libs': cmake_target_link_libs,
+        }
 
-        # adjust setup.py
+    def setup_py_context(self) -> dict:
         release_dir = "'aarch64-apple-darwin/release'" if platform.system() == "Darwin" and platform.machine() == "arm64" else "'release'"
-        utils.read_write_file(os.path.join(code_dir, 'setup.py'),
-                        lambda x: x.replace("extra_objects=[cpg_lib])",
-                                            f"extra_objects=[cpg_lib, os.path.join(cpg_dir, 'solver_code', 'rust_wrapper', 'target', {release_dir}, 'libclarabel_c.a')])"))
+        return {
+            **super().setup_py_context(),
+            'extra_objects': [
+                f"os.path.join(cpg_dir, 'solver_code', 'rust_wrapper', 'target', {release_dir}, 'libclarabel_c.a')",
+            ],
+        }
 
-    
     def declare_workspace(self, f, prefix, parameter_canon) -> None:
         f.write('\n// Clarabel workspace\n')
         f.write(f'extern ClarabelCscMatrix {prefix}P;\n')

@@ -149,11 +149,10 @@ class SCSInterface(SolverInterface):
         for fl in files_to_copy:
             shutil.copyfile(os.path.join(cvxpygen_directory, 'solvers', 'scs', fl),
                             os.path.join(solver_code_dir, fl))
-        shutil.copy(os.path.join(cvxpygen_directory, 'template', 'LICENSE'), code_dir)
 
         # disable BLAS and LAPACK
         utils.read_write_file(os.path.join(code_dir, 'c', 'solver_code', 'scs.mk'),
-                        lambda x: x.replace('USE_LAPACK = 1', 'USE_LAPACK = 0'))
+                              lambda x: x.replace('USE_LAPACK = 1', 'USE_LAPACK = 0'))
 
         # modify CMakeLists.txt
         cmake_replacements = [
@@ -162,22 +161,22 @@ class SCSInterface(SolverInterface):
             (' ${LINSYS}/', ' ${CMAKE_CURRENT_SOURCE_DIR}/${LINSYS}/')
         ]
         utils.read_write_file(os.path.join(solver_code_dir, 'CMakeLists.txt'),
-                        lambda x: utils.multiple_replace(x, cmake_replacements))
+                              lambda x: utils.multiple_replace(x, cmake_replacements))
 
-        # adjust top-level CMakeLists.txt
+    def cmake_context_extra(self) -> dict:
         sdir = '${CMAKE_CURRENT_SOURCE_DIR}/solver_code/'
-        indent = ' ' * 6
-        utils.read_write_file(os.path.join(code_dir, 'c', 'CMakeLists.txt'),
-                        lambda x: x.replace(sdir + 'include',
-                                            sdir + 'include\n' + indent + sdir + 'linsys'))
+        return {
+            **super().cmake_context_extra(),
+            'extra_cmake_include_dirs': [sdir + 'linsys'],
+        }
 
-        # adjust setup.py
-        indent = ' ' * 30
-        utils.read_write_file(os.path.join(code_dir, 'setup.py'),
-                        lambda x: x.replace("os.path.join('c', 'solver_code', 'include'),",
-                                            "os.path.join('c', 'solver_code', 'include'),\n" +
-                                            indent + "os.path.join('c', 'solver_code', 'linsys'),"))
-
+    def setup_py_context(self) -> dict:
+        return {
+            **super().setup_py_context(),
+            'extra_solver_include_dirs': [
+                "os.path.join('c', 'solver_code', 'linsys')",
+            ],
+        }
 
     def declare_workspace(self, f, prefix, parameter_canon) -> None:
         matrices = ['P', 'A'] if parameter_canon.quad_obj else ['A']

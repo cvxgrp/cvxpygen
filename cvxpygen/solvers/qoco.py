@@ -155,26 +155,20 @@ class QOCOGENInterface(SolverInterface):
         
         # Copy LICENSE
         shutil.copyfile(os.path.join(code_dir, 'c', 'solver_code', 'LICENSE'),
-                os.path.join(code_dir, 'LICENSE'))
+                        os.path.join(code_dir, 'LICENSE'))
 
-        # adjust top-level CMakeLists.txt
-        sdir = '${CMAKE_CURRENT_SOURCE_DIR}/solver_code/'
-        cmake_replacements = [
-            (sdir + 'include',
-            sdir)
-        ]
-        utils.read_write_file(os.path.join(code_dir, 'c', 'CMakeLists.txt'),
-                        lambda x: utils.multiple_replace(x, cmake_replacements))
+    def cmake_context_extra(self) -> dict:
+        return {
+            **super().cmake_context_extra(),
+            'solver_code_cmake_include_dir': '${CMAKE_CURRENT_SOURCE_DIR}/solver_code',
+        }
 
-        # adjust setup.py
-        setup_replacements = [
-            ("os.path.join('c', 'solver_code', 'include'),",
-            "os.path.join('c', 'solver_code'),"),
-            ("license='Apache 2.0'", "license='BSD 3-Clause'")
-        ]
-        utils.read_write_file(os.path.join(code_dir, 'setup.py'),
-                        lambda x: utils.multiple_replace(x, setup_replacements))
-
+    def setup_py_context(self) -> dict:
+        return {
+            **super().setup_py_context(),
+            'solver_code_include_dir': "os.path.join('c', 'solver_code')",
+            'license': 'BSD 3-Clause',
+        }
 
     def declare_workspace(self, f, prefix, parameter_canon) -> None:
         if self.canon_constants['nsoc'] > 0:
@@ -385,48 +379,26 @@ class QOCOInterface(SolverInterface):
         shutil.copyfile(os.path.join(cvxpygen_directory, 'solvers', 'qoco', 'LICENSE'),
                         os.path.join(code_dir, 'LICENSE'))
 
-        # adjust top-level CMakeLists.txt
-        indent = ' ' * 6
+    def cmake_context_extra(self) -> dict:
         sdir = '${CMAKE_CURRENT_SOURCE_DIR}/solver_code/'
-        cmake_replacements = [
-            (sdir + 'include',
-            sdir + 'include\n' +
-            indent + sdir + 'lib/amd\n' +
-            indent + sdir + 'lib/qdldl/include')
-        ]
-        utils.read_write_file(os.path.join(code_dir, 'c', 'CMakeLists.txt'),
-                        lambda x: utils.multiple_replace(x, cmake_replacements))
+        return {
+            **super().cmake_context_extra(),
+            'extra_cmake_include_dirs': [sdir + 'lib/amd', sdir + 'lib/qdldl/include'],
+            'cmake_target_link_libs': ['qocostatic'],
+        }
 
-        cmake_replacements = [
-            ('add_executable (cpg_example ${cpg_head} ${cpg_src} ${CMAKE_CURRENT_SOURCE_DIR}/src/cpg_example.c)',
-            'add_executable (cpg_example ${cpg_head} ${cpg_src} ${CMAKE_CURRENT_SOURCE_DIR}/src/cpg_example.c)\n' +
-            'target_link_libraries(cpg_example qocostatic)')
-        ]
-        utils.read_write_file(os.path.join(code_dir, 'c', 'CMakeLists.txt'),
-                        lambda x: utils.multiple_replace(x, cmake_replacements))
-
-        cmake_replacements = [
-            ('add_library (cpg STATIC ${cpg_head} ${cpg_src})',
-            'add_library (cpg STATIC ${cpg_head} ${cpg_src})\n' +
-            'target_link_libraries(cpg qocostatic)')
-        ]
-        utils.read_write_file(os.path.join(code_dir, 'c', 'CMakeLists.txt'),
-                        lambda x: utils.multiple_replace(x, cmake_replacements))
-
-        # adjust setup.py
-        setup_replacements = [
-            ("os.path.join('c', 'solver_code', 'include'),",
-            "os.path.join('c', 'solver_code', 'include'),\n" +
-            5 * indent + "os.path.join('c', 'solver_code', 'lib', 'amd'),\n" +
-            5 * indent + "os.path.join('c', 'solver_code', 'lib', 'qdldl', 'include'),"),
-            ("license='Apache 2.0'", "license='BSD 3-Clause'"),
-            ("lib_name = 'cpg.lib'", "lib_name = os.path.join('cpg.lib')\n" + "    libqoco_name = os.path.join('Release', 'qocostatic.lib')"),
-            ("lib_name = 'libcpg.a'", "lib_name = 'libcpg.a'\n" + "    libqoco_name = 'libqocostatic.a'"),
-            ('extra_objects=[cpg_lib]', "extra_objects=[cpg_lib, os.path.join(cpg_dir, 'build', 'out', libqoco_name)]")
-        ]
-        utils.read_write_file(os.path.join(code_dir, 'setup.py'),
-                        lambda x: utils.multiple_replace(x, setup_replacements))
-
+    def setup_py_context(self) -> dict:
+        return {
+            **super().setup_py_context(),
+            'extra_solver_include_dirs': [
+                "os.path.join('c', 'solver_code', 'lib', 'amd')",
+                "os.path.join('c', 'solver_code', 'lib', 'qdldl', 'include')",
+            ],
+            'license': 'BSD 3-Clause',
+            'extra_lib_names_windows': "libqoco_name = os.path.join('Release', 'qocostatic.lib')",
+            'extra_lib_names_unix': "libqoco_name = 'libqocostatic.a'",
+            'extra_objects': ["os.path.join(cpg_dir, 'build', 'out', libqoco_name)"],
+        }
 
     def declare_workspace(self, f, prefix, parameter_canon) -> None:
         if self.canon_constants['nsoc'] > 0:

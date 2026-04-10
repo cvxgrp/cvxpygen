@@ -154,40 +154,29 @@ class ECOSInterface(SolverInterface):
 
         # adjust print level
         utils.read_write_file(os.path.join(code_dir, 'c', 'solver_code', 'include', 'glblopts.h'),
-                        lambda x: x.replace('#define PRINTLEVEL (2)', '#define PRINTLEVEL (0)'))
+                              lambda x: x.replace('#define PRINTLEVEL (2)', '#define PRINTLEVEL (0)'))
 
-        # adjust top-level CMakeLists.txt
-        indent = ' ' * 6
+    def cmake_context_extra(self) -> dict:
         sdir = '${CMAKE_CURRENT_SOURCE_DIR}/solver_code/'
-        cmake_replacements = [
-            (sdir + 'include',
-            sdir + 'include\n' +
-            indent + sdir + 'external/SuiteSparse_config\n' +
-            indent + sdir + 'external/amd/include\n' +
-            indent + sdir + 'external/ldl/include')
-        ]
-        utils.read_write_file(os.path.join(code_dir, 'c', 'CMakeLists.txt'),
-                        lambda x:  utils.multiple_replace(x, cmake_replacements))
+        return {
+            **super().cmake_context_extra(),
+            'extra_cmake_include_dirs': [
+                sdir + 'external/SuiteSparse_config',
+                sdir + 'external/amd/include',
+                sdir + 'external/ldl/include',
+            ],
+        }
 
-        # remove library target from ECOS CMakeLists.txt
-        with open(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'), 'r') as f:
-            lines = [line for line in f if '# ECOS library' not in line]
-        with open(os.path.join(code_dir, 'c', 'solver_code', 'CMakeLists.txt'), 'w') as f:
-            f.writelines(lines)
-
-        # adjust setup.py
-        indent = ' ' * 30
-        setup_replacements = [
-            ("os.path.join('c', 'solver_code', 'include'),",
-            "os.path.join('c', 'solver_code', 'include'),\n" +
-            indent + "os.path.join('c', 'solver_code', 'external', 'SuiteSparse_config'),\n" +
-            indent + "os.path.join('c', 'solver_code', 'external', 'amd', 'include'),\n" +
-            indent + "os.path.join('c', 'solver_code', 'external', 'ldl', 'include'),"),
-            ("license='Apache 2.0'", "license='GPL 3.0'")
-        ]
-        utils.read_write_file(os.path.join(code_dir, 'setup.py'),
-                        lambda x:  utils.multiple_replace(x, setup_replacements))
-
+    def setup_py_context(self) -> dict:
+        return {
+            **super().setup_py_context(),
+            'extra_solver_include_dirs': [
+                "os.path.join('c', 'solver_code', 'external', 'SuiteSparse_config')",
+                "os.path.join('c', 'solver_code', 'external', 'amd', 'include')",
+                "os.path.join('c', 'solver_code', 'external', 'ldl', 'include')",
+            ],
+            'license': 'GPL 3.0',
+        }
 
     def declare_workspace(self, f, prefix, parameter_canon) -> None:
         if self.canon_constants['n_cones'] > 0:

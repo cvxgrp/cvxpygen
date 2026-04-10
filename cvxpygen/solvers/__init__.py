@@ -1,4 +1,4 @@
-from cvxpygen.solvers.interface import SolverInterface, QPCanonMixin, UNSUPPORTED_ON_WINDOWS
+from cvxpygen.solvers._interface import SolverInterface, QPCanonMixin, UNSUPPORTED_ON_WINDOWS
 from cvxpygen.solvers.osqp import OSQPInterface
 from cvxpygen.solvers.scs import SCSInterface
 from cvxpygen.solvers.ecos import ECOSInterface

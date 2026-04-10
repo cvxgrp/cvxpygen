@@ -3,9 +3,40 @@ Copyright 2022-2026 Maximilian Schaller
 Licensed under the Apache License, Version 2.0
 """
 
+import os
 import numpy as np
 import scipy.sparse as sp
 from datetime import datetime
+
+from jinja2 import Environment, FileSystemLoader, StrictUndefined
+
+_env = None
+
+
+def _get_env() -> Environment:
+    global _env
+    if _env is None:
+        templates_dir = os.path.join(os.path.dirname(__file__), 'templates')
+        _env = Environment(
+            loader=FileSystemLoader(templates_dir),
+            undefined=StrictUndefined,
+            keep_trailing_newline=True,
+            trim_blocks=True,
+            lstrip_blocks=True,
+        )
+    return _env
+
+
+def render_template(template_name: str, context: dict) -> str:
+    """Render a Jinja2 template from the templates/ directory and return the result as a string."""
+    return _get_env().get_template(template_name).render(**context)
+
+
+def render_template_to_file(template_name: str, output_dir: str, context: dict = {}, ) -> None:
+    """Render a Jinja2 template and write the result to output_path."""
+    content = render_template(template_name, context)
+    with open(os.path.join(output_dir, template_name.replace('.jinja2', '')), 'w') as f:
+        f.write(content)
 
 
 def write_file(path, mode, function, *args):
@@ -243,25 +274,6 @@ def ldl(A):
         L[i, i] = 1
     
     return L, D
-
-
-def write_problem_summary(name_to_shape, name_to_size):
-    """
-    Create html code for param / variables table entries
-    """
-
-    string = ''
-    for n, sh in name_to_shape.items():
-        if sh is None:
-            shape_str = str(name_to_size[n])
-        elif sh == ():
-            shape_str = '1'
-        elif len(sh) == 1:
-            shape_str = str(sh[0])
-        else:
-            shape_str = f'{sh[0]} by {sh[1]} ({name_to_size[n]})'
-        string += f'      <tr>\n        <td><code>{n}</code></td>\n        <td>{shape_str}</td>\n      </tr>\n'
-    return string
 
 
 def write_canonicalize(f, canon_name, s, mapping, prefix, prefix_params=None):
@@ -681,7 +693,7 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
     """"
     Write workspace initialization to file
     """
-    
+
     prefix = configuration.prefix if full else f'gradient_{configuration.prefix}'
 
     write_description(f, 'c', 'Type definitions and variable declarations')
@@ -771,7 +783,7 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
         if not configuration.explicit:
             f.write('  CPG_Info_t *info;        // Solver info\n')
         f.write('} CPG_Result_t;\n\n')
-    
+
         f.write('// Parameter deltas\n')
         f.write('typedef struct {\n')
         for name, size in parameter_info.name_to_size_usp.items():
@@ -792,7 +804,7 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
         if configuration.explicit:
             write_vec_prot(f, parameter_info.lower, f'{prefix}cpg_params_vec_lower', 'cpg_float')
             write_vec_prot(f, parameter_info.upper, f'{prefix}cpg_params_vec_upper', 'cpg_float')
-    
+
     f.write('\n// Sparse mappings from user-defined to canonical parameters\n')
     for p_id, mapping in parameter_canon.p_id_to_mapping.items():
         if parameter_canon.p_id_to_changes[p_id]:
@@ -804,7 +816,7 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
             write_param_prot(f, p, p_id, f'{prefix}', '')
             if solver_interface.inmemory_preconditioning:
                 write_param_prot(f, p, p_id, f'{configuration.prefix}', '_conditioning')
-                
+
     if configuration.explicit:
         write_vec_prot(f, np.zeros(parameter_canon.n_param_reduced), f'{prefix}cpg_theta', 'cpg_float')
         if variable_info.reduced:
@@ -860,12 +872,12 @@ def write_workspace_prot(f, configuration, variable_info, dual_variable_info, pa
 
         if not solver_interface.ws_statically_allocated_in_solver_code:
             solver_interface.declare_workspace(f, prefix, parameter_canon)
-        
+
         if configuration.gradient:
-            
+
             f.write('\n// Derivative workspace\n')
             write_vec_prot(f, np.zeros(len(parameter_info.flat_usp)), f'{prefix}cpg_dp', 'cpg_float')
-            
+
             f.write('\n// Struct containing parameter deltas\n')
             write_struct_prot(f, f'{prefix}CPG_Delta', 'CPG_Delta_t')
 
@@ -1127,106 +1139,6 @@ def write_solve_prot(f, configuration, variable_info, dual_variable_info, parame
         f.write(f'extern void {configuration.prefix}cpg_set_solver_default_settings();\n')
         for name, typ in solver_interface.stgs_names_to_type.items():
             f.write(f'extern void {configuration.prefix}cpg_set_solver_{name}({typ} {name}_new);\n')
-
-
-def write_example_def(f, configuration, variable_info, dual_variable_info, parameter_info):
-    """
-    Write main function to file
-    """
-
-    write_description(f, 'c', 'Example program for updating parameters, solving, and inspecting the result')
-    f.write('#include <stdio.h>\n')
-    f.write('#include "cpg_workspace.h"\n')
-    f.write('#include "cpg_solve.h"\n')
-    if configuration.gradient:
-        f.write('#include "cpg_gradient.h"\n')
-    f.write('\nstatic int i;\n\n')
-
-    f.write('int main(int argc, char *argv[]){\n\n')
-
-    f.write('  // Update first entry of every user-defined parameter\n')
-    for name, value in parameter_info.writable.items():
-        if is_mathematical_scalar(value):
-            f.write(f'  {configuration.prefix}cpg_update_{name}(%.20f);\n' % squeeze_scalar(value))
-        else:
-            f.write(f'  {configuration.prefix}cpg_update_{name}(0, %.20f);\n' % value[0])
-
-    f.write('\n  // Solve the problem instance\n')
-    f.write(f'  {configuration.prefix}cpg_solve();\n\n')
-
-    if not configuration.explicit:  # TODO: explicit case
-        f.write('  // Print objective function value\n')
-        f.write(f'  printf("obj = %f\\n", {configuration.prefix}CPG_Result.info->obj_val);\n\n')
-
-    f.write('  // Print primal solution\n')
-
-    for name, size in variable_info.name_to_size.items():
-        if size == 1:
-            f.write(f'  printf("{name} = %f\\n", {configuration.prefix}CPG_Result.prim->{name});\n')
-        else:
-            f.write(f'  for(i=0; i<{size}; i++) {{\n')
-            f.write(f'    printf("{name}[%d] = %f\\n", i, {configuration.prefix}CPG_Result.prim->{name}[i]);\n')
-            f.write(f'  }}\n')
-
-    if configuration.explicit != 1:
-        if len(dual_variable_info.name_to_size) > 0:
-            f.write('\n  // Print dual solution\n')
-        for name, size in dual_variable_info.name_to_size.items():
-            if size == 1:
-                f.write(f'  printf("{name} = %f\\n", {configuration.prefix}CPG_Result.dual->{name});\n')
-            else:
-                f.write(f'  for(i=0; i<{size}; i++) {{\n')
-                f.write(f'    printf("{name}[%d] = %f\\n", i, {configuration.prefix}CPG_Result.dual->{name}[i]);\n')
-                f.write('  }\n')
-            
-    if configuration.gradient:
-        f.write('  // Update first entry of every user-defined solution gradient\n')
-        for name, size in variable_info.name_to_size.items():
-            if size == 1:
-                f.write(f'  {configuration.prefix}cpg_update_d{name}(CPG_Result.prim->{name}[i] / 10.0);\n')
-            else:
-                f.write(f'  {configuration.prefix}cpg_update_d{name}(0, CPG_Result.prim->{name}[0] / 10.0);\n')
-        f.write('\n  // Compute the gradient\n')
-        f.write(f'  {configuration.prefix}cpg_gradient();\n\n')
-        f.write('  // Print gradient\n')
-        for name, size in parameter_info.name_to_size_usp.items():
-            if size == 1:
-                f.write(f'  printf("d{name} = %f\\n", {configuration.prefix}CPG_Delta.{name}[0]);\n')
-            else:
-                f.write(f'  for(i=0; i<{size}; i++) {{\n')
-                f.write(f'    printf("d{name}[%d] = %f\\n", i, {configuration.prefix}CPG_Delta.{name}[i]);\n')
-                f.write('  }\n')
-
-    f.write('\n  return 0;\n\n')
-    f.write('}\n')
-
-
-def replace_cmake_data(cmake_data, configuration):
-    """
-    Add configuration.prefix to directory/file lists in top-level CMakeLists.txt
-    """
-
-    now = datetime.now()
-    cmake_data = cmake_data.replace('%DATE', now.strftime("on %B %d, %Y at %H:%M:%S"))
-    cmake_data = cmake_data.replace('cpg_include', configuration.prefix + 'cpg_include')
-    cmake_data = cmake_data.replace('cpg_head', configuration.prefix + 'cpg_head')
-    if configuration.gradient:
-        addition_head = '${CMAKE_CURRENT_SOURCE_DIR}/include/cpg_gradient.h\n      '
-        addition_src  = '${CMAKE_CURRENT_SOURCE_DIR}/src/cpg_gradient.c\n      '
-        if not configuration.explicit:
-            addition_head += '${CMAKE_CURRENT_SOURCE_DIR}/include/cpg_osqp_grad_compute.h\n      ' \
-                             '${CMAKE_CURRENT_SOURCE_DIR}/include/cpg_osqp_grad_workspace.h\n      '
-            addition_src += '${CMAKE_CURRENT_SOURCE_DIR}/src/cpg_osqp_grad_compute.c\n      ' \
-                            '${CMAKE_CURRENT_SOURCE_DIR}/src/cpg_osqp_grad_workspace.c\n      '
-            if configuration.gradient_two_stage:
-                addition_head += '${CMAKE_CURRENT_SOURCE_DIR}/include/cpg_gradient_workspace.h\n      ' \
-                                 '${osqp_head}\n      '
-                addition_src += '${CMAKE_CURRENT_SOURCE_DIR}/src/cpg_gradient_workspace.c\n      ' \
-                                '${osqp_src}\n      '
-                cmake_data = cmake_data.replace('add_subdirectory (solver_code)', 'add_subdirectory (solver_code)\nadd_subdirectory (osqp_code)')
-        cmake_data = cmake_data.replace('${solver_head}', addition_head + '${solver_head}')
-        cmake_data = cmake_data.replace('${solver_src}', addition_src + '${solver_src}')
-    return cmake_data.replace('cpg_src', configuration.prefix + 'cpg_src')
 
 
 def write_canon_cmake(f, name_parent_scope, solver_interface):
@@ -1500,410 +1412,217 @@ def write_module_def(f, configuration, variable_info, dual_variable_info, parame
     f.write('\n}\n')
 
 
-def write_module_prot(f, configuration, parameter_info, variable_info, dual_variable_info, solver_interface, gradient_interface):
+# ── Jinja2 template context builders ──────────────────────────────────────────
+
+
+def _problem_summary_html(name_to_shape, name_to_size):
+    """Return HTML table rows for a param/variable summary table."""
+    rows = ''
+    for n, sh in name_to_shape.items():
+        if sh is None:
+            shape_str = str(name_to_size[n])
+        elif sh == ():
+            shape_str = '1'
+        elif len(sh) == 1:
+            shape_str = str(sh[0])
+        else:
+            shape_str = f'{sh[0]} by {sh[1]} ({name_to_size[n]})'
+        rows += f'      <tr>\n        <td><code>{n}</code></td>\n        <td>{shape_str}</td>\n      </tr>\n'
+    return rows
+
+
+def cmake_context(configuration):
+    """Base context dict for CMakeLists.txt.jinja2.
+
+    Solver-specific keys (extra_cmake_include_dirs, cmake_target_link_libs,
+    cmake_definitions, solver_code_cmake_include_dir) are supplied by
+    solver_interface.cmake_context_extra() and merged in writer.py.
     """
-    Write c++ file for pybind11 wrapper
-    """
+    return {
+        'date': datetime.now().strftime("on %B %d, %Y at %H:%M:%S"),
+        'prefix': configuration.prefix,
+        'gradient': configuration.gradient,
+        'explicit': configuration.explicit,
+        'gradient_two_stage': configuration.gradient_two_stage,
+    }
 
-    write_description(f, 'cpp', 'Declarations for Python binding with pybind11')
 
-    # cpp struct containing user-defined parameters
-    f.write('// User-defined parameters\n')
-    f.write(f'struct {configuration.prefix}CPG_Params_cpp_t {{\n')
-    for name, size in parameter_info.name_to_size_usp.items():
-        array_decl = f'std::array<double, {size}>' if size > 1 else 'double'
-        f.write(f'    {array_decl} {name};\n')
-    f.write('};\n\n')
+def setup_context():
+    """Context dict for setup.py.jinja2."""
+    return {'date': datetime.now().strftime("on %B %d, %Y at %H:%M:%S")}
 
-    # cpp struct containing update flags for user-defined parameters
-    f.write('// Flags for updated user-defined parameters\n')
-    f.write(f'struct {configuration.prefix}CPG_Updated_cpp_t {{\n')
-    for name in parameter_info.name_to_size_usp.keys():
-        f.write(f'    bool {name};\n')
-    f.write('};\n\n')
 
-    # cpp struct containing primal variables
-    f.write(f'// Primal solution\n')
-    f.write(f'struct {configuration.prefix}CPG_Prim_cpp_t {{\n')
+def readme_context(configuration, variable_info, dual_variable_info, parameter_info, solver_interface):
+    """Context dict for README.html.jinja2."""
+
+    prefix = configuration.prefix
+
+    prim_typedef = '\n// Struct type with primal solution\ntypedef struct {\n'
     for name, size in variable_info.name_to_size.items():
-        if size == 1:
-            f.write(f'    double {name};\n')
-        else:
-            f.write(f'    std::array<double, {size}> {name};\n')
-    f.write('};\n\n')
-    if configuration.explicit != 1:
-        # cpp struct containing dual variables
-        if len(dual_variable_info.name_to_size) > 0:
-            f.write('// Dual solution\n')
-            f.write(f'struct {configuration.prefix}CPG_Dual_cpp_t {{\n')
-            for name, size in dual_variable_info.name_to_size.items():
-                if size == 1:
-                    f.write(f'    double {name};\n')
-                else:
-                    f.write(f'    std::array<double, {size}> {name};\n')
-            f.write('};\n\n')
-        
-        if configuration.gradient and not configuration.explicit:
-            # cpp struct containing gradient standard form solution
-            f.write('// Gradient standard form solution\n')
-            f.write(f'struct {configuration.prefix}CPG_GSol_cpp_t {{\n')
-            f.write(f'    std::array<double, {gradient_interface.n_var}> primal;\n')
-            f.write(f'    std::array<double, {gradient_interface.n_eq + gradient_interface.n_ineq}> dual;\n')
-            f.write('};\n\n')
+        s = '' if size == 1 else '*'
+        prim_typedef += f'  cpg_float    {(s + name + ";").ljust(9)}   // Your variable {name}\n'
+    prim_typedef += '} CPG_Prim_t;\n'
 
-    # cpp struct containing info on results
-    f.write('// Solver information\n')
-    f.write(f'struct {configuration.prefix}CPG_Info_cpp_t {{\n')
-    if not configuration.explicit:  # TODO: explicit case
-        f.write('    double obj_val;\n')
-        f.write('    int iter;\n')
-        f.write(f'    { "int" if solver_interface.status_is_int else "char*"} status;\n')
-        f.write('    double pri_res;\n')
-        f.write('    double dua_res;\n')
-    f.write('    double time;\n')
-    if configuration.gradient:
-        if configuration.explicit:
-            f.write('    int region;\n')
-        else:
-            f.write(f'    std::array<double, {gradient_interface.n_var}> gradient_primal;\n')
-            f.write(f'    std::array<double, {gradient_interface.n_eq + gradient_interface.n_ineq}> gradient_dual;\n')
-    f.write('};\n\n')
-
-    # cpp struct containing objective value and user-defined variables
-    f.write('// Solution and solver information\n')
-    f.write(f'struct {configuration.prefix}CPG_Result_cpp_t {{\n')
-    f.write(f'    {configuration.prefix}CPG_Prim_cpp_t prim;\n')
-    if configuration.explicit != 1:
-        if len(dual_variable_info.name_to_size) > 0:
-            f.write(f'    {configuration.prefix}CPG_Dual_cpp_t dual;\n')
-    f.write(f'    {configuration.prefix}CPG_Info_cpp_t info;\n')
-    f.write('};\n\n')
-
-    # cpp function that maps parameters to results
-    f.write(f'// Main solve function\n')
-    f.write(f'{configuration.prefix}CPG_Result_cpp_t {configuration.prefix}solve_cpp(struct {configuration.prefix}CPG_Updated_cpp_t& CPG_Updated_cpp, '
-            f'struct {configuration.prefix}CPG_Params_cpp_t& CPG_Params_cpp);\n')
-
-    if configuration.gradient:
-        # cpp struct containing primal variable deltas
-        f.write(f'\n// Primal variable deltas\n')
-        f.write(f'struct {configuration.prefix}CPG_VDelta_cpp_t {{\n')
-        for name, size in variable_info.name_to_size.items():
-            if size == 1:
-                f.write(f'    double {name};\n')
-            else:
-                f.write(f'    std::array<double, {size}> {name};\n')
-        f.write('};\n\n')
-        
-        # cpp struct containing parameter deltas
-        if configuration.gradient:
-            f.write(f'// Parameter deltas\n')
-            f.write(f'struct {configuration.prefix}CPG_PDelta_cpp_t {{\n')
-            for name, size in parameter_info.name_to_size_usp.items():
-                if size == 1:
-                    f.write(f'    double {name};\n')
-                else:
-                    f.write(f'    std::array<double, {size}> {name};\n')
-            f.write('};\n\n')
-            
-        # cpp function that maps variable deltas to parameter deltas
-        f.write(f'// Derivative function\n')
-        if configuration.explicit:
-            f.write(f'{configuration.prefix}CPG_PDelta_cpp_t {configuration.prefix}gradient_cpp('
-                    f'struct {configuration.prefix}CPG_VDelta_cpp_t& CPG_VDelta_cpp, int region, bool use_sol);\n')
-        else:
-            f.write(f'{configuration.prefix}CPG_PDelta_cpp_t {configuration.prefix}gradient_cpp('
-                    f'struct {configuration.prefix}CPG_VDelta_cpp_t& CPG_VDelta_cpp, '
-                    f'struct {configuration.prefix}CPG_GSol_cpp_t& CPG_GSol_cpp, bool use_sol);\n')
-
-
-def replace_setup_data(text):
-    """
-    Replace placeholder strings in setup.py file
-    """
-
-    # description
-    now = datetime.now()
-    return text.replace('%DATE', now.strftime("on %B %d, %Y at %H:%M:%S"))
-
-
-def write_method(f, configuration, variable_info, dual_variable_info, parameter_info, solver_interface, gradient_interface):
-    """
-    Write function to be registered as custom CVXPY solve method
-    """
-
-    write_description(f, 'py', 'Custom solve method for CVXPY interface')
-    f.write('import time\n')
-    f.write('import warnings\n')
-    f.write('import numpy as np\n')
-    f.write('from cvxpy.reductions import Solution\n')
-    f.write('from cvxpy.problems.problem import SolverStats\n')
-    f.write('from %s import cpg_module\n\n\n' % configuration.code_dir.replace('/', '.').replace('\\', '.'))
-
-    f.write(f'standard_settings_names = {solver_interface.stgs_translation}\n\n\n')
-    
-    f.write('def squeeze_scalar(val):\n')
-    f.write('    if isinstance(val, np.ndarray):\n')
-    f.write('        val = val.squeeze()\n')
-    f.write('        if val.shape == ():\n')
-    f.write('            return val.item()\n')
-    f.write('    return val\n\n\n')
-    
-    f.write('def get_param_value(param):\n')
-    f.write('    if param.size == 1:\n')
-    f.write('        return squeeze_scalar(param.value)\n')
-    f.write('    elif param.attributes["diag"]:\n')
-    f.write('        return list(np.diag(param.value))\n')
-    f.write('    elif param._has_dim_reducing_attr:\n')
-    f.write('        return list(param.value_sparse.data)\n')
-    f.write('    else:\n')
-    f.write('        return list(param.value.flatten(order="F"))\n\n\n')
-
-    if configuration.gradient:
-        f.write(f'def cpg_solve_and_gradient_info(prob, updated_params=None, **kwargs):\n\n')
+    if dual_variable_info.name_to_size:
+        dual_typedef = '\n// Struct type with dual solution\ntypedef struct {\n'
+        for name, size in dual_variable_info.name_to_size.items():
+            s = '' if size == 1 else '*'
+            dual_typedef += f'  cpg_float    {(s + name + ";").ljust(9)}   // Your dual variable for constraint {name}\n'
+        dual_typedef += '} CPG_Dual_t;\n\n'
     else:
-        f.write(f'def cpg_solve(prob, updated_params=None, **kwargs):\n\n')
-    f.write('    # set flags for updated parameters\n')
-    f.write(f'    upd = cpg_module.{configuration.prefix}cpg_updated()\n')
-    f.write('    if updated_params is None:\n')
-    p_list_string = ', '.join([f'"{name}"' for name in parameter_info.name_to_size_usp.keys()])
-    f.write(f'        updated_params = [{p_list_string}]\n')
-    f.write('    for p in updated_params:\n')
-    f.write('        try:\n')
-    f.write('            setattr(upd, p, True)\n')
-    f.write('        except AttributeError:\n')
-    f.write('            raise AttributeError(f"{p} is not a parameter.")\n\n')
+        dual_typedef = ''
 
-    if not configuration.explicit:  # TODO: explicit case
-        f.write('    # set solver settings\n')
-        f.write('    cpg_module.set_solver_default_settings()\n')
-        f.write('    for key, value in kwargs.items():\n')
-        f.write('        try:\n')
-        f.write('            eval(f\'cpg_module.set_solver_{standard_settings_names.get(key, key)}(value)\')\n')
-        f.write('        except AttributeError:\n')
-        f.write('            raise AttributeError(f\'Solver setting "{key}" not available.\')\n\n')
+    info_typedef = '// Struct type with canonical solver information\ntypedef struct {\n'
+    info_typedef += '  cpg_float    obj_val;    // Objective function value\n'
+    info_typedef += '  cpg_int      iter;       // Number of iterations\n'
+    info_typedef += (
+        '  cpg_int      status;     // Solver status\n'
+        if solver_interface.status_is_int else
+        '  char         *status;    // Solver status\n'
+    )
+    info_typedef += '  cpg_float    pri_res;    // Primal residual\n'
+    info_typedef += '  cpg_float    dua_res;    // Dual residual\n'
+    info_typedef += '} CPG_Info_t;\n'
 
-    f.write('    # set parameter values\n')
-    f.write(f'    par = cpg_module.{configuration.prefix}cpg_params()\n')
-    f.write('    param_dict = prob.param_dict\n')
+    result_typedef = '\n// Struct type with user-defined objective value and solution as fields\ntypedef struct {\n'
+    result_typedef += '  CPG_Prim_t *prim;        // Primal solution\n'
+    if dual_variable_info.name_to_init:
+        result_typedef += '  CPG_Dual_t *dual;        // Dual solution\n'
+    result_typedef += '  CPG_Info_t *info;        // Solver information\n'
+    result_typedef += '} CPG_Result_t;\n'
+
+    update_decls = '\n// Update user-defined parameter values\n'
     for name, size in parameter_info.name_to_size_usp.items():
-        f.write(f'    par.{name} = get_param_value(param_dict["{name}"])\n')
+        if size == 1:
+            update_decls += f'void {prefix}cpg_update_{name}(cpg_float value);\n'
+        else:
+            update_decls += f'void {prefix}cpg_update_{name}(cpg_int idx, cpg_float value);\n'
 
-    f.write('\n    # solve\n')
-    f.write('    t0 = time.time()\n')
-    f.write('    res = cpg_module.solve(upd, par)\n')
-    f.write('    t1 = time.time()\n\n')
+    solve_decls = f'\n// Solve via canonicalization, canonical solve, retrieval\nvoid {prefix}cpg_solve();\n'
 
-    f.write('    # store solution in problem object\n')
-    f.write('    prob._clear_solution()\n')
-    for name, shape in variable_info.name_to_shape.items():
-        f.write(f'    prob.var_dict[\'{name}\'].save_value(np.array(res.cpg_prim.{name}).reshape({shape}, order=\'F\'))\n')
+    settings_decls = (
+        f'\n// Update solver settings\n'
+        f'void {prefix}cpg_set_solver_default_settings();\n'
+        f'void {prefix}cpg_set_solver_&lt;setting_name&gt;(&lt;setting_type&gt; &lt;setting_name&gt;_new);\n'
+        '...\n'
+    )
 
+    settings_list = ', '.join([f'<code>{s}</code>' for s in solver_interface.stgs_names_enabled])
+
+    return {
+        'date': datetime.now().strftime("on %B %d, %Y at %H:%M:%S"),
+        'params_table': _problem_summary_html(parameter_info.name_to_shape, parameter_info.name_to_size_usp),
+        'primals_table': _problem_summary_html(variable_info.name_to_shape, variable_info.name_to_size),
+        'duals_table': _problem_summary_html(dual_variable_info.name_to_shape, dual_variable_info.name_to_size),
+        'code_dir': configuration.code_dir,
+        'code_dir_python': configuration.code_dir.replace('/', '.').replace('\\', '.'),
+        'solver_name': configuration.solver_name,
+        'solver_docu_url': solver_interface.docu,
+        'cmake_prefix': configuration.prefix + 'cpg',
+        'prim_typedef': prim_typedef,
+        'dual_typedef': dual_typedef,
+        'info_typedef': info_typedef,
+        'result_typedef': result_typedef,
+        'update_declarations': update_decls,
+        'solve_declarations': solve_decls,
+        'settings_declarations': settings_decls,
+        'settings_list': settings_list,
+    }
+
+
+def example_c_context(configuration, variable_info, dual_variable_info, parameter_info):
+    """Context dict for cpg_example.c.jinja2."""
+    writable_params = []
+    for name, value in parameter_info.writable.items():
+        if is_mathematical_scalar(value):
+            writable_params.append((name, True, '%.20f' % squeeze_scalar(value)))
+        else:
+            writable_params.append((name, False, '%.20f' % value[0]))
+
+    return {
+        'date': datetime.now().strftime("on %B %d, %Y at %H:%M:%S"),
+        'prefix': configuration.prefix,
+        'gradient': configuration.gradient,
+        'explicit': configuration.explicit,
+        'writable_params': writable_params,
+        'prim_name_to_size': list(variable_info.name_to_size.items()),
+        'dual_name_to_size': list(dual_variable_info.name_to_size.items()),
+        'param_name_to_size': list(parameter_info.name_to_size_usp.items()),
+    }
+
+
+def module_hpp_context(configuration, parameter_info, variable_info, dual_variable_info, solver_interface, gradient_interface):
+    """Context dict for cpg_module.hpp.jinja2."""
+    n_grad_var = gradient_interface.n_var if configuration.gradient else 0
+    n_grad_constr = (gradient_interface.n_eq + gradient_interface.n_ineq) if configuration.gradient else 0
+    return {
+        'date': datetime.now().strftime("on %B %d, %Y at %H:%M:%S"),
+        'prefix': configuration.prefix,
+        'explicit': configuration.explicit,
+        'gradient': configuration.gradient,
+        'params': list(parameter_info.name_to_size_usp.items()),
+        'param_names': list(parameter_info.name_to_size_usp.keys()),
+        'prim_vars': list(variable_info.name_to_size.items()),
+        'dual_vars': list(dual_variable_info.name_to_size.items()),
+        'status_is_int': solver_interface.status_is_int,
+        'n_grad_var': n_grad_var,
+        'n_grad_constr': n_grad_constr,
+    }
+
+
+def solver_py_context(configuration, variable_info, dual_variable_info, parameter_info, solver_interface, gradient_interface):
+    """Context dict for cpg_solver.py.jinja2."""
+    param_names = list(parameter_info.name_to_size_usp.keys())
+    param_names_quoted = ', '.join([f'"{name}"' for name in param_names])
+
+    dual_save_list = []
     if configuration.explicit != 1:
         for i, (name, shape) in enumerate(dual_variable_info.name_to_shape.items()):
-            reshape_str = f".reshape({shape}, order='F')" if shape else ""
-            f.write(f"    prob.constraints[{i}].save_dual_value(np.array(res.cpg_dual.{name}){reshape_str})\n")
+            reshape_str = f".reshape({shape}, order='F')" if shape else ''
+            dual_save_list.append((i, name, shape, reshape_str))
 
-    if configuration.explicit:
-        f.write(f'\n    return res.cpg_info.time{", res.cpg_info.region" if configuration.gradient else ""}\n\n\n')
-    else:
-        f.write('\n    # store additional solver information in problem object\n')
-        f.write('    prob._status = %s\n' %
-                (f'"%d (for description visit {solver_interface.docu})" % res.cpg_info.status' if solver_interface.status_is_int else 'res.cpg_info.status'))
-        f.write('    if abs(res.cpg_info.obj_val) == 1e30:\n')
-        f.write('        prob._value = np.sign(res.cpg_info.obj_val) * np.inf\n')
-        f.write('    else:\n')
-        f.write('        prob._value = res.cpg_info.obj_val\n')
-        f.write('    primal_vars = {var.id: var.value for var in prob.variables()}\n')
-        f.write('    dual_vars = {c.id: c.dual_value for c in prob.constraints}\n')
-        f.write('    solver_specific_stats = {\'obj_val\': res.cpg_info.obj_val,\n')
-        f.write('                             \'status\': prob._status,\n')
-        f.write('                             \'iter\': res.cpg_info.iter,\n')
-        f.write('                             \'pri_res\': res.cpg_info.pri_res,\n')
-        f.write('                             \'dua_res\': res.cpg_info.dua_res,\n')
-        f.write('                             \'time\': res.cpg_info.time}\n')
-        f.write('    attr = {\'solve_time\': t1 - t0, \'solver_specific_stats\': solver_specific_stats, '
-                '\'num_iters\': res.cpg_info.iter}\n')
-        f.write('    prob._solution = Solution(prob.status, prob.value, primal_vars, dual_vars, attr)\n')
-        f.write('    results_dict = {\'solver_specific_stats\': solver_specific_stats,\n')
-        f.write('                    \'num_iters\': res.cpg_info.iter,\n')
-        f.write('                    \'solve_time\': t1 - t0}\n')
-        f.write(f'    prob._solver_stats = SolverStats.from_dict(results_dict, \'{configuration.solver_name}\')\n\n')
-        f.write(f'    return prob.value{", res.cpg_info.gradient_primal, res.cpg_info.gradient_dual" if configuration.gradient else ""}\n\n\n')
-        
-    
+    ctx = {
+        'date': datetime.now().strftime("on %B %d, %Y at %H:%M:%S"),
+        'prefix': configuration.prefix,
+        'explicit': configuration.explicit,
+        'gradient': configuration.gradient,
+        'code_dir_module': configuration.code_dir.replace('/', '.').replace('\\', '.'),
+        'stgs_translation': solver_interface.stgs_translation,
+        'param_names_quoted': param_names_quoted,
+        'param_names': param_names,
+        'var_name_to_shape': list(variable_info.name_to_shape.items()),
+        'dual_save_list': dual_save_list,
+        'status_is_int': solver_interface.status_is_int,
+        'status_int_fmt': (
+            f'%d (for description visit {solver_interface.docu})'
+            if solver_interface.status_is_int else ''
+        ),
+        'solver_name': configuration.solver_name,
+    }
+
     if configuration.gradient:
-        f.write('def cpg_solve(prob, updated_params=None, **kwargs):\n\n')
-        f.write(f'    val, _{"" if configuration.explicit else ", _"} = cpg_solve_and_gradient_info(prob, updated_params, **kwargs)\n')
-        f.write('    return val\n\n\n')
+        ctx.update({
+            'n_grad_var': gradient_interface.n_var,
+            'n_grad_constr': gradient_interface.n_eq + gradient_interface.n_ineq,
+            'prim_name_to_size': list(variable_info.name_to_size.items()),
+            'param_name_to_shape': list(parameter_info.name_to_shape.items()),
+        })
 
-        if configuration.explicit:
-            f.write('def cpg_gradient(prob, region=None):\n\n')
-        else:
-            f.write('def cpg_gradient(prob, gradient_sol_primal=None, gradient_sol_dual=None):\n\n')
-        f.write('    # set solution info if provided\n')
-        if configuration.explicit:
-            f.write('    if region is not None:\n')
-        else:
-            f.write(f'    gradient_sol = cpg_module.{configuration.prefix}cpg_gsol()\n')
-            f.write('    if gradient_sol_primal is not None and gradient_sol_dual is not None:\n')
-            f.write('        gradient_sol.primal = list(gradient_sol_primal)\n')
-            f.write('        gradient_sol.dual = list(gradient_sol_dual)\n')
-        f.write('        use_sol = True\n')
-        f.write('    else:\n')
-        if configuration.explicit:
-            f.write(f'        region = 0\n')
-        else:
-            f.write(f'        gradient_sol.primal = [0] * {gradient_interface.n_var}\n')
-            f.write(f'        gradient_sol.dual = [0] * {gradient_interface.n_eq + gradient_interface.n_ineq}\n')
-        f.write('        use_sol = False\n\n')
-        f.write('    # set variable deltas\n')
-        f.write(f'    vdelta = cpg_module.{configuration.prefix}cpg_vdelta()\n')
-        for name, size in variable_info.name_to_size.items():
-            if size == 1:
-                f.write(f'    vdelta.{name} = squeeze_scalar(prob.var_dict["{name}"].gradient)\n')
-            else:
-                f.write(f'    vdelta.{name} = list(prob.var_dict["{name}"].gradient.flatten(order="F"))\n')
-        if configuration.explicit:
-            f.write('    pdelta = cpg_module.gradient(vdelta, region, use_sol)\n')
-        else:
-            f.write('    pdelta = cpg_module.gradient(vdelta, gradient_sol, use_sol)\n')
+    return ctx
 
-        for name, shape in parameter_info.name_to_shape.items():
-            f.write(f'    prob.param_dict[\'{name}\'].gradient = np.array(pdelta.{name}).reshape({shape}, order=\'F\')\n')
-        f.write('\n\n')
 
-        f.write('def forward(params, context):\n\n')
-        f.write('    info = {}\n')
-        f.write('    kwargs = context.solver_args.copy()\n')
-        f.write('    prob = kwargs.pop("problem")\n')
-        f.write('    parameters = prob.parameters()\n')
-        f.write('    for pid, val in zip(context.param_ids, params):\n')
-        f.write('        next(p for p in parameters if p.id == pid).value = val\n')
-        f.write('    updated_params = kwargs.pop("updated_params", None)\n')
-        if configuration.explicit:
-            f.write('    _, info["region"] = cpg_solve_and_gradient_info(prob, updated_params, **kwargs)\n')
-        else:
-            f.write('    _, info["gradient_primal"], info["gradient_dual"] = cpg_solve_and_gradient_info(prob, updated_params, **kwargs)\n')
-        f.write('    info["prob"] = prob\n\n')
-        f.write('    vars = prob.variables()\n')
-        f.write('    return [next(v for v in vars if v.id == variable.id).value for variable in context.variables], info\n\n\n')
+def grad_compute_context(configuration, solver_interface):
+    """Context dict for cpg_osqp_grad_compute.c.jinja2."""
+    return {
+        'n': solver_interface.n_var,
+        'N': solver_interface.n_var + solver_interface.n_eq + solver_interface.n_ineq,
+        'workspace': f'{configuration.prefix}CPG_OSQP_Grad',
+        'gradient_two_stage': configuration.gradient_two_stage,
+        'sol_x_var': f'{configuration.prefix}sol_x' if configuration.gradient_two_stage else 'sol_x',
+        'sol_y_var': f'{configuration.prefix}sol_y' if configuration.gradient_two_stage else 'sol_y',
+    }
 
-        f.write('def backward(dvars, context):\n\n')
-        f.write('    prob = context.info["prob"]\n')
-        f.write('    vars = prob.variables()\n')
-        f.write('    for variable, dv in zip(context.variables, dvars):\n')
-        f.write('        next(v for v in vars if v.id == variable.id).gradient = dv\n')
-        if configuration.explicit:
-            f.write('    region = context.info["region"]\n')
-            f.write('    cpg_gradient(prob, region)\n\n')
-        else:
-            f.write('    gradient_primal = context.info["gradient_primal"]\n')
-            f.write('    gradient_dual = context.info["gradient_dual"]\n')
-            f.write('    cpg_gradient(prob, gradient_primal, gradient_dual)\n\n')
-        f.write('    params = prob.parameters()\n')
-        f.write('    return [next(p for p in params if p.id == pid).gradient for pid in context.param_ids], {}\n')
-    
 
-def replace_html_data(text, configuration, variable_info, dual_variable_info, parameter_info, solver_interface):
-    """
-    Replace placeholder strings in html documentation file
-    """
-
-    # description
-    now = datetime.now()
-    text = text.replace('$DATE', now.strftime("on %B %d, %Y at %H:%M:%S"))
-
-    # param summary
-    text = text.replace('$PARAMS', write_problem_summary(parameter_info.name_to_shape, parameter_info.name_to_size_usp))
-
-    # primal variable summary
-    text = text.replace('$PRIMALS', write_problem_summary(variable_info.name_to_shape, variable_info.name_to_size))
-
-    # dual variable summary
-    text = text.replace('$DUALS', write_problem_summary(dual_variable_info.name_to_shape, dual_variable_info.name_to_size))
-
-    # code_dir
-    text = text.replace('$CODEDIR', configuration.code_dir)
-    text = text.replace('$CDPYTHON', configuration.code_dir.replace('/', '.').replace('\\', '.'))
-
-    # solver name and docu
-    text = text.replace('$CPGSOLVERNAME', configuration.solver_name)
-    text = text.replace('$CPGSOLVERDOCUURL', solver_interface.docu)
-
-    # CMake prefix
-    text = text.replace('$CPGCMAKELISTS', configuration.prefix+'cpg')
-
-    # type definition of CPG_Prim_t
-    CPGPRIMTYPEDEF = '\n// Struct type with primal solution\n'
-    CPGPRIMTYPEDEF += 'typedef struct {\n'
-    for name, size in variable_info.name_to_size.items():
-        if size == 1:
-            s = ''
-        else:
-            s = '*'
-        CPGPRIMTYPEDEF += (f'  cpg_float    {(s + name + ";").ljust(9)}   // Your variable {name}\n')
-    CPGPRIMTYPEDEF += '} CPG_Prim_t;\n'
-    text = text.replace('$CPGPRIMTYPEDEF', CPGPRIMTYPEDEF)
-
-    # type definition of CPG_Dual_t
-    if len(dual_variable_info.name_to_size) > 0:
-        CPGDUALTYPEDEF = '\n// Struct type with dual solution\n'
-        CPGDUALTYPEDEF += 'typedef struct {\n'
-        for name, size in dual_variable_info.name_to_size.items():
-            if size == 1:
-                s = ''
-            else:
-                s = '*'
-            CPGDUALTYPEDEF += (f'  cpg_float    {(s + name + ";").ljust(9)}   // Your dual variable for constraint {name}\n')
-        CPGDUALTYPEDEF += '} CPG_Dual_t;\n\n'
-    else:
-        CPGDUALTYPEDEF = ''
-    text = text.replace('$CPGDUALTYPEDEF', CPGDUALTYPEDEF)
-
-    # type definition of CPG_Info_t
-    CPGINFOTYPEDEF = '// Struct type with canonical solver information\n'
-    CPGINFOTYPEDEF += 'typedef struct {\n'
-    CPGINFOTYPEDEF += '  cpg_float    obj_val;    // Objective function value\n'
-    CPGINFOTYPEDEF += '  cpg_int      iter;       // Number of iterations\n'
-    CPGINFOTYPEDEF += (f'  {"cpg_int      status;     " if solver_interface.status_is_int else "char         *status;    "}// Solver status\n')
-    CPGINFOTYPEDEF += '  cpg_float    pri_res;    // Primal residual\n'
-    CPGINFOTYPEDEF += '  cpg_float    dua_res;    // Dual residual\n'
-    CPGINFOTYPEDEF += '} CPG_Info_t;\n'
-    text = text.replace('$CPGINFOTYPEDEF', CPGINFOTYPEDEF)
-
-    # type definition of CPG_Result_t
-    CPGRESULTTYPEDEF = '\n// Struct type with user-defined objective value and solution as fields\n'
-    CPGRESULTTYPEDEF += 'typedef struct {\n'
-    CPGRESULTTYPEDEF += '  CPG_Prim_t *prim;        // Primal solution\n'
-    if len(dual_variable_info.name_to_init) > 0:
-        CPGRESULTTYPEDEF += '  CPG_Dual_t *dual;        // Dual solution\n'
-    CPGRESULTTYPEDEF += '  CPG_Info_t *info;        // Solver information\n'
-    CPGRESULTTYPEDEF += '} CPG_Result_t;\n'
-    text = text.replace('$CPGRESULTTYPEDEF', CPGRESULTTYPEDEF)
-
-    # update declarations
-    CPGUPDATEDECLARATIONS = '\n// Update user-defined parameter values\n'
-    for name, size in parameter_info.name_to_size_usp.items():
-        if size == 1:
-            CPGUPDATEDECLARATIONS += f'void {configuration.prefix}cpg_update_{name}(cpg_float value);\n'
-        else:
-            CPGUPDATEDECLARATIONS += f'void {configuration.prefix}cpg_update_{name}(cpg_int idx, cpg_float value);\n'
-    text = text.replace('$CPGUPDATEDECLARATIONS', CPGUPDATEDECLARATIONS)
-
-    # solve declarations
-    CPGSOLVEDECLARATIONS = '\n// Solve via canonicalization, canonical solve, retrieval\n'
-    CPGSOLVEDECLARATIONS += f'void {configuration.prefix}cpg_solve();\n'
-    text = text.replace('$CPGSOLVEDECLARATIONS', CPGSOLVEDECLARATIONS)
-
-    # settings declarations
-    CPGSETTINGSDECLARATIONS = '\n// Update solver settings\n'
-    CPGSETTINGSDECLARATIONS += f'void {configuration.prefix}cpg_set_solver_default_settings();\n'
-    CPGSETTINGSDECLARATIONS += f'void {configuration.prefix}cpg_set_solver_&lt;setting_name&gt;(&lt;setting_type&gt; &lt;setting_name&gt;_new);\n'
-    CPGSETTINGSDECLARATIONS += '...\n'
-    text = text.replace('$CPGSETTINGSDECLARATIONS', CPGSETTINGSDECLARATIONS)
-
-    # settings list
-    CPGSETTINGSLIST = ', '.join([f'<code>{s}</code>' for s in solver_interface.stgs_names_enabled])
-
-    return text.replace('$CPGSETTINGSLIST', CPGSETTINGSLIST)
+def grad_workspace_h_context(configuration):
+    """Context dict for cpg_osqp_grad_workspace.h.jinja2."""
+    return {'workspace': f'{configuration.prefix}CPG_OSQP_Grad'}
