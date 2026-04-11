@@ -1519,6 +1519,8 @@ def readme_context(configuration, variable_info, dual_variable_info, parameter_i
         'solver_name': configuration.solver_name,
         'solver_docu_url': solver_interface.docu,
         'cmake_prefix': configuration.prefix + 'cpg',
+        'gradient': configuration.gradient,
+        'gradient_two_stage': configuration.gradient_two_stage,
         'prim_typedef': prim_typedef,
         'dual_typedef': dual_typedef,
         'info_typedef': info_typedef,
