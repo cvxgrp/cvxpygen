@@ -79,6 +79,4 @@ jobs:
       if: runner.os == 'Windows'
       run: |
         cd tests
-        python -m pytest test_readme.py test_invalid_input.py \
-          test_E2E_LP.py::test test_E2E_LP.py::test_qocogen test_E2E_QP.py::test test_E2E_QP.py::test_OSQP_verbose \
-          test_E2E_SOCP.py::test  test_unsupported_solvers.py
+        python -m pytest test_readme.py test_invalid_input.py test_E2E_LP.py::test test_E2E_LP.py::test_qocogen test_E2E_QP.py::test test_E2E_QP.py::test_OSQP_verbose test_E2E_SOCP.py::test test_unsupported_solvers.py
