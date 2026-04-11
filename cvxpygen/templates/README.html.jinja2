@@ -1,216 +1,568 @@
-
 <!DOCTYPE html>
-<html>
-
+<html lang="en">
 <head>
-    <meta charset="utf-8">
-    <title>CPG Code Documentation</title>
-    <meta name="author" content="">
-    <meta name="description" content="">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        body {background-color: white; padding-left: 260px; padding-right: 260px;}
-        h1, h2, h3, h4, h5, h6   {color: darkslateblue; font-family: sans-serif;}
-        p, dl {color: black; font-family: sans-serif;}
-        dt, dd {margin-top: 10px;}
-        code {color: black; background-color: #f1f1f1;}
-        pre {background-color: #f1f1f1; padding-left: 20px; padding-right: 20px;}
-        table {
-          font-family: sans-serif;
-          border-collapse: collapse;
-          width: 28%;
-        }
-        td, th {
-          border: 1px solid #dddddd;
-          text-align: left;
-          font-size: 10pt;
-          padding: 8px;
-        }
-        tr:nth-child(even) {
-          background-color: #f5f5ff;
-        }
-    </style>
+  <meta charset="utf-8">
+  <title>CVXPYgen — {{ code_dir }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --blue:        #1565c0;
+      --blue-dark:   #0d47a1;
+      --blue-light:  #e3f2fd;
+      --blue-mid:    #1976d2;
+      --sidebar-bg:  #f8f9fb;
+      --sidebar-bd:  #d9dde6;
+      --code-bg:     #f6f8fa;
+      --code-bd:     #dde1e7;
+      --border:      #e1e4e8;
+      --text:        #24292e;
+      --muted:       #6a737d;
+      --hover-bg:    #edf2ff;
+      --active-bg:   #dbeafe;
+      --active-fg:   #1d4ed8;
+      --r:           4px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.65;
+      color: var(--text);
+      background: #fff;
+    }
+
+    /* ── Top bar ── */
+    .topbar {
+      position: sticky; top: 0; z-index: 200;
+      display: flex; align-items: center; justify-content: space-between;
+      height: 52px; padding: 0 24px;
+      background: var(--blue-dark);
+      box-shadow: 0 2px 6px rgba(0,0,0,.3);
+      color: #fff;
+    }
+    .topbar-left { display: flex; align-items: center; gap: 14px; }
+    .topbar-logo { font-size: 18px; font-weight: 700; letter-spacing: .03em; color: #fff; }
+    .topbar-logo a { color: inherit; text-decoration: none; }
+    .topbar-logo a:hover { text-decoration: none; }
+    .topbar-sub {
+      font-size: 12.5px; opacity: .75;
+      border-left: 1px solid rgba(255,255,255,.35);
+      padding-left: 14px;
+    }
+    .topbar-date { font-size: 11px; opacity: .6; }
+
+    /* ── Page layout ── */
+    .layout { display: flex; min-height: calc(100vh - 52px); }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: 256px; min-width: 256px;
+      background: var(--sidebar-bg);
+      border-right: 1px solid var(--sidebar-bd);
+      position: sticky; top: 52px;
+      height: calc(100vh - 52px);
+      overflow-y: auto;
+      padding: 18px 0 24px;
+    }
+    .sidebar-root-label {
+      padding: 0 16px 8px;
+      font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+      font-size: 12px; font-weight: 700;
+      letter-spacing: .04em;
+      color: var(--blue-dark);
+    }
+
+    /* File tree */
+    .tree, .tree ul { list-style: none; }
+    .tree { padding: 0 8px; }
+    .tree ul { padding-left: 14px; }
+    .tree-row {
+      display: flex; align-items: center; gap: 5px;
+      padding: 3px 8px;
+      border-radius: var(--r);
+      font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+      font-size: 12.5px;
+      white-space: nowrap;
+    }
+    .tree-folder { color: var(--muted); user-select: none; }
+    .tree-folder::before { content: '▾'; font-size: 9px; margin-right: 3px; }
+    .tree-static { color: var(--muted); padding-left: 16px; opacity: .65; }
+    .tree-file {
+      color: var(--text);
+      cursor: pointer;
+      transition: background .1s;
+    }
+    .tree-file::before { content: '·'; color: var(--muted); margin-right: 4px; }
+    .tree-file:hover { background: var(--hover-bg); }
+    .tree-file.active {
+      background: var(--active-bg);
+      color: var(--active-fg);
+      font-weight: 600;
+    }
+    .tree-file.active::before { content: '▸'; color: var(--active-fg); }
+
+    /* ── Main panel ── */
+    .main {
+      flex: 1; min-width: 0;
+      padding: 32px 44px 56px;
+      max-width: 840px;
+    }
+    section { margin-bottom: 40px; }
+    h2 {
+      font-size: 19px; font-weight: 700;
+      color: var(--blue-dark);
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--blue-light);
+      margin-bottom: 16px;
+    }
+    h3 { font-size: 15px; font-weight: 600; color: var(--blue); margin-bottom: 10px; }
+    p { margin-bottom: 12px; }
+    a { color: var(--blue-mid); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    code {
+      font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+      font-size: 12.5px;
+      background: var(--code-bg);
+      border: 1px solid var(--code-bd);
+      border-radius: 3px;
+      padding: 1px 5px;
+    }
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--code-bd);
+      border-radius: var(--r);
+      padding: 14px 18px;
+      overflow-x: auto;
+      margin-bottom: 14px;
+    }
+    pre code { background: none; border: none; padding: 0; font-size: 13px; }
+
+    /* ── Problem Summary tables ── */
+    .tables-row { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+    .summary-table { border-collapse: collapse; font-size: 13px; }
+    .summary-table th {
+      background: var(--blue-dark); color: #fff;
+      padding: 0 16px; height: 34px; text-align: left; font-weight: 600;
+    }
+    .summary-table th:first-child { border-radius: var(--r) 0 0 0; }
+    .summary-table th:last-child  { border-radius: 0 var(--r) 0 0; }
+    .summary-table td { padding: 0 16px; height: 32px; border-bottom: 1px solid var(--border); }
+    .summary-table tr:last-child td { border-bottom: none; }
+    .summary-table tr:nth-child(even) td { background: #f5f8ff; }
+    .summary-table code { background: none; border: none; }
+
+    /* ── File detail panels ── */
+    .file-panel { display: none; }
+    .file-panel.active { display: block; }
+    .file-hint {
+      padding: 40px 24px;
+      text-align: center;
+      color: var(--muted);
+      background: var(--sidebar-bg);
+      border: 1px dashed var(--border);
+      border-radius: var(--r);
+    }
+    .file-hint-icon { font-size: 30px; margin-bottom: 10px; }
+    .file-path-badge {
+      display: inline-block;
+      background: var(--blue-light);
+      color: var(--blue-dark);
+      border: 1px solid #b3d2f5;
+      border-radius: var(--r);
+      font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+      font-size: 12.5px;
+      padding: 5px 12px;
+      margin-bottom: 16px;
+    }
+
+    /* ── Tabs ── */
+    .tab-group { margin-bottom: 20px; }
+    .tab-bar { display: flex; margin-bottom: -1px; }
+    .tab-btn {
+      padding: 6px 18px;
+      font-size: 13px; font-weight: 500;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      border-bottom: none;
+      background: #fff;
+      color: var(--muted);
+      border-radius: var(--r) var(--r) 0 0;
+      transition: background .1s, color .1s;
+      margin-right: 2px;
+    }
+    .tab-btn:hover { background: var(--hover-bg); color: var(--blue); }
+    .tab-btn.active { background: var(--code-bg); color: var(--blue); font-weight: 600; border-bottom: 1px solid var(--code-bg); }
+    .tab-body { background: var(--code-bg); border: 1px solid var(--border); border-radius: 0 var(--r) var(--r) var(--r); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .tab-body pre { border: none; border-radius: 0 var(--r) var(--r) var(--r); margin: 0; }
+
+    /* ── Usage sub-sections ── */
+    .usage-block { margin-bottom: 28px; }
+  </style>
 </head>
-
 <body>
-  <p style="color:gray; font-size: 12px;">
-      Auto-generated by CVXPYgen {{ date }}.
-  </p>
-  <h1>Generated Code for Solving Your CVXPY Problem</h1>
-  <h3>Problem Summary</h3>
-  <p>
-      Your optimization problem has the following parameters, primal and dual variables.
-      Dual variable <code>di</code> corresponds to the i-th constraint in your problem formulation.
-      The dimensions after flattening (and considering sparsity) are given in parentheses.
-  </p>
-  <div style="display:flex; flex-direction: row; justify-content: left; align-items: normal">
-  <table style="margin: 10px;">
-      <tr>
-        <th>Parameter</th>
-        <th>Dimension</th>
-      </tr>
-{{ params_table }}
-  </table>
-  <table style="margin: 10px;">
-      <tr>
-        <th>Primal Variable</th>
-        <th>Dimension</th>
-      </tr>
-{{ primals_table }}
-  </table>
-  <table style="margin: 10px;">
-      <tr>
-        <th>Dual Variable</th>
-        <th>Dimension</th>
-      </tr>
-{{ duals_table }}
-  </table>
+
+<!-- ── Top bar ── -->
+<header class="topbar">
+  <div class="topbar-left">
+    <span class="topbar-logo"><a href="https://github.com/cvxgrp/cvxpygen" target="_blank">CVXPYgen</a></span>
+    <span class="topbar-sub">Generated code documentation</span>
   </div>
-  <h3>File Tree</h3>
-  <p>
-    Your generated code is structured as follows inside your chosen <code>{{ code_dir }}</code> directory:
-  </p>
-  <pre><code><!-- language: lang-c -->
-{{ code_dir }}
-    c
-      solver_code
-        ...
-      include
-        cpg_workspace.h
-        cpg_solve.h
-      src
-        cpg_workspace.c
-        cpg_solve.c
-        cpg_example.c
-      build
-      CMakeLists.txt
-    cpp
-      include
-        cpg_module.hpp
-      src
-        cpg_module.cpp
-    setup.py
-    cpg_solver.py
-    LICENSE
-    README.html
-  </code></pre>
-  <p>
-      The <code>c/solver_code</code> subdirectory contains all code from the chosen
-      numerical solver ({{ solver_name }}). For documentation on this part, please have a look <a href="{{ solver_docu_url }}" target="_blank">here</a>.
-  </p>
-  <p>
-    To make this solver usable, your problem needs to be converted to the standard form accepted by {{ solver_name }}.
-      This is done by all the other source files inside the <code>{{ code_dir }}</code> directory.
-  </p>
-  <h3>File Contents</h3>
+  <span class="topbar-date">{{ date }}</span>
+</header>
 
-  <p>
-    <dl>
-      <dt><code>c/include/cpg_workspace.h</code> contains type definitions and variable declarations.
-      The following types are part of the C interface:</dt>
-        <dd>
-          <pre><code><!-- language: lang-c -->
-{{ prim_typedef }}
-{{ dual_typedef }}
-{{ info_typedef }}
-{{ result_typedef }}
-          </code></pre>
-        </dd>
-      <dt><code>c/include/cpg_solve.h</code> contains function prototypes. Relevant for the C interface are:</dt>
-        <dd>
-          <pre><code><!-- language: lang-c -->
-{{ update_declarations }}
-{{ solve_declarations }}
-{{ settings_declarations }}
-          </code></pre>
-        </dd>
-        <dd>
-            where <code>&lt;setting_name&gt;</code> and <code>&lt;setting_type&gt;</code> are
-            the name and type of the solver setting to be updated, respectively.
-        </dd>
-      <dt><code>c/src/cpg_workspace.c</code> contains the static allocation of the C variables declared in <code>include/cpg_workspace.h</code>.</dt>
-      <dt><code>c/src/cpg_solve.c</code> contains the definition of functions declared in <code>include/cpg_solve.h</code>.</dt>
-      <dt><code>c/src/cpg_example.c</code> contains example code that initializes the problem data and solves a problem instance.</dt>
-      <dt><code>c/CMakeLists.txt</code> contains instructions for build file generation inside the <code>c/build</code> directory with CMake.</dt>
-      <dt><code>cpp/</code> contains binding code for the python wrapper generated with <a href="https://github.com/pybind/pybind11" target="_blank">pybind11</a> and <code>setup.py</code>.</dt>
-      <dt><code>cpg_solver.py</code> contains a custom CVXPY solve method that uses the python wrapper to solve your problem.</dt>    </dl>
-  </p>
+<div class="layout">
 
-  <h3>Using Generated Code</h3>
+  <!-- ── Sidebar: file tree ── -->
+  <nav class="sidebar" aria-label="File tree">
+    <div class="sidebar-root-label">{{ code_dir }}/</div>
+    <ul class="tree">
+      <li>
+        <span class="tree-row tree-folder">c/</span>
+        <ul>
+          <li>
+            <span class="tree-row tree-file" data-panel="f-solver-code">solver_code/</span>
+            <ul><li><span class="tree-row tree-static">…</span></li></ul>
+          </li>
+          <li>
+            <span class="tree-row tree-folder">include/</span>
+            <ul>
+              <li><span class="tree-row tree-file" data-panel="f-workspace-h">cpg_workspace.h</span></li>
+              <li><span class="tree-row tree-file" data-panel="f-solve-h">cpg_solve.h</span></li>
+              {% if gradient %}<li><span class="tree-row tree-file" data-panel="f-gradient-h">cpg_gradient.h</span></li>{% endif %}
+              {% if gradient_two_stage %}<li><span class="tree-row tree-file" data-panel="f-gradient-workspace-h">cpg_gradient_workspace.h</span></li>{% endif %}
+              {% if gradient %}<li><span class="tree-row tree-static">…</span></li>{% endif %}
+            </ul>
+          </li>
+          <li>
+            <span class="tree-row tree-folder">src/</span>
+            <ul>
+              <li><span class="tree-row tree-file" data-panel="f-workspace-c">cpg_workspace.c</span></li>
+              <li><span class="tree-row tree-file" data-panel="f-solve-c">cpg_solve.c</span></li>
+              {% if gradient %}<li><span class="tree-row tree-file" data-panel="f-gradient-c">cpg_gradient.c</span></li>{% endif %}
+              {% if gradient_two_stage %}<li><span class="tree-row tree-file" data-panel="f-gradient-workspace-c">cpg_gradient_workspace.c</span></li>{% endif %}
+              <li><span class="tree-row tree-file" data-panel="f-example-c">cpg_example.c</span></li>
+              {% if gradient %}<li><span class="tree-row tree-static">…</span></li>{% endif %}
+            </ul>
+          </li>
+          <li><span class="tree-row tree-folder">build/</span></li>
+          <li><span class="tree-row tree-file" data-panel="f-cmake">CMakeLists.txt</span></li>
+        </ul>
+      </li>
+      <li>
+        <span class="tree-row tree-folder">cpp/</span>
+        <ul>
+          <li>
+            <span class="tree-row tree-folder">include/</span>
+            <ul>
+              <li><span class="tree-row tree-file" data-panel="f-module-hpp">cpg_module.hpp</span></li>
+            </ul>
+          </li>
+          <li>
+            <span class="tree-row tree-folder">src/</span>
+            <ul>
+              <li><span class="tree-row tree-file" data-panel="f-module-cpp">cpg_module.cpp</span></li>
+            </ul>
+          </li>
+        </ul>
+      </li>
+      <li><span class="tree-row tree-file" data-panel="f-setup">setup.py</span></li>
+      <li><span class="tree-row tree-file" data-panel="f-solver-py">cpg_solver.py</span></li>
+      <li><span class="tree-row tree-static">LICENSE</span></li>
+      <li><span class="tree-row tree-static">README.html</span></li>
+    </ul>
+  </nav>
 
-  <h4>CVXPY</h4>
+  <!-- ── Main content ── -->
+  <main class="main">
 
-  <p>
-      To use the CVXPY interface, run exemplarily,
-  </p>
-    <pre><code>
-from {{ code_dir_python }}.cpg_solver import cpg_solve
+    <!-- Problem Summary -->
+    <section>
+      <h2>Problem Summary</h2>
+      <p>Your optimization problem has the following parameters and variables.
+         Dual variable <code>di</code> corresponds to the <code>i</code>th constraint in your formulation.
+         Sizes after flattening (considering only nonzero entries) are given in parentheses.</p>
+      <div class="tables-row">
+        <table class="summary-table">
+          <tr><th>Parameter</th><th>Dimension</th></tr>
+          {{ params_table }}
+        </table>
+        <table class="summary-table">
+          <tr><th>Primal Variable</th><th>Dimension</th></tr>
+          {{ primals_table }}
+        </table>
+        <table class="summary-table">
+          <tr><th>Dual Variable</th><th>Dimension</th></tr>
+          {{ duals_table }}
+        </table>
+      </div>
+    </section>
 
-prob.param_dict['&lt;p_name&gt;'].value = &lt;p_value&gt;
+    <!-- File Contents -->
+    <section id="file-contents-section" style="scroll-margin-top: 64px;">
+      <h2>File Contents</h2>
+
+      <!-- Default placeholder -->
+      <div class="file-panel active" id="f-default">
+        <div class="file-hint">
+          <div class="file-hint-icon">📂</div>
+          <div>Select a file from the tree on the left to view its contents.</div>
+        </div>
+      </div>
+
+      <!-- cpg_workspace.h -->
+      <div class="file-panel" id="f-workspace-h">
+        <div class="file-path-badge">c/include/cpg_workspace.h</div>
+        <p>Contains type definitions and variable declarations. The following types are part of the C interface:</p>
+        <pre><code>{{ (prim_typedef ~ dual_typedef ~ info_typedef ~ result_typedef) | trim }}</code></pre>
+      </div>
+
+      <!-- cpg_solve.h -->
+      <div class="file-panel" id="f-solve-h">
+        <div class="file-path-badge">c/include/cpg_solve.h</div>
+        <p>Contains function prototypes. Relevant for the C interface:</p>
+        <pre><code>{{ (update_declarations ~ solve_declarations ~ settings_declarations) | trim }}</code></pre>
+        <p>Here <code>&lt;setting_name&gt;</code> and <code>&lt;setting_type&gt;</code> are placeholders for
+           the name and type of the solver setting to be updated, respectively. Available settings: {{ settings_list }}.</p>
+      </div>
+
+      <!-- cpg_workspace.c -->
+      <div class="file-panel" id="f-workspace-c">
+        <div class="file-path-badge">c/src/cpg_workspace.c</div>
+        <p>Contains the static allocation of all C variables declared in
+           <code>c/include/cpg_workspace.h</code>.</p>
+      </div>
+
+      <!-- cpg_solve.c -->
+      <div class="file-panel" id="f-solve-c">
+        <div class="file-path-badge">c/src/cpg_solve.c</div>
+        <p>Contains the definitions of all functions declared in
+           <code>c/include/cpg_solve.h</code>.</p>
+      </div>
+
+      {% if gradient %}
+      <!-- cpg_gradient.h -->
+      <div class="file-panel" id="f-gradient-h">
+        <div class="file-path-badge">c/include/cpg_gradient.h</div>
+        <p>Contains function declarations for gradient computation. Exposes <code>cpg_gradient()</code>,
+           which back-propagates through the solve to compute parameter gradients from variable gradients.</p>
+      </div>
+      {% endif %}
+
+      {% if gradient_two_stage %}
+      <!-- cpg_gradient_workspace.h -->
+      <div class="file-panel" id="f-gradient-workspace-h">
+        <div class="file-path-badge">c/include/cpg_gradient_workspace.h</div>
+        <p>Contains type definitions and variable declarations for the canonical gradient computation stage.
+           Analogous to <code>c/include/cpg_workspace.h</code>, but scoped to the gradient solver workspace.</p>
+      </div>
+      {% endif %}
+
+      {% if gradient %}
+      <!-- cpg_gradient.c -->
+      <div class="file-panel" id="f-gradient-c">
+        <div class="file-path-badge">c/src/cpg_gradient.c</div>
+        <p>Contains the definitions of all functions declared in <code>c/include/cpg_gradient.h</code>.</p>
+      </div>
+      {% endif %}
+
+      {% if gradient_two_stage %}
+      <!-- cpg_gradient_workspace.c -->
+      <div class="file-panel" id="f-gradient-workspace-c">
+        <div class="file-path-badge">c/src/cpg_gradient_workspace.c</div>
+        <p>Contains the static allocation of all C variables declared in
+           <code>c/include/cpg_gradient_workspace.h</code>.</p>
+      </div>
+      {% endif %}
+
+      <!-- cpg_example.c -->
+      <div class="file-panel" id="f-example-c">
+        <div class="file-path-badge">c/src/cpg_example.c</div>
+        <p>Contains example C code that initializes the problem data and solves a problem instance.
+           See <em>Using Generated Code</em> below for compilation instructions.</p>
+      </div>
+
+      <!-- CMakeLists.txt -->
+      <div class="file-panel" id="f-cmake">
+        <div class="file-path-badge">c/CMakeLists.txt</div>
+        <p>Contains instructions for build file generation inside the <code>c/build/</code> directory
+           using CMake. The <code>cpg_example</code> executable and the <code>cpg</code> static library
+           (used by the Python wrapper) are configured here.</p>
+      </div>
+
+      <!-- solver_code/ -->
+      <div class="file-panel" id="f-solver-code">
+        <div class="file-path-badge">c/solver_code/</div>
+        <p>Contains all source files from the chosen numerical solver ({{ solver_name }}).
+           Also see the 
+           <a href="{{ solver_docu_url }}" target="_blank">{{ solver_name }} documentation</a>.</p>
+      </div>
+
+      <!-- cpg_module.hpp -->
+      <div class="file-panel" id="f-module-hpp">
+        <div class="file-path-badge">cpp/include/cpg_module.hpp</div>
+        <p>Declares the <a href="https://github.com/pybind/pybind11" target="_blank">pybind11</a>
+           interface that exposes the generated C solver to Python. Defines the module entry point
+           and the signatures of all bound functions.</p>
+      </div>
+
+      <!-- cpg_module.cpp -->
+      <div class="file-panel" id="f-module-cpp">
+        <div class="file-path-badge">cpp/src/cpg_module.cpp</div>
+        <p>Implements the pybind11 bindings declared in <code>cpg_module.hpp</code>.
+           Compiled together with the <code>cpg</code> static library via <code>setup.py</code>
+           into a Python extension module.</p>
+      </div>
+
+      <!-- setup.py -->
+      <div class="file-panel" id="f-setup">
+        <div class="file-path-badge">setup.py</div>
+        <p>Python package build script that compiles the pybind11 extension module wrapping
+           the generated C code. Invoked automatically by CVXPYgen; can also be run manually via
+           <code>python setup.py build_ext --inplace</code>.</p>
+      </div>
+
+      <!-- cpg_solver.py -->
+      <div class="file-panel" id="f-solver-py">
+        <div class="file-path-badge">cpg_solver.py</div>
+        <p>A custom CVXPY solve method that routes <code>prob.solve(method='CPG')</code> through
+           the Python extension module to the generated C solver.</p>
+      </div>
+    </section>
+
+    <!-- Using Generated Code -->
+    <section>
+      <h2>Using Generated Code</h2>
+
+      {% if not gradient %}
+      <div class="usage-block">
+        <h3>CVXPY Interface</h3>
+        <p>Register and call the custom solve method:</p>
+        <pre><code>from {{ code_dir_python }}.cpg_solver import cpg_solve
 prob.register_solve('CPG', cpg_solve)
 
-obj = prob.solve(method='CPG')
-print(prob.var_dict['&lt;v_name&gt;'].value)
-    </code></pre>
-  <p>where <code>&lt;p_name&gt;</code> and <code>&lt;p_value&gt;</code> are parameter name and value, respectively.
-  After registering <code>&lt;cpg_solve&gt;</code> as custom solve method, the problem can be solved and the objective value
-  <code>obj</code> and solution in terms of variable <code>&lt;v_name&gt;</code> can be inspected.
-  </p>
+&lt;param&gt;.value = ...
+prob.solve(method='CPG')
+print(&lt;var&gt;.value)</code></pre>
+        <p>Here, <code>&lt;param&gt;</code> and <code>&lt;var&gt;</code>
+           are placeholders for parameter and variable names, respectively.</p>
+      </div>
+      {% else %}
+      <div class="usage-block">
+        <h3>Python Interface</h3>
+        <div class="tab-group">
+          <div class="tab-bar">
+            <button class="tab-btn active" onclick="switchTab(event,'tab-di-cvxpy')">CVXPY</button>
+            <button class="tab-btn"        onclick="switchTab(event,'tab-di-layers')">CVXPYlayers</button>
+          </div>
+          <div class="tab-body">
+            <div class="tab-panel active" id="tab-di-cvxpy">
+              <pre><code>from {{ code_dir_python }}.cpg_solver import cpg_solve, cpg_gradient
+prob.register_solve('CPG', cpg_solve)
 
-  <h4>Example Executable</h4>
-  <p>
-    Before compiling the example executable, remember to activate the <code>cpg_env</code> environment.
-  </p>
-    <pre><code>
-conda activate cpg_env
-    </code></pre>
-  <p>
-    On Unix platforms, run the following commands in your terminal to compile and run the program:
-  </p>
-    <pre><code>
-cd {{ code_dir }}/c/build
+&lt;param&gt;.value = ...
+prob.solve(method='CPG')
+print(&lt;var&gt;.value)
+
+&lt;var&gt;.gradient = ...
+cpg_gradient(prob)
+print(&lt;param&gt;.gradient)</code></pre>
+            </div>
+            <div class="tab-panel" id="tab-di-layers">
+              <pre><code>from cvxpylayers.torch import CvxpyLayer
+from {{ code_dir_python }}.cpg_solver import forward, backward
+
+layer = CvxpyLayer(prob, parameters=[&lt;param&gt;], variables=[&lt;var&gt;],
+                   custom_method=(forward, backward))
+
+&lt;param_tensor&gt; = torch.tensor(&lt;param_value&gt;, requires_grad=True)
+(&lt;var_tensor&gt;,) = layer(&lt;param_tensor&gt;)
+&lt;var_tensor&gt;.sum().backward()</code></pre>
+            </div>
+          </div>
+        </div>
+        <p>Here, <code>&lt;param&gt;</code> and <code>&lt;var&gt;</code>
+           are placeholders for parameter and variable names, respectively.</p>
+      </div>
+      {% endif %}
+
+      <div class="usage-block">
+        <h3>Example Executable</h3>
+        <p>Build and execute <code>cpg_example</code> as:</p>
+        <div class="tab-group">
+          <div class="tab-bar">
+            <button class="tab-btn active" onclick="switchTab(event,'tab-unix')">Unix</button>
+            <button class="tab-btn"        onclick="switchTab(event,'tab-win')">Windows</button>
+          </div>
+          <div class="tab-body">
+            <div class="tab-panel active" id="tab-unix">
+              <pre><code>cd {{ code_dir }}/c/build
 cmake ..
 cmake --build . --target cpg_example
-./cpg_example
-    </code></pre>
-
-  <p>
-    On Windows, type:
-  </p>
-    <pre><code>
-cd {{ code_dir }}\c\build
+./cpg_example</code></pre>
+            </div>
+            <div class="tab-panel" id="tab-win">
+              <pre><code>cd {{ code_dir }}\c\build
 cmake ..
 cmake --build . --target cpg_example --config release
-Release\cpg_example
-    </code></pre>
+Release\cpg_example</code></pre>
+            </div>
+          </div>
+        </div>
+      </div>
 
-  <h4>Existing C/C++ Project</h4>
+      <div class="usage-block">
+        <h3>Embed in C/C++ project</h3>
+        <p>Copy the following into a subdirectory <code>&lt;subdir&gt;</code> of your project:</p>
+        <pre><code>{{ code_dir }}/c/CMakeLists.txt
+{{ code_dir }}/c/src/*
+{{ code_dir }}/c/include/*
+{{ code_dir }}/c/solver_code/*</code></pre>
+        <p>In your project's top-level <code>CMakeLists.txt</code>, add:</p>
+        <pre><code>add_subdirectory(&lt;subdir&gt;)
+include_directories(... ${{ '{' }}{{ cmake_prefix }}_include})</code></pre>
+        <p>where <code>...</code> is a placeholder for your existing include directories and
+           the list of include directories of the generated code <code>${{ '{' }}{{ cmake_prefix }}_include}</code>
+           is exposed by <code>{{ code_dir }}/c/CMakeLists.txt</code>.
+           Add <code>${{ '{' }}{{ cmake_prefix }}_head}</code> and
+           <code>${{ '{' }}{{ cmake_prefix }}_src}</code> to any targets that use the generated code.
+      </div>
+    </section>
 
-  <p>
-    To use the generated code in an existing <code>CMake</code> project, copy the following to a subdirectory <code>&lt;subdir&gt;</code>
-      of your project:
-  </p>
-    <pre><code>
-{{ code_dir }}/c/CMakeLists.txt
-{{ code_dir }}/c/src/
-{{ code_dir }}/c/include/
-{{ code_dir }}/c/solver_code/
-    </code></pre>
+  </main>
+</div>
 
-  <p>
-    In your top-level <code>CMakeLists.txt</code>, add the subdirectory via
-  </p>
-    <pre><code>
-add_subdirectory(&lt;subdir&gt;)
-include_directories(&lt;existing_dirs&gt; ${{ '{' }}${{ '{' }}{{ cmake_prefix }}_include}})
-    </code></pre>
-  <p>
-      where <code>&lt;existing_dirs&gt;</code> is your existing include directories and <code>${{ '{' }}${{ '{' }}{{ cmake_prefix }}_include}}</code> lists
-      the include directories used by the generated code. Add <code>${{ '{' }}${{ '{' }}{{ cmake_prefix }}_head}}</code> and
-      <code>${{ '{' }}${{ '{' }}{{ cmake_prefix }}_src}}</code> to all targets that use the generated code.
-      If not needed, you can remove the <code>cpg_example</code> and <code>cpg</code> targets from <code>{{ code_dir }}/c/CMakeLists.txt</code>.
-  </p>
+<script>
+  // ── File tree interaction ──
+  const fileItems = document.querySelectorAll('.tree-file');
+  const allPanels = document.querySelectorAll('.file-panel');
+  const defaultPanel = document.getElementById('f-default');
+
+  fileItems.forEach(function(item) {
+    item.addEventListener('click', function() {
+      fileItems.forEach(function(x) { x.classList.remove('active'); });
+      allPanels.forEach(function(x) { x.classList.remove('active'); });
+      this.classList.add('active');
+      var panel = document.getElementById(this.dataset.panel);
+      if (panel) { panel.classList.add('active'); }
+      document.getElementById('file-contents-section').scrollIntoView({behavior: 'smooth', block: 'start'});
+    });
+  });
+
+  // ── Tab switching ──
+  function switchTab(evt, panelId) {
+    var btn = evt.currentTarget;
+    var tabBar  = btn.closest('.tab-bar');
+    var tabBody = tabBar.nextElementSibling;
+    tabBar.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+    tabBody.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+    btn.classList.add('active');
+    var target = document.getElementById(panelId);
+    if (target) { target.classList.add('active'); }
+  }
+</script>
 
 </body>
-
 </html>
