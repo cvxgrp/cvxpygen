@@ -35,7 +35,7 @@ def render_template(template_name: str, context: dict) -> str:
 def render_template_to_file(template_name: str, output_dir: str, context: dict = {}, ) -> None:
     """Render a Jinja2 template and write the result to output_path."""
     content = render_template(template_name, context)
-    with open(os.path.join(output_dir, template_name.replace('.jinja2', '')), 'w') as f:
+    with open(os.path.join(output_dir, template_name.replace('.jinja2', '')), 'w', encoding='utf-8') as f:
         f.write(content)
 
 
