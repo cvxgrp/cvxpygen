@@ -11,8 +11,114 @@ from cvxpylayers.jax import CvxpyLayer as LayerJax
 from cvxpygen import cpg
 
 
-@pytest.mark.parametrize("m, n, solver", [(10, 5, 'OSQP'), (1, 1, 'OSQP'), (10, 5, 'QOCOGEN'), (10, 5, 'SCS'), (10, 5, 'CLARABEL')])
-def test_torch(m, n, solver):
+@pytest.mark.parametrize("m, n, solver", [(1, 1, 'OSQP'), (3, 2, 'OSQP'), (3, 2, 'explicit')])
+def test_gradient(m, n, solver):
+    
+    np.random.seed(0)
+    
+    # parametrized nonneg LS problem
+    x = cp.Variable(n, name='x')
+    A = np.random.randn(m, n)
+    b = cp.Parameter(m, name='b')
+    constr = [x >= 0]
+    if solver == 'explicit':
+        constr += [-1 <= b, b <= 1]
+    obj = cp.Minimize(cp.sum_squares(A @ x - b))
+    prob = cp.Problem(obj, constr)
+    
+    b.value = -1 + 2 * np.random.rand(m)
+    
+    # generate code
+    cpg.generate_code(prob, code_dir=f'code_gradient_{m}_{n}', solver=solver, prefix=f'grad_{m}_{n}', gradient=True)
+    mod = importlib.import_module(f'code_gradient_{m}_{n}.cpg_solver')
+    prob.register_solve('cpg', mod.cpg_solve)
+
+    b.value = -0.5 + np.random.rand(m)
+    prob.solve(method='cpg')
+
+    # Compute explicit gradient: dx = ones → dp = sum over col
+    x.gradient = np.ones(x.shape)
+    mod.cpg_gradient(prob)
+    db_cpg = b.gradient.copy()
+
+    # Finite-difference reference
+    eps = 1e-4
+    b0 = b.value.copy()
+    db_fd = np.zeros(m)
+    for i in range(m):
+        bplus = b0.copy()
+        bplus[i] += eps
+        b.value = bplus
+        prob.solve()
+        fplus = np.sum(x.value)
+
+        bminus = b0.copy()
+        bminus[i] -= eps
+        b.value = bminus
+        prob.solve()
+        fminus = np.sum(x.value)
+
+        db_fd[i] = (fplus - fminus) / (2 * eps)
+
+    assert np.allclose(db_cpg, db_fd, atol=1e-3)
+    
+    
+@pytest.mark.parametrize("n, solver", [(5, 'OSQP'), (5, 'explicit')])
+def test_torch_sim(n, solver):
+    
+    np.random.seed(0)
+    
+    # parametrized nonneg LS problem
+    x = cp.Variable(n, name='x')
+    xhat = cp.Parameter(n, name='xhat')
+    b = cp.Parameter(n, name='b')
+    constr = [0.0 <= x, x <= 1.0, x >= xhat]
+    if solver == 'explicit':
+        constr += [0.0 <= xhat, xhat <= 1.0, 0.0 <= b, b <= 1.0]
+    obj = cp.Minimize(cp.sum_squares(x - b))
+    prob = cp.Problem(obj, constr)
+    
+    xhat.value = np.random.rand(n)
+    b.value = np.random.rand(n)
+    
+    # generate code
+    cpg.generate_code(prob, code_dir=f'code_gradient_{n}', solver=solver, prefix=f'grad_{n}', gradient=True)
+    mod = importlib.import_module(f'code_gradient_{n}.cpg_solver')
+    prob.register_solve('cpg', mod.cpg_solve)
+    
+    # torch function
+    layer = LayerTorch(prob, parameters=[xhat, b], variables=[x])
+    layer_gen = LayerTorch(prob, parameters=[xhat, b], variables=[x], custom_method=(mod.forward, mod.backward))
+    
+    def sim(lyr, xhat0, solver_args={}):
+        
+        np.random.seed(0)
+        b0 = torch.tensor(np.random.rand(n))
+        xhat1, = lyr(xhat0, b0, solver_args=solver_args)
+                
+        b1 = torch.tensor(np.random.rand(n))
+        xhat2, = lyr(xhat1, b1, solver_args=solver_args)
+                
+        b2 = torch.tensor(np.random.rand(n))
+        xhat3, = lyr(xhat2, b2, solver_args=solver_args)
+                
+        return xhat3.sum()
+    
+    xhat0_tch = torch.tensor(xhat.value, requires_grad=True)
+    
+    res = sim(layer, xhat0_tch)
+    res.backward()
+    grad = xhat0_tch.grad.detach().numpy()
+    
+    res_gen = sim(layer_gen, xhat0_tch, solver_args={'problem': prob, 'updated_params': ['xhat', 'b']})
+    res_gen.backward()
+    grad_gen = xhat0_tch.grad.detach().numpy()
+    
+    assert np.allclose(grad, grad_gen)
+
+
+@pytest.mark.parametrize("m, n, solver", [(10, 5, 'QOCOGEN'), (10, 5, 'CLARABEL'), (10, 5, 'SCS')])
+def test_torch_two_stage(m, n, solver):
 
     # parametrized nonneg LS problem
     x = cp.Variable(n, nonneg=True, name='x')
@@ -117,147 +223,53 @@ def test_jax():
     assert np.allclose(grad_b_jax, grad_b_jax_gen, atol=1e-4)
 
 
-def test_explicit():
-    """Gradient of sum(sol_x) w.r.t. parameters via explicit solver matches finite differences."""
+def test_explicit_reduced():
+    """Gradient with partially stored variables: only stored components propagate."""
 
     np.random.seed(1)
-    q, d = 4, 3
-    A = np.random.randn(q, d)
-    x = cp.Variable(d, name='x')
-    b = cp.Parameter(q, name='b')
+    m, n = 4, 3
+    A = np.random.randn(m, n)
+    x = cp.Variable(n, name='x')
+    b = cp.Parameter(m, name='b')
     obj = cp.sum_squares(A @ x - b)
     constr = [-1 <= b, b <= 1]
-    problem = cp.Problem(cp.Minimize(obj), constr)
+    prob = cp.Problem(cp.Minimize(obj), constr)
 
-    cpg.generate_code(problem, code_dir='explicit_gradient', solver='explicit',
-                      gradient=True, prefix='ex_grad')
-    from explicit_gradient.cpg_solver import cpg_solve, cpg_gradient
-    problem.register_solve('cpg_explicit', cpg_solve)
+    # store only x[0] and x[2]
+    cpg.generate_code(prob, code_dir='explicit_gradient_reduced', solver='explicit',
+                      gradient=True, prefix='ex_grad_red',
+                      solver_opts={'stored_vars': [x[[0, 2]]]})
+    from explicit_gradient_reduced.cpg_solver import cpg_solve, cpg_gradient
+    prob.register_solve('cpg_explicit_red', cpg_solve)
 
     np.random.seed(2)
-    b.value = -0.5 + np.random.rand(q)
-    problem.solve(method='cpg_explicit')
+    b.value = -0.5 + np.random.rand(m)
+    prob.solve(method='cpg_explicit_red')
 
-    # Compute explicit gradient: dx = ones → dp = sum over col
-    for v in problem.variables():
-        v.gradient = np.ones(v.shape)
-    cpg_gradient(problem)
+    # gradient of x[0] + x[2] w.r.t. b  (x[1] not stored → zero in x.value)
+    x_grad = np.zeros(n)
+    x_grad[[0, 2]] = 1.0
+    x.gradient = x_grad
+    cpg_gradient(prob)
     db_cpg = b.gradient.copy()
 
     # Finite-difference reference
     eps = 1e-4
     b0 = b.value.copy()
-    db_fd = np.zeros(q)
-    for i in range(q):
-        bplus = b0.copy(); bplus[i] += eps
+    db_fd = np.zeros(m)
+    for i in range(m):
+        bplus = b0.copy()
+        bplus[i] += eps
         b.value = bplus
-        problem.solve(method='cpg_explicit')
-        fplus = sum(float(np.sum(v.value)) for v in problem.variables())
+        prob.solve()
+        fplus = np.sum(x.value)
 
-        bminus = b0.copy(); bminus[i] -= eps
+        bminus = b0.copy()
+        bminus[i] -= eps
         b.value = bminus
-        problem.solve(method='cpg_explicit')
-        fminus = sum(float(np.sum(v.value)) for v in problem.variables())
+        prob.solve()
+        fminus = np.sum(x.value)
 
         db_fd[i] = (fplus - fminus) / (2 * eps)
 
     assert np.allclose(db_cpg, db_fd, atol=1e-3)
-
-
-def test_explicit_reduced():
-    """Gradient with partially stored variables: only stored components propagate."""
-
-    np.random.seed(1)
-    q, d = 4, 3
-    A = np.random.randn(q, d)
-    x = cp.Variable(d, name='x')
-    b = cp.Parameter(q, name='b')
-    obj = cp.sum_squares(A @ x - b)
-    constr = [-1 <= b, b <= 1]
-    problem = cp.Problem(cp.Minimize(obj), constr)
-
-    # store only x[0] and x[2]
-    cpg.generate_code(problem, code_dir='explicit_gradient_reduced', solver='explicit',
-                      gradient=True, prefix='ex_grad_red',
-                      solver_opts={'stored_vars': [x[[0, 2]]]})
-    from explicit_gradient_reduced.cpg_solver import cpg_solve, cpg_gradient
-    problem.register_solve('cpg_explicit_red', cpg_solve)
-
-    np.random.seed(2)
-    b.value = -0.5 + np.random.rand(q)
-    problem.solve(method='cpg_explicit_red')
-
-    # gradient of x[0] + x[2] w.r.t. b  (x[1] not stored → zero in x.value)
-    x_grad = np.zeros(d)
-    x_grad[[0, 2]] = 1.0
-    x.gradient = x_grad
-    cpg_gradient(problem)
-    db_cpg = b.gradient.copy()
-
-    # finite-difference reference using the same solver
-    eps = 1e-4
-    b0 = b.value.copy()
-    db_fd = np.zeros(q)
-    for i in range(q):
-        bplus = b0.copy(); bplus[i] += eps
-        b.value = bplus
-        problem.solve(method='cpg_explicit_red')
-        fplus = float(x.value[0]) + float(x.value[2])
-
-        bminus = b0.copy(); bminus[i] -= eps
-        b.value = bminus
-        problem.solve(method='cpg_explicit_red')
-        fminus = float(x.value[0]) + float(x.value[2])
-
-        db_fd[i] = (fplus - fminus) / (2 * eps)
-
-    assert np.allclose(db_cpg, db_fd, atol=1e-3)
-
-
-def test_explicit_layers():
-    """Explicit gradient integrates with cvxpylayers (torch) custom_method interface."""
-
-    np.random.seed(1)
-    q, d = 4, 3
-    A = np.random.randn(q, d)
-    x = cp.Variable(d, name='x')
-    b = cp.Parameter(q, name='b')
-    obj = cp.sum_squares(A @ x - b)
-    constr = [-1 <= b, b <= 1]
-    problem = cp.Problem(cp.Minimize(obj), constr)
-
-    cpg.generate_code(problem, code_dir='explicit_gradient_layers', solver='explicit',
-                      gradient=True, prefix='ex_grad_layers')
-    mod = importlib.import_module('explicit_gradient_layers.cpg_solver')
-
-    np.random.seed(0)
-    # b must be within the explicit-solver bounds [-1, 1]
-    b.value = -0.7 + 1.4 * np.random.rand(q)
-
-    # Reference layer (cvxpylayers built-in differentiation)
-    b_tch = torch.tensor(b.value, requires_grad=True)
-    layer_ref = LayerTorch(problem, parameters=[b], variables=[x])
-    layer_gen = LayerTorch(problem, parameters=[b], variables=[x],
-                           custom_method=(mod.forward, mod.backward))
-
-    def _grad(layer, b_t, solver_args=None):
-        b_t = b_t.detach().clone().requires_grad_(True)
-        kw = {'solver_args': solver_args} if solver_args else {}
-        sol, = layer(b_t, **kw)
-        (0.1 * sol.sum()).backward()
-        return b_t.grad.detach().numpy()
-
-    grad_ref = _grad(layer_ref, b_tch)
-    grad_gen = _grad(layer_gen, b_tch,
-                     solver_args={'problem': problem, 'updated_params': ['b']})
-
-    assert np.allclose(grad_ref, grad_gen, atol=1e-3)
-
-    # Second parameter value (also within bounds)
-    np.random.seed(3)
-    b2_tch = torch.tensor(-0.7 + 1.4 * np.random.rand(q), requires_grad=True)
-    grad_ref2 = _grad(layer_ref, b2_tch)
-    grad_gen2 = _grad(layer_gen, b2_tch,
-                      solver_args={'problem': problem, 'updated_params': ['b']})
-
-    assert np.allclose(grad_ref2, grad_gen2, atol=1e-3)
