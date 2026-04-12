@@ -346,9 +346,7 @@ class Canonicalizer:
 
         osqp_x = cp.Variable(p['q'].shape, name='osqp_x')
         osqp_q = cp.Parameter(p['q'].shape, name='osqp_q')
-        osqp_A_rows, osqp_A_cols = p['A'].nonzero()
-        osqp_A = cp.Parameter(p['A'].shape, name='osqp_A',
-                               sparsity=list(zip(osqp_A_rows, osqp_A_cols)))
+        osqp_A = cp.Parameter(p['A'].shape, name='osqp_A', sparsity=p['A'].nonzero())
         osqp_l = cp.Parameter((n_eq,), name='osqp_l')
         osqp_u = cp.Parameter(p['u'].shape, name='osqp_u')
         osqp_P_diag_sqrt = np.sqrt(np.diag(p['P'].todense()))

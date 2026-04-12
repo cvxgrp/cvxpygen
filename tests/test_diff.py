@@ -11,8 +11,8 @@ from cvxpylayers.jax import CvxpyLayer as LayerJax
 from cvxpygen import cpg
 
 
-@pytest.mark.parametrize("m, n", [(10, 5), (1, 1)])
-def test_torch(m, n):
+@pytest.mark.parametrize("m, n, solver", [(10, 5, 'OSQP'), (1, 1, 'OSQP'), (10, 5, 'QOCOGEN'), (10, 5, 'SCS'), (10, 5, 'CLARABEL')])
+def test_torch(m, n, solver):
 
     # parametrized nonneg LS problem
     x = cp.Variable(n, nonneg=True, name='x')
@@ -25,7 +25,7 @@ def test_torch(m, n):
     b.value = np.random.randn(m)
     
     # generate code
-    cpg.generate_code(prob, code_dir=f'code_torch_{m}_{n}', solver='OSQP', prefix=f'torch_{m}_{n}', gradient=True)
+    cpg.generate_code(prob, code_dir=f'code_torch_{m}_{n}', solver=solver, prefix=f'torch_{m}_{n}', gradient=True)
     mod = importlib.import_module(f'code_torch_{m}_{n}.cpg_solver')
     
     # torch function

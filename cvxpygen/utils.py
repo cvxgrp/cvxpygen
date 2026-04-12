@@ -582,7 +582,7 @@ def write_workspace_def(f, configuration, variable_info, dual_variable_info, par
                 write_vec_def(f, value.flatten(order='F'), prefix + name, 'cpg_float')
                 f.write('\n')
 
-    result_prefix = prefix if not solver_interface.ws_statically_allocated_in_solver_code else ''
+    result_prefix = prefix if not solver_interface.ws_statically_allocated_in_solver_code and not configuration.gradient_two_stage else ''
 
     f.write('// Struct containing primal solution\n')
     CPG_Prim_fields = list(variable_info.name_to_init.keys())
@@ -1252,10 +1252,10 @@ def write_module_def(f, configuration, variable_info, dual_variable_info, parame
             f.write(f'    CPG_Info_cpp.region = pdaqp_active_region;\n')
         else:
             f.write(f'    for(i=0; i<{gradient_interface.n_var}; i++) {{\n')
-            f.write(f'        CPG_Info_cpp.gradient_primal[i] = sol_x[i];\n')
+            f.write(f'        CPG_Info_cpp.gradient_primal[i] = {f"gradient_{configuration.prefix}" if configuration.gradient_two_stage else ""}sol_x[i];\n')
             f.write('    }\n')
             f.write(f'    for(i=0; i<{gradient_interface.n_eq + gradient_interface.n_ineq}; i++) {{\n')
-            f.write(f'        CPG_Info_cpp.gradient_dual[i] = sol_y[i];\n')
+            f.write(f'        CPG_Info_cpp.gradient_dual[i] = {f"gradient_{configuration.prefix}" if configuration.gradient_two_stage else ""}sol_y[i];\n')
             f.write('    }\n')
 
     f.write(f'    {configuration.prefix}CPG_Result_cpp_t CPG_Result_cpp {{}};\n')
@@ -1286,10 +1286,10 @@ def write_module_def(f, configuration, variable_info, dual_variable_info, parame
             f.write(f'        pdaqp_active_region = region;\n')
         else:
             f.write(f'        for(i=0; i<{gradient_interface.n_var}; i++) {{\n')
-            f.write('            sol_x[i] = CPG_GSol_cpp.primal[i];\n')
+            f.write(f'            {f"gradient_{configuration.prefix}" if configuration.gradient_two_stage else ""}sol_x[i] = CPG_GSol_cpp.primal[i];\n')
             f.write('        }\n')
             f.write(f'        for(i=0; i<{gradient_interface.n_eq + gradient_interface.n_ineq}; i++) {{\n')
-            f.write('            sol_y[i] = CPG_GSol_cpp.dual[i];\n')
+            f.write(f'            {f"gradient_{configuration.prefix}" if configuration.gradient_two_stage else ""}sol_y[i] = CPG_GSol_cpp.dual[i];\n')
             f.write('        }\n')
         f.write('    }\n\n')
 
@@ -1620,8 +1620,8 @@ def grad_compute_context(configuration, solver_interface):
         'N': solver_interface.n_var + solver_interface.n_eq + solver_interface.n_ineq,
         'workspace': f'{configuration.prefix}CPG_OSQP_Grad',
         'gradient_two_stage': configuration.gradient_two_stage,
-        'sol_x_var': f'{configuration.prefix}sol_x' if configuration.gradient_two_stage else 'sol_x',
-        'sol_y_var': f'{configuration.prefix}sol_y' if configuration.gradient_two_stage else 'sol_y',
+        'sol_x_var': f'gradient_{configuration.prefix}sol_x' if configuration.gradient_two_stage else 'sol_x',
+        'sol_y_var': f'gradient_{configuration.prefix}sol_y' if configuration.gradient_two_stage else 'sol_y',
     }
 
 
