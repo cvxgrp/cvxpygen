@@ -29,8 +29,10 @@ def test_gradient(m, n, solver):
     b.value = -1 + 2 * np.random.rand(m)
     
     # generate code
-    cpg.generate_code(prob, code_dir=f'code_gradient_{m}_{n}', solver=solver, prefix=f'grad_{m}_{n}', gradient=True)
-    mod = importlib.import_module(f'code_gradient_{m}_{n}.cpg_solver')
+    prefix = f'{solver}_{m}_{n}'
+    code_dir = f'gradient_{prefix}'
+    cpg.generate_code(prob, code_dir=code_dir, solver=solver, prefix=prefix, gradient=True)
+    mod = importlib.import_module(f'{code_dir}.cpg_solver')
     prob.register_solve('cpg', mod.cpg_solve)
 
     b.value = -0.5 + np.random.rand(m)
@@ -82,8 +84,10 @@ def test_torch_sim(n, solver):
     b.value = np.random.rand(n)
     
     # generate code
-    cpg.generate_code(prob, code_dir=f'code_gradient_{n}', solver=solver, prefix=f'grad_{n}', gradient=True)
-    mod = importlib.import_module(f'code_gradient_{n}.cpg_solver')
+    prefix = f'{solver}_{n}'
+    code_dir = f'torch_sim_{prefix}'
+    cpg.generate_code(prob, code_dir=code_dir, solver=solver, prefix=prefix, gradient=True)
+    mod = importlib.import_module(f'{code_dir}.cpg_solver')
     prob.register_solve('cpg', mod.cpg_solve)
     
     # torch function
@@ -131,8 +135,10 @@ def test_torch_two_stage(m, n, solver):
     b.value = np.random.randn(m)
     
     # generate code
-    cpg.generate_code(prob, code_dir=f'code_torch_{m}_{n}', solver=solver, prefix=f'torch_{m}_{n}', gradient=True)
-    mod = importlib.import_module(f'code_torch_{m}_{n}.cpg_solver')
+    prefix = f'{solver}_{m}_{n}'
+    code_dir = f'torch_two_stage_{prefix}'
+    cpg.generate_code(prob, code_dir=code_dir, solver=solver, prefix=prefix, gradient=True)
+    mod = importlib.import_module(f'{code_dir}.cpg_solver')
     
     # torch function
     A_tch = torch.tensor(A.value, requires_grad=True)
@@ -261,13 +267,13 @@ def test_explicit_reduced():
         bplus = b0.copy()
         bplus[i] += eps
         b.value = bplus
-        prob.solve()
+        prob.solve(method='cpg_explicit_red')
         fplus = np.sum(x.value)
 
         bminus = b0.copy()
         bminus[i] -= eps
         b.value = bminus
-        prob.solve()
+        prob.solve(method='cpg_explicit_red')
         fminus = np.sum(x.value)
 
         db_fd[i] = (fplus - fminus) / (2 * eps)
