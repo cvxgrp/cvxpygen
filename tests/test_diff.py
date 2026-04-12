@@ -29,10 +29,9 @@ def test_gradient(m, n, solver):
     b.value = -1 + 2 * np.random.rand(m)
     
     # generate code
-    prefix = f'{solver}_{m}_{n}'
-    code_dir = f'gradient_{prefix}'
-    cpg.generate_code(prob, code_dir=code_dir, solver=solver, prefix=prefix, gradient=True)
-    mod = importlib.import_module(f'{code_dir}.cpg_solver')
+    identifier = f'gradient_{m}_{n}_{solver}'
+    cpg.generate_code(prob, code_dir=identifier, solver=solver, prefix=identifier, gradient=True)
+    mod = importlib.import_module(f'{identifier}.cpg_solver')
     prob.register_solve('cpg', mod.cpg_solve)
 
     b.value = -0.5 + np.random.rand(m)
@@ -84,10 +83,9 @@ def test_torch_sim(n, solver):
     b.value = np.random.rand(n)
     
     # generate code
-    prefix = f'{solver}_{n}'
-    code_dir = f'torch_sim_{prefix}'
-    cpg.generate_code(prob, code_dir=code_dir, solver=solver, prefix=prefix, gradient=True)
-    mod = importlib.import_module(f'{code_dir}.cpg_solver')
+    identifier = f'torch_sim_{n}_{solver}'
+    cpg.generate_code(prob, code_dir=identifier, solver=solver, prefix=identifier, gradient=True)
+    mod = importlib.import_module(f'{identifier}.cpg_solver')
     prob.register_solve('cpg', mod.cpg_solve)
     
     # torch function
@@ -135,10 +133,9 @@ def test_torch_two_stage(m, n, solver):
     b.value = np.random.randn(m)
     
     # generate code
-    prefix = f'{solver}_{m}_{n}'
-    code_dir = f'torch_two_stage_{prefix}'
-    cpg.generate_code(prob, code_dir=code_dir, solver=solver, prefix=prefix, gradient=True)
-    mod = importlib.import_module(f'{code_dir}.cpg_solver')
+    identifier = f'torch_two_stage_{m}_{n}_{solver}'
+    cpg.generate_code(prob, code_dir=identifier, solver=solver, prefix=identifier, gradient=True)
+    mod = importlib.import_module(f'{identifier}.cpg_solver')
     
     # torch function
     A_tch = torch.tensor(A.value, requires_grad=True)
@@ -242,9 +239,9 @@ def test_explicit_reduced():
     prob = cp.Problem(cp.Minimize(obj), constr)
 
     # store only x[0] and x[2]
-    cpg.generate_code(prob, code_dir='explicit_gradient_reduced', solver='explicit',
-                      gradient=True, prefix='ex_grad_red',
-                      solver_opts={'stored_vars': [x[[0, 2]]]})
+    identifier = 'explicit_gradient_reduced'
+    cpg.generate_code(prob, code_dir=identifier, solver='explicit', gradient=True,
+                      prefix=identifier, solver_opts={'stored_vars': [x[[0, 2]]]})
     from explicit_gradient_reduced.cpg_solver import cpg_solve, cpg_gradient
     prob.register_solve('cpg_explicit_red', cpg_solve)
 
