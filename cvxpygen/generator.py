@@ -114,8 +114,8 @@ class Generator:
         else:
             self.canon, self.solver_interface = canonicalizer.canonicalize(problem)
             self.gradient_interface = self.solver_interface
-            self.canon_gradient = None
-            self.canon_solver = None
+            self.canon_gradient = self.canon
+            self.canon_solver = self.canon
 
     def _run_solver_code_generation(self, problem: cp.Problem, code_dir: str, explicit: int) -> None:
         """Call solver_interface.generate_code() to write solver-specific C files."""
@@ -145,9 +145,9 @@ class Generator:
             configuration=self.config,
             canon=self.canon,
             solver_interface=self.solver_interface,
-            canon_gradient=self.canon_gradient,
-            canon_solver=self.canon_solver,
             gradient_interface=self.gradient_interface,
+            canon_solver=self.canon_solver,
+            canon_gradient=self.canon_gradient,
         )
         writer.write()
 

@@ -149,6 +149,10 @@ class SCSInterface(SolverInterface):
         for fl in files_to_copy:
             shutil.copyfile(os.path.join(cvxpygen_directory, 'solvers', 'scs', fl),
                             os.path.join(solver_code_dir, fl))
+            
+        # modify scs_matrix.c
+        utils.read_write_file(os.path.join(solver_code_dir, 'linsys', 'scs_matrix.c'),
+                              lambda x: x.replace('#include "util.h"', '#include "util.h"\n#include "cones.h"'))
 
         # disable BLAS and LAPACK
         utils.read_write_file(os.path.join(code_dir, 'c', 'solver_code', 'scs.mk'),

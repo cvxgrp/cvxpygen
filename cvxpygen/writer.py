@@ -30,17 +30,17 @@ class CCodeWriter:
         configuration: Configuration,
         canon: Canon,
         solver_interface,
-        canon_gradient: Optional[Canon] = None,
-        canon_solver: Optional[Canon] = None,
         gradient_interface=None,
+        canon_solver: Optional[Canon] = None,
+        canon_gradient: Optional[Canon] = None,
     ) -> None:
         self.problem = problem
         self.configuration = configuration
         self.canon = canon
         self.solver_interface = solver_interface
-        self.canon_gradient = canon_gradient
-        self.canon_solver = canon_solver
         self.gradient_interface = gradient_interface
+        self.canon_solver = canon_solver
+        self.canon_gradient = canon_gradient
 
         # Convenience references
         self._pvi = canon.prim_variable_info
@@ -82,9 +82,19 @@ class CCodeWriter:
         utils.render_template_to_file(
             '__init__.py.jinja2', self.configuration.code_dir
         )
+        cmake_ctx = {**utils.cmake_context(self.configuration), **si.cmake_context_extra()}
+        if self.configuration.gradient_two_stage:
+            # Add OSQP include dirs AFTER solver include dirs to prevent OSQP headers
+            # (e.g., osqp_code/inc/private/util.h) from shadowing same-named solver
+            # headers (e.g., solver_code/include/util.h for SCS).
+            cmake_ctx['extra_cmake_include_dirs'] = cmake_ctx.get('extra_cmake_include_dirs', []) + [
+                '${CMAKE_CURRENT_SOURCE_DIR}/osqp_code/',
+                '${CMAKE_CURRENT_SOURCE_DIR}/osqp_code/inc/private',
+                '${CMAKE_CURRENT_SOURCE_DIR}/osqp_code/inc/public',
+            ]
         utils.render_template_to_file(
             'CMakeLists.txt.jinja2', self._c_dir,
-            {**utils.cmake_context(self.configuration), **si.cmake_context_extra()}
+            cmake_ctx
         )
         utils.render_template_to_file(
             'setup.py.jinja2', self.configuration.code_dir,
@@ -145,7 +155,8 @@ class CCodeWriter:
     def _write_gradient_def(self, f, configuration,
                            variable_info_first, dual_variable_info_first,
                            variable_info_second, dual_variable_info_second,
-                           parameter_info, parameter_canon, solver_interface):
+                           parameter_info, parameter_canon, solver_interface,
+                           gradient_interface):
         """
         Write parameter initialization function to file
         """
@@ -157,9 +168,9 @@ class CCodeWriter:
         # CPG_OSQP_Grad is always written with configuration.prefix (not gradient_prefix)
         osqp_prefix = configuration.prefix
 
-        n = solver_interface.n_var
-        nl = solver_interface.n_eq
-        nu = solver_interface.n_eq + solver_interface.n_ineq
+        n = gradient_interface.n_var
+        nl = gradient_interface.n_eq
+        nu = gradient_interface.n_eq + gradient_interface.n_ineq
         N = n + nu
         NP = len(parameter_info.flat_usp)
 
@@ -317,7 +328,8 @@ class CCodeWriter:
     def _write_gradient_prot(self, f, configuration,
                             variable_info_first, dual_variable_info_first,
                             variable_info_second, dual_variable_info_second,
-                            parameter_info, parameter_canon, solver_interface):
+                            parameter_info, parameter_canon, solver_interface,
+                            gradient_interface):
         """
         Write function declarations to file
         """
@@ -337,10 +349,10 @@ class CCodeWriter:
                 f.write(f'\nextern void {prefix}cpg_retrieve_intermediate_primal();\n')
             f.write(f'\nextern void {prefix}cpg_retrieve_intermediate_dual();\n')
             if ret_prim_func_needed:
-                utils.write_vec_prot(f, np.zeros(solver_interface.n_var), f'{prefix}sol_x', 'cpg_float')
+                utils.write_vec_prot(f, np.zeros(gradient_interface.n_var), f'{prefix}sol_x', 'cpg_float')
             else:
                 f.write(f'\nextern cpg_float* {prefix}sol_x;\n')
-            utils.write_vec_prot(f, np.zeros(solver_interface.n_eq + solver_interface.n_ineq), f'{prefix}sol_y', 'cpg_float')
+            utils.write_vec_prot(f, np.zeros(gradient_interface.n_eq + gradient_interface.n_ineq), f'{prefix}sol_y', 'cpg_float')
         
         f.write('\n// Un-retrieve\n')
         for name, size in variable_info_first.name_to_size.items():
@@ -530,7 +542,7 @@ class CCodeWriter:
 
         utils.render_template_to_file(
             'cpg_osqp_grad_compute.c.jinja2', self._src_dir,
-            utils.grad_compute_context(cfg, si)
+            utils.grad_compute_context(cfg, gi)
         )
         utils.render_template_to_file(
             'cpg_osqp_grad_compute.h.jinja2', self._include_dir
@@ -539,9 +551,9 @@ class CCodeWriter:
             'cpg_osqp_grad_workspace.h.jinja2', self._include_dir,
             utils.grad_workspace_h_context(cfg)
         )
-        utils.write_file(os.path.join(cfg.code_dir, 'c', 'src', 'cpg_osqp_grad_workspace.c'), 'w', 
-                         self._write_gradient_workspace_def, 
-                         cfg.prefix, self._pc)
+        utils.write_file(os.path.join(cfg.code_dir, 'c', 'src', 'cpg_osqp_grad_workspace.c'), 'w',
+                         self._write_gradient_workspace_def,
+                         cfg.prefix, self.canon_gradient.parameter_canon)
 
         if cfg.gradient_two_stage:
             cg = self.canon_gradient
@@ -565,7 +577,7 @@ class CCodeWriter:
                 cfg,
                 cg.prim_variable_info, cg.dual_variable_info,
                 cs.prim_variable_info, cs.dual_variable_info,
-                cg.parameter_info, cg.parameter_canon, si,
+                cg.parameter_info, cg.parameter_canon, si, gi,
             )
             utils.write_file(
                 os.path.join(self._src_dir, 'cpg_gradient.c'), 'w',
@@ -573,20 +585,20 @@ class CCodeWriter:
                 cfg,
                 cg.prim_variable_info, cg.dual_variable_info,
                 cs.prim_variable_info, cs.dual_variable_info,
-                cg.parameter_info, cg.parameter_canon, si,
+                cg.parameter_info, cg.parameter_canon, si, gi
             )
         else:
             utils.write_file(
                 os.path.join(self._include_dir, 'cpg_gradient.h'), 'w',
                 self._write_gradient_prot,
                 cfg, self._pvi, self._dvi, None, None,
-                self._pi, self._pc, si,
+                self._pi, self._pc, si, gi
             )
             utils.write_file(
                 os.path.join(self._src_dir, 'cpg_gradient.c'), 'w',
                 self._write_gradient_def,
                 cfg, self._pvi, self._dvi, None, None,
-                self._pi, self._pc, si,
+                self._pi, self._pc, si, gi
             )
 
     def _write_example(self) -> None:
@@ -628,16 +640,6 @@ class CCodeWriter:
 
         if cfg.gradient_two_stage:
             utils.read_write_file(
-                os.path.join(self._c_dir, 'CMakeLists.txt'),
-                lambda x: x.replace(
-                    '${CMAKE_CURRENT_SOURCE_DIR}/solver_code',
-                    '${CMAKE_CURRENT_SOURCE_DIR}/solver_code\n      '
-                    '${CMAKE_CURRENT_SOURCE_DIR}/osqp_code/\n      '
-                    '${CMAKE_CURRENT_SOURCE_DIR}/osqp_code/inc/private\n      '
-                    '${CMAKE_CURRENT_SOURCE_DIR}/osqp_code/inc/public',
-                ),
-            )
-            utils.read_write_file(
                 os.path.join(self._osqp_code_dir, 'CMakeLists.txt'),
                 lambda x: x.replace(
                     '${CMAKE_CURRENT_SOURCE_DIR}/src/*.c',
@@ -653,9 +655,13 @@ class CCodeWriter:
                 os.path.join(self._osqp_code_dir, 'src', 'kkt.c'),
                 lambda x: x.replace('#include "kkt.h"', '#include "../inc/private/kkt.h"'),
             )
+            replacements = [
+                ('#include "kkt.h"', '#include "../inc/private/kkt.h"'),
+                ('#include "util.h"', '#include "../inc/private/util.h"')
+            ]
             utils.read_write_file(
                 os.path.join(self._osqp_code_dir, 'src', 'qdldl_interface.c'),
-                lambda x: x.replace('#include "kkt.h"', '#include "../inc/private/kkt.h"'),
+                lambda x: utils.multiple_replace(x, replacements)
             )
 
     def _update_readme(self) -> None:

@@ -149,7 +149,10 @@ def test_torch_two_stage(m, n, solver):
     grad_A_torch = A_tch.grad.detach().numpy()
     grad_b_torch = b_tch.grad.detach().numpy()
     
-    sol_torch_gen, = layer_torch_gen(A_tch, b_tch, solver_args={'problem': prob, 'updated_params': ['A', 'b']})
+    solver_args={'problem': prob, 'updated_params': ['A', 'b']}
+    if solver == 'SCS':
+        solver_args['verbose'] = False
+    sol_torch_gen, = layer_torch_gen(A_tch, b_tch, solver_args=solver_args)
     sum_torch_gen = 0.1 * sol_torch_gen.sum()
     sum_torch_gen.backward()
     grad_A_torch_gen = A_tch.grad.detach().numpy()
