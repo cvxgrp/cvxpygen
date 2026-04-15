@@ -11,57 +11,44 @@ from cvxpylayers.jax import CvxpyLayer as LayerJax
 from cvxpygen import cpg
 
 
-@pytest.mark.parametrize("m, n, solver", [(1, 1, 'OSQP'), (3, 2, 'OSQP'), (3, 2, 'explicit')])
-def test_gradient(m, n, solver):
+@pytest.mark.parametrize("n, solver", [(1, 'OSQP'), (3, 'OSQP'), (3, 'explicit')])
+def test_gradient(n, solver):
     
     np.random.seed(0)
     
-    # parametrized nonneg LS problem
+    # parametrized problem
     x = cp.Variable(n, name='x')
-    A = np.random.randn(m, n)
-    b = cp.Parameter(m, name='b')
+    chol = np.random.randn(n, n)
+    Q = chol @ chol.T / 10 + np.eye(n)
+    b = cp.Parameter(n, name='b')
     constr = [x >= 0]
     if solver == 'explicit':
         constr += [-1 <= b, b <= 1]
-    obj = cp.Minimize(cp.sum_squares(A @ x - b))
+    obj = cp.Minimize(b @ x + cp.quad_form(x, Q))
     prob = cp.Problem(obj, constr)
-    
-    b.value = -1 + 2 * np.random.rand(m)
+    b.value = -1 + 2 * np.random.rand(n)
     
     # generate code
-    identifier = f'gradient_{m}_{n}_{solver}'
+    identifier = f'gradient_{n}_{solver}'
     cpg.generate_code(prob, code_dir=identifier, solver=solver, prefix=identifier, gradient=True)
     mod = importlib.import_module(f'{identifier}.cpg_solver')
     prob.register_solve('cpg', mod.cpg_solve)
 
-    b.value = -0.5 + np.random.rand(m)
-    prob.solve(method='cpg')
+    # assign parameter value
+    b.value = -0.5 + np.random.rand(n)
 
-    # Compute explicit gradient: dx = ones → dp = sum over col
+    # compute gradients
+    prob.solve(method='cpg')
     x.gradient = np.ones(x.shape)
     mod.cpg_gradient(prob)
-    db_cpg = b.gradient.copy()
+    g_cpg = b.gradient
+    
+    # cvxpy reference
+    prob.solve(requires_grad=True)
+    prob.backward()
+    g_cvxpy = b.gradient
 
-    # Finite-difference reference
-    eps = 1e-4
-    b0 = b.value.copy()
-    db_fd = np.zeros(m)
-    for i in range(m):
-        bplus = b0.copy()
-        bplus[i] += eps
-        b.value = bplus
-        prob.solve()
-        fplus = np.sum(x.value)
-
-        bminus = b0.copy()
-        bminus[i] -= eps
-        b.value = bminus
-        prob.solve()
-        fminus = np.sum(x.value)
-
-        db_fd[i] = (fplus - fminus) / (2 * eps)
-
-    assert np.allclose(db_cpg, db_fd, atol=1e-3)
+    assert np.allclose(g_cpg, g_cvxpy)
     
     
 @pytest.mark.parametrize("n, solver", [(5, 'OSQP'), (5, 'explicit')])

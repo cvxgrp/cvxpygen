@@ -373,8 +373,9 @@ class CCodeWriter:
         n = parameter_canon.p['P'].shape[0]
         N = n + parameter_canon.p['A'].shape[0]
         
+        P_upper = sp.triu(parameter_canon.p['P'], format='csc')
         K = sp.bmat([
-            [parameter_canon.p['P'] + 1e-6 * sp.eye(n), parameter_canon.p['A'].T],
+            [P_upper + 1e-6 * sp.eye(n), parameter_canon.p['A'].T],
             [None, - 1e-6 * sp.eye(N-n)]
         ], format='csc')
         
