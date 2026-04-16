@@ -438,13 +438,13 @@ void cpg_osqp_gradient() {
         if ({{ sol_y_var }}[i] < -1e-12) {
             if ({{ workspace }}.a[i] == 0) {
                 cpg_ldl_add(n + i);
-                {{ workspace }}.a[i] = -1; // lower bound active
             }
+            {{ workspace }}.a[i] = -1; // lower bound active
         } else if ({{ sol_y_var }}[i] > 1e-12) {
             if ({{ workspace }}.a[i] == 0) {
                 cpg_ldl_add(n + i);
-                {{ workspace }}.a[i] = 1; // upper bound active
             }
+            {{ workspace }}.a[i] = 1; // upper bound active
         } else {
             if ({{ workspace }}.a[i] != 0) {
                 cpg_ldl_delete(n + i);
