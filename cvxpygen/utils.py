@@ -1608,6 +1608,7 @@ def solver_py_context(config, variable_info, dual_variable_info, parameter_info,
             if solver_interface.status_is_int else ''
         ),
         'solver_name': config.solver_name,
+        'special_settings': solver_interface.special_settings(config),
     }
 
     if config.gradient:

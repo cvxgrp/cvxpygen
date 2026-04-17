@@ -53,3 +53,39 @@ def check(prob, solver, name, func_get_primal_vec, **extra_settings):
     dual_py_norm = np.linalg.norm(dual_py, 2)
 
     return nan_to_inf(val_py), prim_py, dual_py, nan_to_inf(val_cg), prim_cg, dual_cg, prim_py_norm, dual_py_norm, stats_py, stats_cg, sol_cg
+
+
+def pgd(
+    theta_init: np.ndarray,
+    theta_lower: np.ndarray,
+    theta_upper: np.ndarray,
+    alpha: float,
+    sim: callable,
+    n_iter: int
+):
+    
+    def _propose(theta: np.ndarray, alpha: float, grad: np.ndarray, compute_grad: bool=True):
+        theta_new = np.clip(theta - alpha * grad, theta_lower, theta_upper)
+        val_new, grad_new = sim(theta_new, compute_grad=compute_grad)
+        return theta_new, val_new, grad_new
+    
+    theta = theta_init.copy()
+    
+    perf = np.zeros(n_iter + 1)
+    perf[0], grad = sim(theta)
+    
+    for it in range(n_iter):
+        
+        theta_new, perf[it+1], grad_new = _propose(theta, alpha, grad)
+        
+        if perf[it+1] < perf[it]:
+            theta = theta_new
+            grad = grad_new
+            alpha *= 1.5
+        else:
+            while perf[it+1] >= perf[it]:
+                alpha /= 2
+                theta_new, perf[it+1], _ = _propose(theta, alpha, grad, compute_grad=False)
+            theta, perf[it+1], grad = _propose(theta, alpha, grad)
+                
+    return theta, perf

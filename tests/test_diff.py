@@ -9,6 +9,7 @@ import jax.numpy as jnp
 from cvxpylayers.torch import CvxpyLayer as LayerTorch
 from cvxpylayers.jax import CvxpyLayer as LayerJax
 from cvxpygen import cpg
+from utils_test import pgd
 
 
 @pytest.mark.parametrize("n, solver", [(1, 'OSQP'), (3, 'OSQP'), (3, 'explicit')])
@@ -104,6 +105,118 @@ def test_torch_sim(n, solver):
     grad_gen = xhat0_tch.grad.detach().numpy()
     
     assert np.allclose(grad, grad_gen)
+    
+    
+@pytest.mark.parametrize("solver", ['OSQP', 'explicit'])
+def test_torch_pgd(solver):
+    
+    # constants
+    h = 0.05
+    alpha = 0.1
+    kappa_Q = 1
+    kappa_S = 10
+    Slower, Supper = 0.0, 0.5
+    Qlower, Qupper = 0.2, 1.0
+
+    # variables
+    g = cp.Variable(name='g')
+    s = cp.Variable(name='s')
+    b = cp.Variable(name='b')
+    qplus = cp.Variable(name='qplus')
+
+    # parameters
+    L = cp.Parameter(name='L')
+    P_over_alpha = cp.Parameter(name='P_over_alpha')
+    qtar = cp.Parameter(name='qtar')
+    q = cp.Parameter(name='q')
+    Q = cp.Parameter(name='Q')
+    S = cp.Parameter(name='S')
+
+    # problem
+    obj = cp.Minimize(P_over_alpha * g * h + (qplus - qtar)**2 + b**2)
+    constr = [
+        L == s + b + g,
+        0 <= s, s <= S, -Q / h / 10 <= b, b <= Q / h / 10, g >= 0,
+        qplus == q - h * b, 0 <= qplus, qplus <= Q,
+        0 <= L, L <= 1, Slower <= S, S <= Supper,
+        1.0 / alpha <= P_over_alpha, P_over_alpha <= 2.0 / alpha,
+        0.8 * Qlower <= qtar, qtar <= 0.8 * Qupper,
+        0 <= q, q <= Qupper, Qlower <= Q, Q <= Qupper
+    ]
+    problem = cp.Problem(obj, constr)
+
+    L.value = 0.5
+    P_over_alpha.value = 1.0 / alpha
+    Q.value = 0.8 * Qupper
+    qtar.value = 0.8 * Q.value
+    q.value = 0.5 * Q.value
+    S.value = 0.25
+
+    # generate code
+    identifier = f'torch_pgd_{solver}'
+    cpg.generate_code(problem, code_dir=identifier, prefix=identifier, solver=solver, gradient=True)
+
+    # register methods
+    parameters = [L, P_over_alpha, qtar, q, Q, S]
+    variables = [g, s, b, qplus]
+    layer = LayerTorch(problem, parameters=parameters, variables=variables)
+
+    mod = importlib.import_module(f'{identifier}.cpg_solver')
+    layer_gen = LayerTorch(problem, parameters=parameters, variables=variables, custom_method=(mod.forward, mod.backward))
+
+    # load and price profiles
+    T = 25
+    L_tch = torch.tensor(np.sin(np.linspace(0, 3 * np.pi, T)) * 0.4 + 0.5)
+    P_tch = torch.tensor(np.cos(np.linspace(0, 2 * np.pi, T)) * 0.4 + 1.5)
+    P_over_alpha_tch = P_tch / alpha
+
+    # simulation
+    def simulate(theta, lyr, solver_args={}, compute_grad=True):
+        Q_tch = torch.tensor(theta[0], dtype=torch.float64, requires_grad=True)
+        S_tch = torch.tensor(theta[1], dtype=torch.float64, requires_grad=True)
+        q_tch = [0.5 * Q_tch]
+        g_tch = []
+        for t in range(T):
+            g, _, _, qplus, = lyr(L_tch[t], P_over_alpha_tch[t], 0.8 * Q_tch, q_tch[-1], Q_tch, S_tch, solver_args=solver_args)
+            g_tch.append(g)
+            q_tch.append(qplus)
+        grid_cost = torch.stack(g_tch) @ P_tch * h
+        operating_cost = kappa_Q * Q_tch**2 + kappa_S * S_tch**2
+        total_cost = grid_cost + operating_cost
+        if compute_grad:
+            total_cost.backward()
+            return total_cost.item(), np.array([Q_tch.grad.numpy(), S_tch.grad.numpy()])
+        else:
+            return total_cost.item(), None
+        
+    # projected gradient descent
+    theta_init = np.array([0.8, 0.25])  # (Q, S)
+    theta_lower = np.array([Qlower, Slower]) + 0.01
+    theta_upper = np.array([Qupper, Supper]) - 0.01
+    alpha = 0.02
+    n_iter = 5
+
+    def sim_ref(theta, compute_grad=True):
+        return simulate(
+            theta,
+            layer,
+            solver_args={'eps_abs': 1e-5, 'eps_rel': 1e-5},
+            compute_grad=compute_grad
+        )
+
+    def sim_gen(theta, compute_grad=True):
+        return simulate(
+            theta,
+            layer_gen,
+            solver_args={'problem': problem, 'updated_params': ['L', 'P_over_alpha', 'qtar', 'q', 'Q', 'S']},
+            compute_grad=compute_grad
+        )
+    
+    theta_ref, perf_ref = pgd(theta_init, theta_lower, theta_upper, alpha, sim_ref, n_iter)
+    theta_gen, perf_gen = pgd(theta_init, theta_lower, theta_upper, alpha, sim_gen, n_iter)
+    
+    assert np.allclose(theta_ref, theta_gen, atol=1e-4)
+    assert np.allclose(perf_ref, perf_gen, atol=1e-4)
 
 
 @pytest.mark.parametrize("m, n, solver", [(10, 5, 'QOCOGEN'), (10, 5, 'CLARABEL'), (10, 5, 'SCS')])

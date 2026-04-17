@@ -165,3 +165,6 @@ class OSQPInterface(QPCanonMixin, SolverInterface):
                 "os.path.join('c', 'solver_code', 'inc', 'private')",
             ],
         }
+        
+    def special_settings(self, config) -> dict:
+        return {'eps_abs': 1e-4, 'eps_rel': 1e-4} if config.gradient else {}

@@ -256,3 +256,6 @@ class SolverInterface(ABC):
     
     def write_gradient_workspace_def(f, prefix, parameter_canon) -> None:
         pass
+    
+    def special_settings(self, config) -> dict:
+        return {}

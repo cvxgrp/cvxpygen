@@ -53,6 +53,9 @@ def cpg_solve(prob, updated_params=None, **kwargs):
 {% if not explicit %}
     # set solver settings
     cpg_module.set_solver_default_settings()
+{% for setting, value in special_settings.items() %}
+    cpg_module.set_solver_{{ setting }}({{ value }})
+{% endfor %}
     for key, value in kwargs.items():
         try:
             eval(f'cpg_module.set_solver_{standard_settings_names.get(key, key)}(value)')
