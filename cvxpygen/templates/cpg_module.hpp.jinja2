@@ -57,9 +57,7 @@ struct {{ prefix }}CPG_Info_cpp_t {
 {% endif %}
     double time;
 {% if gradient %}
-{% if explicit %}
-    int region;
-{% else %}
+{% if not explicit %}
     std::array<double, {{ n_grad_var }}> gradient_primal;
     std::array<double, {{ n_grad_constr }}> gradient_dual;
 {% endif %}
@@ -95,7 +93,7 @@ struct {{ prefix }}CPG_PDelta_cpp_t {
 
 // Derivative function
 {% if explicit %}
-{{ prefix }}CPG_PDelta_cpp_t {{ prefix }}gradient_cpp(struct {{ prefix }}CPG_VDelta_cpp_t& CPG_VDelta_cpp, int region, bool use_sol);
+{{ prefix }}CPG_PDelta_cpp_t {{ prefix }}gradient_cpp(struct {{ prefix }}CPG_VDelta_cpp_t& CPG_VDelta_cpp, bool use_sol);
 {% else %}
 {{ prefix }}CPG_PDelta_cpp_t {{ prefix }}gradient_cpp(struct {{ prefix }}CPG_VDelta_cpp_t& CPG_VDelta_cpp, struct {{ prefix }}CPG_GSol_cpp_t& CPG_GSol_cpp, bool use_sol);
 {% endif %}

@@ -488,11 +488,13 @@ class CCodeWriter:
 
             # Canonical diff dtheta = Z_active[:, :n_params].T @ dx
             f.write('  // Step 1: dtheta = Z_active[:, :n_params].T @ dx\n')
-            f.write('  int base = pdaqp_hp_list[pdaqp_active_region] * (PDAQP_N_PARAMETER+1) * PDAQP_N_SOLUTION;\n')
+            f.write('  int base = pdaqp_feedback_offset;\n')
             f.write(f'  for(j=0; j<{n_params}; j++){{\n')
             f.write(f'    cpg_dtheta[j] = 0.0;\n')
             f.write(f'    for(i=0; i<{n_sol}; i++){{\n')
-            f.write(f'      cpg_dtheta[j] += (cpg_float)pdaqp_feedbacks[base + i*(PDAQP_N_PARAMETER+1) + j] * cpg_dx[i];\n')
+            f.write(f'      cpg_dtheta[j] += (cpg_float)pdaqp_feedbacks_T[base++] * cpg_dx[i];\n')
+            # XXX if transpose is not stored:
+            #f.write(f'      cpg_dtheta[j] += (cpg_float)pdaqp_feedbacks[base + i*(PDAQP_N_PARAMETER+1) + j] * cpg_dx[i];\n')
             f.write('    }\n')
             f.write('  }\n\n')
 

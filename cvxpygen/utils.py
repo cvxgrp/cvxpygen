@@ -1253,12 +1253,8 @@ def write_module_def(f, config, variable_info, dual_variable_info, parameter_inf
             f.write(f'    CPG_Info_cpp.{field} = {config.prefix}CPG_Info.{field};\n')
     f.write('    std::chrono::duration<double> elapsed = ASA_end - ASA_start;\n')
     f.write('    CPG_Info_cpp.time = elapsed.count();\n')
-    #else:
-    #    f.write('    CPG_Info_cpp.time = 1.0 * (ASA_end - ASA_start) / CLOCKS_PER_SEC / 1000;\n')
     if config.gradient:
-        if config.explicit:
-            f.write(f'    CPG_Info_cpp.region = pdaqp_active_region;\n')
-        else:
+        if not config.explicit:
             f.write(f'    for(i=0; i<{gradient_interface.n_var}; i++) {{\n')
             f.write(f'        CPG_Info_cpp.gradient_primal[i] = {f"gradient_{config.prefix}" if config.gradient_two_stage else ""}sol_x[i];\n')
             f.write('    }\n')
@@ -1282,7 +1278,7 @@ def write_module_def(f, config, variable_info, dual_variable_info, parameter_inf
         if config.explicit:
             f.write(f'{config.prefix}CPG_PDelta_cpp_t {config.prefix}gradient_cpp('
                     f'struct {config.prefix}CPG_VDelta_cpp_t& CPG_VDelta_cpp, '
-                    f'int region, bool use_sol){{\n\n')
+                    f'bool use_sol){{\n\n')
         else:
             f.write(f'{config.prefix}CPG_PDelta_cpp_t {config.prefix}gradient_cpp('
                     f'struct {config.prefix}CPG_VDelta_cpp_t& CPG_VDelta_cpp, '
@@ -1290,9 +1286,7 @@ def write_module_def(f, config, variable_info, dual_variable_info, parameter_inf
 
         f.write('    // Set solution in canonical form for gradient computation\n')
         f.write('    if (use_sol) {\n')
-        if config.explicit:
-            f.write(f'        pdaqp_active_region = region;\n')
-        else:
+        if not config.explicit:
             f.write(f'        for(i=0; i<{gradient_interface.n_var}; i++) {{\n')
             f.write(f'            {f"gradient_{config.prefix}" if config.gradient_two_stage else ""}sol_x[i] = CPG_GSol_cpp.primal[i];\n')
             f.write('        }\n')
@@ -1381,9 +1375,7 @@ def write_module_def(f, config, variable_info, dual_variable_info, parameter_inf
         f.write(f'            .def_readwrite("dua_res", &{config.prefix}CPG_Info_cpp_t::dua_res)\n')
     f.write(f'            .def_readwrite("time", &{config.prefix}CPG_Info_cpp_t::time)\n')
     if config.gradient:
-        if config.explicit:
-            f.write(f'            .def_readwrite("region", &{config.prefix}CPG_Info_cpp_t::region)\n')
-        else:
+        if not config.explicit:
             f.write(f'            .def_readwrite("gradient_primal", &{config.prefix}CPG_Info_cpp_t::gradient_primal)\n')
             f.write(f'            .def_readwrite("gradient_dual", &{config.prefix}CPG_Info_cpp_t::gradient_dual)\n')
     f.write('            ;\n\n')

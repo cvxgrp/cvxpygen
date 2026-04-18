@@ -205,7 +205,9 @@ class PDAQPInterface(QPCanonMixin, SolverInterface):
         if str(mpqp.solution_info.status) != 'Solved':
             raise Exception(f'Could not compute explicit solution: {mpqp.solution_info.status}')
 
-        codegen_status = mpqp.codegen(dir=solver_code_dir, max_reals=max_floats, dual=store_dual, c_float_store=c_float_store)
+        codegen_status = mpqp.codegen(dir=solver_code_dir, max_reals=max_floats, dual=store_dual,
+                                      c_float_store=c_float_store, store_transpose=configuration.gradient,
+                                      store_offset=configuration.gradient)
         if codegen_status < 0:
             raise Exception('Could not generate explicit solver. Consider increasing max_reals in solver_opts.')
 
@@ -217,9 +219,6 @@ class PDAQPInterface(QPCanonMixin, SolverInterface):
         c_file = os.path.join(src_dir, 'pdaqp.c')
         shutil.move(os.path.join(solver_code_dir, 'pdaqp.h'), h_file)
         shutil.move(os.path.join(solver_code_dir, 'pdaqp.c'), c_file)
-
-        if configuration.gradient:
-            self._patch_pdaqp_for_gradient(h_file, c_file)
 
         # create solver_code_dir/CMakeLists.txt
         with open(os.path.join(solver_code_dir, 'CMakeLists.txt'), 'w') as fl:
@@ -233,32 +232,6 @@ class PDAQPInterface(QPCanonMixin, SolverInterface):
         canon.parameter_canon.n_dual_reduced = len(b)
         canon.parameter_info.lower = lower
         canon.parameter_info.upper = upper
-
-    @staticmethod
-    def _patch_pdaqp_for_gradient(h_file, c_file):
-        """Post-process generated pdaqp.c/h to expose the active critical region index."""
-
-        # header: expose the global and array symbols needed by gradient code
-        utils.read_write_file(h_file, lambda text: text.replace(
-            '#endif // ifndef PDAQP_H',
-            'extern int pdaqp_active_region;\n'
-            'extern c_float_store pdaqp_feedbacks[];\n'
-            'extern c_int pdaqp_hp_list[];\n'
-            '#endif // ifndef PDAQP_H',
-        ))
-        
-        # source: add global and record active region before the feedback evaluation
-        utils.read_write_file(c_file, lambda text: text
-            .replace(
-                'void pdaqp_evaluate(',
-                'int pdaqp_active_region = -1;\nvoid pdaqp_evaluate(',
-            )
-            .replace(
-                '    // Leaf node reached -> evaluate affine function\n',
-                '    // Leaf node reached -> evaluate affine function\n'
-                '    pdaqp_active_region = id;\n',
-            )
-        )
 
     @staticmethod
     def _get_parameter_delta_bounds(problem, canon):

@@ -28,7 +28,7 @@ def get_param_value(param):
         return squeeze_scalar(param.value)
     elif param.attributes["diag"]:
         return list(np.diag(param.value))
-    elif param._has_dim_reducing_attr:
+    elif getattr(param, "_has_dim_reducing_attr", False):
         return list(param.value_sparse.data)
     else:
         return list(param.value.flatten(order="F"))
@@ -88,7 +88,7 @@ def cpg_solve(prob, updated_params=None, **kwargs):
 {% endif %}
 
 {% if explicit %}
-    return res.cpg_info.time{% if gradient %}, res.cpg_info.region{% endif %}
+    return res.cpg_info.time
 
 
 {% else %}
@@ -125,7 +125,7 @@ def cpg_solve(prob, updated_params=None, **kwargs):
 def cpg_solve(prob, updated_params=None, **kwargs):
 
 {% if explicit %}
-    val, _ = cpg_solve_and_gradient_info(prob, updated_params, **kwargs)
+    val = cpg_solve_and_gradient_info(prob, updated_params, **kwargs)
 {% else %}
     val, _, _ = cpg_solve_and_gradient_info(prob, updated_params, **kwargs)
 {% endif %}
@@ -133,18 +133,14 @@ def cpg_solve(prob, updated_params=None, **kwargs):
 
 
 {% if explicit %}
-def cpg_gradient(prob, region=None):
+def cpg_gradient(prob):
 {% else %}
 def cpg_gradient(prob, gradient_sol_primal=None, gradient_sol_dual=None):
 {% endif %}
 
     # set solution info if provided
 {% if explicit %}
-    if region is not None:
-        use_sol = True
-    else:
-        region = 0
-        use_sol = False
+    use_sol = False
 {% else %}
     gradient_sol = cpg_module.{{ prefix }}cpg_gsol()
     if gradient_sol_primal is not None and gradient_sol_dual is not None:
@@ -167,7 +163,7 @@ def cpg_gradient(prob, gradient_sol_primal=None, gradient_sol_dual=None):
 {% endif %}
 {% endfor %}
 {% if explicit %}
-    pdelta = cpg_module.gradient(vdelta, region, use_sol)
+    pdelta = cpg_module.gradient(vdelta, use_sol)
 {% else %}
     pdelta = cpg_module.gradient(vdelta, gradient_sol, use_sol)
 {% endif %}
@@ -186,7 +182,7 @@ def forward(params, context):
         next(p for p in parameters if p.id == pid).value = val
     updated_params = kwargs.pop("updated_params", None)
 {% if explicit %}
-    _, info["region"] = cpg_solve_and_gradient_info(prob, updated_params, **kwargs)
+    cpg_solve_and_gradient_info(prob, updated_params, **kwargs)
 {% else %}
     _, info["gradient_primal"], info["gradient_dual"] = cpg_solve_and_gradient_info(prob, updated_params, **kwargs)
 {% endif %}
@@ -203,8 +199,7 @@ def backward(dvars, context):
     for variable, dv in zip(context.variables, dvars):
         next(v for v in vars if v.id == variable.id).gradient = dv
 {% if explicit %}
-    region = context.info["region"]
-    cpg_gradient(prob, region)
+    cpg_gradient(prob)
 {% else %}
     gradient_primal = context.info["gradient_primal"]
     gradient_dual = context.info["gradient_dual"]
