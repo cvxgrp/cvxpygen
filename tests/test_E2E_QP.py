@@ -191,11 +191,12 @@ def test(name, solver, seed):
 
     if seed == 0:
         prob = assign_data(prob, name, 0)
-        cpg.generate_code(prob, code_dir=f'test_{name}_{solver}', solver=solver, prefix=f'{name}_{solver}')
-        assert len(glob.glob(os.path.join(f'test_{name}_{solver}', 'cpg_module.*'))) > 0
-
-    #module = importlib.import_module(f'test_{name}_{solver}.cpg_solver')
-    #prob.register_solve('CPG', module.cpg_solve)
+        identifier = f'test_{name}_{solver}'
+        if solver == 'OSQP':
+            cpg.generate_code(prob, code_dir=identifier, prefix=identifier)  # test automatic solver selection
+        else:
+            cpg.generate_code(prob, code_dir=identifier, prefix=identifier, solver=solver)
+        assert len(glob.glob(os.path.join(identifier, 'cpg_module.*'))) > 0
 
     prob = assign_data(prob, name, seed)
 

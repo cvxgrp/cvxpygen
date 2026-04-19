@@ -37,7 +37,7 @@ class Canonicalizer:
     def __init__(
         self,
         solver: str,
-        solver_opts: Optional[dict] = None,
+        solver_opts: dict = {},
         enable_settings: List[str] = [],
     ) -> None:
         self.solver = solver

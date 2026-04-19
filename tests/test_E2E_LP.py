@@ -114,9 +114,6 @@ def test(name, solver, seed):
         cpg.generate_code(prob, code_dir=f'test_{name}_{solver}', solver=solver, prefix=f'{name}_{solver}')
         assert len(glob.glob(os.path.join(f'test_{name}_{solver}', 'cpg_module.*'))) > 0
 
-    #module = importlib.import_module(f'test_{name}_{solver}.cpg_solver')
-    #prob.register_solve('CPG', module.cpg_solve)
-
     prob = assign_data(prob, name, seed)
 
     val_py, prim_py, dual_py, val_cg, prim_cg, dual_cg, prim_py_norm, dual_py_norm, stats_py, stats_cg, sol_cg = \
