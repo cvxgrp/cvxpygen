@@ -41,7 +41,7 @@ class Generator:
     def __init__(
         self,
         solver: Optional[str] = None,
-        solver_opts: Optional[dict] = None,
+        solver_opts: dict = {},
         enable_settings: List[str] = [],
         prefix: str = '',
         gradient: bool = False,
@@ -71,7 +71,7 @@ class Generator:
         """Run the full pipeline: canonicalize → write code → (optionally) compile."""
         sys.stdout.write('Generating code with CVXPYgen ...\n')
 
-        solver, explicit = self._resolve_solver()
+        solver, explicit = self._resolve_solver(problem)
 
         # two-stage gradient (QP solved by conic solver) only applies to non-explicit mode
         gradient_two_stage = (self._gradient and solver != cp.OSQP and not explicit)
@@ -158,14 +158,17 @@ class Generator:
 
     # ── private helpers ───────────────────────────────────────────────────────
 
-    def _resolve_solver(self):
+    def _resolve_solver(self, problem: cp.Problem) -> tuple[str, int]:
         """Return (solver_name, explicit_flag)."""
         solver = self._solver
         solver_opts = self._solver_opts
         if solver is None:
-            return None, 0
+            if problem.is_qp():
+                return 'OSQP', 0
+            else:
+                return 'QOCOGEN', 0
         elif solver.lower() == 'explicit':
-            if solver_opts and solver_opts.get('dual', False):
+            if solver_opts.get('dual', False):
                 return 'PDAQP', 2
             else:
                 return 'PDAQP', 1

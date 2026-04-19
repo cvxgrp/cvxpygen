@@ -1,234 +1,172 @@
+# CVXPYgen
 
-# CVXPYgen: Code generation with CVXPY
+[![PyPI version](https://badge.fury.io/py/cvxpygen.svg)](https://badge.fury.io/py/cvxpygen)
+[![Python](https://img.shields.io/badge/python-%3E%3D3.11-blue)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-Apache%202.0-green)](LICENSE)
+[![CI](https://github.com/cvxgrp/cvxpygen/actions/workflows/CI.yml/badge.svg)](https://github.com/cvxgrp/cvxpygen/actions/workflows/CI.yml)
 
-CVXPYgen takes a convex optimization problem family modeled with CVXPY and generates a custom solver implementation in C.
-This generated solver is specific to the problem family and accepts different parameter values.
-In particular, this solver is suitable for deployment on embedded systems.
-In addition, CVXPYgen creates a Python wrapper for prototyping and desktop (non-embedded) applications.
+---
 
-An overview of CVXPYgen can be found in our [slides and manuscript](https://web.stanford.edu/~boyd/papers/cvxpygen.html).
+CVXPYgen takes a parametrized [CVXPY](https://www.cvxpy.org/) convex optimization problem and generates a custom C solver tailored to that problem family. The generated code provides interfaces in C/C++ (for embedded applications) and Python/CVXPY (for prototyping and desktop applications).
 
-CVXPYgen accepts CVXPY problems that are compliant with [Disciplined Convex Programming (DCP)](https://www.cvxpy.org/tutorial/dcp/index.html).
-DCP is a system for constructing mathematical expressions with known curvature from a given library of base functions. 
-CVXPY uses DCP to ensure that the specified optimization problems are convex.
-In addition, problems need to be modeled according to [Disciplined Parametrized Programming (DPP)](https://www.cvxpy.org/tutorial/advanced/index.html#disciplined-parametrized-programming).
-Solving a DPP-compliant problem repeatedly for different values of the parameters can be much faster than repeatedly solving a new problem.
+- **Problem types:** LP, QP, SOCP
+- **Solvers:** OSQP, QOCOGEN, CLARABEL, SCS, ECOS, PDAQP
+- **Extras:** [differentiable QPs](#differentiable-qps), [explicit solutions for QPs](#explicit-solutions-for-qps)
 
-For now, CVXPYgen is a separate module, until it will be integrated into CVXPY.
-As of today, CVXPYgen works with linear, quadratic, and second-order cone programs.
-It also supports [differentiating through quadratic programs](#differentiating-through-problems) and computing an
-[explicit solution to linear and quadratic programs](#explicitly-solving-problems).
+Problems need to be modeled according to [disciplined parametrized programming (DPP)](https://www.cvxpy.org/tutorial/dpp/index.html). For more details, see our [slides and manuscript](https://web.stanford.edu/~boyd/papers/cvxpygen.html). If you use this code, please cite
+```
+@article{schaller2022embedded,
+  title={Embedded code generation with CVXPY},
+  author={Schaller, Maximilian and Banjac, Goran and Diamond, Steven and Agrawal, Akshay and Stellato, Bartolomeo and Boyd, Stephen},
+  journal={IEEE Control Systems Letters},
+  volume={6},
+  pages={2653--2658},
+  year={2022},
+  publisher={IEEE}
+}
+```
 
-This package has similar functionality as the package [cvxpy_codegen](https://github.com/moehle/cvxpy_codegen),
-which appears to be unsupported.
-
-## Installation
+## Install
 
 ```
 pip install cvxpygen
 ```
 
-If you wish to use the `Clarabel` solver, you need to install [`Rust`](https://www.rust-lang.org/tools/install) and [`Eigen`](https://github.com/oxfordcontrol/Clarabel.cpp#installation).
+The CLARABEL solver requires [Rust](https://www.rust-lang.org/tools/install) and [Eigen](https://github.com/oxfordcontrol/Clarabel.cpp#installation). Example notebooks require `marimo` and `matplotlib`.
 
-The example notebooks located in [``examples/``](https://github.com/cvxgrp/cvxpygen/blob/master/examples/) require ``matplotlib``.
-
-Windows users: CVXPYgen is tested with Visual Studio 2019 and 2022, newer and older versions might work as well.
-    
-## Example
-
-We define a simple 'nonnegative least squares' problem, generate code for it, and solve the problem with example parameter values.
-
-### 1. Generate Code
-
-Let's step through the first part of [``examples/main.py``](https://github.com/cvxgrp/cvxpygen/blob/master/examples/main.py).
-Define a convex optimization problem the way you are used to with CVXPY.
-Everything that is described as ``cp.Parameter()`` is assumed to be changing between multiple solves.
-For constant properties, use ``cp.Constant()``.
-
+## Quick start: Nonnegative least squares
 ```python
 import cvxpy as cp
-
-m, n = 3, 2
-x = cp.Variable(n, name='x')
-A = cp.Parameter((m, n), name='A', sparsity=((0, 0, 1), (0, 1, 1)))
-b = cp.Parameter(m, name='b')
-problem = cp.Problem(cp.Minimize(cp.sum_squares(A @ x - b)), [x >= 0])
-```
-
-Specify the `name` attribute for variables and parameters to recognize them after generating code.
-The attribute `sparsity` is a tuple of row and column indices of the nonzero entries of matrix `A`.
-Parameter sparsity is only taken into account for matrices.
-
-Assign parameter values and test-solve.
-
-```python
-import numpy as np
-import scipy.sparse as sp
-
-np.random.seed(1)
-A.value_sparse = sp.coo_array((np.random.randn(3), A.sparse_idx), shape=(m, n))
-b.value = np.random.randn(m)
-problem.solve()
-```
-
-Generating C code for this problem is as simple as,
-
-```python
 from cvxpygen import cpg
 
-cpg.generate_code(problem, code_dir='nonneg_LS', solver='OSQP')
+# define CVXPY problem
+m, n = 3, 2
+A = cp.Parameter((m, n), name='A')
+b = cp.Parameter(m, name='b')
+x = cp.Variable(n, name='x')
+problem = cp.Problem(cp.Minimize(cp.sum_squares(A @ x - b)), [x >= 0])
+
+# generate code
+cpg.generate_code(problem, code_dir='nonneg_ls', solver=cp.OSQP)
 ```
 
-where the generated code is stored inside `nonneg_LS` and the `OSQP` solver is used. 
-Next to the positional argument `problem`, all keyword arguments for the `generate_code()` method are summarized below.
+**Important:** Set `name=` on variables and parameters. You'll identify them with these names after code generation. An HTML summary of the generated code is written to `nonneg_ls/README.html`, with instructions for using the generated code.
 
-| Argument         | Meaning       | Type          | Default       |
-| -------------    | ------------- | ------------- | ------------- |
-| `code_dir`       | directory for code to be stored in                                 | String          | `'CPG_code'`  |
-| `solver`         | canonical solver to generate code with                             | String          | CVXPY default |
-| `solver_opts`    | options passed to canonical solver                                 | Dict            | `None`        |
-| `enable_settings`| enabled settings that are otherwise locked by embedded solver      | List of Strings | `[]`          |
-| `prefix`         | prefix for unique code symbols when dealing with multiple problems | String          | `''`          |
-| `wrapper`        | compile Python wrapper for CVXPY interface                         | Bool            | `True`        |
-| `gradient`       | enable differentiation (works for linear and quadratic programs)   | Bool            | `False`       |
+<details>
+<summary>C interface</summary>
 
-You can find an overview of the code generation result in `nonneg_LS/README.html`.
+Here is how to compile the auto-generated example `nonneg_ls/c/src/cpg_example.c` (requires CMake). Parameters and variables are stored as Fortran-order (column-major) flat arrays in C.
 
-### 2. Solve & Compare
-
-As summarized in the second part of [``examples/main.py``](https://github.com/cvxgrp/cvxpygen/blob/master/examples/main.py), after assigning parameter values, you can solve the problem both conventionally and via the generated code, which is wrapped inside the custom CVXPY solve method ``cpg_solve``.
-
-```python
-import time
-import sys
-
-# import extension module and register custom CVXPY solve method
-from nonneg_LS.cpg_solver import cpg_solve
-problem.register_solve('CPG', cpg_solve)
-
-# solve problem conventionally
-t0 = time.time()
-val = problem.solve(solver='OSQP')
-t1 = time.time()
-print('\nCVXPY\nSolve time: %.3f ms\n' % (1000*(t1-t0)))
-print('Primal solution: x = [%.6f, %.6f]\n' % tuple(x.value))
-print('Dual solution: d0 = [%.6f, %.6f]\n' % tuple(problem.constraints[0].dual_value))
-print('Objective function value: %.6f\n' % val)
-
-# solve problem with C code via python wrapper
-t0 = time.time()
-val = problem.solve(method='CPG', updated_params=['A', 'b'])
-t1 = time.time()
-print('\nCVXPYgen\nSolve time: %.3f ms\n' % (1000 * (t1 - t0)))
-print('Primal solution: x = [%.6f, %.6f]\n' % tuple(x.value))
-print('Dual solution: d0 = [%.6f, %.6f]\n' % tuple(problem.constraints[0].dual_value))
-print('Objective function value: %.6f\n' % val)
-```
-
-The argument `updated_params` specifies which user-defined parameter values are new.
-If the argument is omitted, all parameter values are assumed to be new.
-If only a subset of the user-defined parameters have new values, use this argument to speed up the solver.
-
-**Most solver settings can be specified as keyword arguments** like without code generation.
-The list of changeable settings differs by solver and is documented in `<code_dir>/README.html` after code generation.
-
-Comparing the standard and codegen methods for this example, both the solutions and objective values are close.
-Especially for smaller problems like this, the new solve method ``'CPG'`` is significantly faster than solving without code generation.
-
-### 3. Executable
-
-In the C code, all of your parameters and variables are stored as vectors via Fortran-style flattening (vertical index moves fastest).
-For example, the `(i, j)`-th entry of the original matrix with height `h` will be the `i+j*h`-th entry of the flattened matrix in C.
-For sparse *parameters*, i.e. matrices, the `k`-th entry of the C array is the `k`-th nonzero entry encountered when proceeding
-through the parameter column by column.
-
-Before compiling the example executable, make sure that ``CMake 3.5`` or newer is installed.
-
-On Unix platforms, run the following commands in your terminal to compile and run the program:
-
+**Unix:**
 ```bash
-cd nonneg_LS/c/build
+cd nonneg_ls/c/build
 cmake ..
 cmake --build . --target cpg_example
 ./cpg_example
 ```
 
-On Windows, type:
-
+**Windows:**
 ```bash
-cd nonneg_LS\c\build
+cd nonneg_ls\c\build
 cmake ..
 cmake --build . --target cpg_example --config release
 Release\cpg_example
 ```
 
-## Differentiating through problems
+</details>
 
-CVXPYgen supports differentiating through quadratic programs.
-To enable this feature, set `gradient=True` when generating code.
-You can use the generated code together with [CVXPYlayers](https://github.com/cvxgrp/cvxpylayers)
-(version `<=0.1.9`) as
+<details>
+<summary>CVXPY interface</summary>
+Here is how to register the Python module as a custom method for CVXPY.
 
 ```python
-cpg.generate_code(problem, code_dir='code_diff', gradient=True)
+from nonneg_ls.cpg_solver import cpg_solve
+problem.register_solve('CPG', cpg_solve)
 
-from code_diff.cpg_solver import forward, backward
+b.value = ...
+problem.solve(method='CPG', updated_params=['b'])
+
+solution = x.value
+```
+You may pass `updated_params` to tell the solver which parameters changed (omit it to update all).
+</details>
+
+## `generate_code` options
+
+| Argument | Type | Default | Description |
+|---|---|---|---|
+| `code_dir` | `str` | `'cpg_code'` | Output directory |
+| `solver` | `str` | `'OSQP'` for QPs <br>`'QOCOGEN'` for SOCPs | Solver backend |
+| `solver_opts` | `dict` | `{}` | Options forwarded to the solver |
+| `enable_settings` | `list[str]` | `[]` | Solver settings to keep tuneable at runtime |
+| `prefix` | `str` | `''` | Symbol prefix for multi-problem codegen |
+| `gradient` | `bool` | `False` | Enable gradient computation (QPs only) |
+| `wrapper` | `bool` | `True` | Compile Python wrapper |
+
+## Differentiable QPs
+
+CVXPYgen supports differentiating through quadratic programs, with an interface to [CVXPYlayers](https://github.com/cvxgrp/cvxpylayers) (≤ 0.1.9):
+
+```python
+cpg.generate_code(problem, code_dir='nonneg_ls_diff', gradient=True)
+
+from nonneg_ls_diff.cpg_solver import forward, backward
 from cvxpylayers.torch import CvxpyLayer
 
-layer = CvxpyLayer(problem, parameters=[A, b], variables=[x], custom_method=(forward, backward))
+layer = CvxpyLayer(problem, parameters=[A, b], variables=[x],
+                   custom_method=(forward, backward))
 ```
 
-See our [manuscript](https://stanford.edu/~boyd/papers/cvxpygen_grad.html) for more details
-and [examples/paper_grad](https://github.com/cvxgrp/cvxpygen/tree/master/examples/paper_grad)
-for three practical examples (from our manuscript), in the areas of machine learning, control, and finance.
+As long as the problem is a QP, also conic solvers such as QOCOGEN or CLARABEL are supported.
+For more details, see our [manuscript on differentiable QPs](https://stanford.edu/~boyd/papers/cvxpygen_grad.html) and [examples/paper_grad](examples/paper_grad) for examples from the manuscript. If you use this feature, please cite
+```
+@article{schaller2025code,
+  title={Code generation for solving and differentiating through convex optimization problems},
+  author={Schaller, Maximilian and Boyd, Stephen},
+  journal={Optimization and Engineering},
+  pages={1--25},
+  year={2025},
+  publisher={Springer}
+}
+```
 
-## Explicitly solving problems
+## Explicit solutions for QPs
 
-For quadratic programs in which 
-the coefficients of the linear objective terms and the righthand side of the
-constraints are affine functions of a parameter,
-the solution is a piecewise affine function of the parameter.
+For QPs whose parameters are all vectors (no matrix parameters), the solution is a piecewise affine function of the parameters.
+CVXPYgen integrates with [PDAQP](https://github.com/darnstrom/pdaqp) to precompute this map offline and generates code for instant evaluation online.
+Advantages of such an explicit solver can include transparency, interpretability, reliability, and speed.
+The number of inequality constraints (and non-differentiable atoms such as `cp.norm1`) should be small, since the number of affine pieces typically grows exponentially with those.
 
-The number of (polyhedral) regions in the solution map
-can grow exponentially in problem size (specifically, the number of inequality constraints),
-but when the number of regions is moderate, a so-called 
-explicit solver is practical.
-Such a solver computes the coefficients of the affine
-functions and the linear inequalities defining the polyhedral regions 
-offline; to solve a problem instance online it simply evaluates 
-this explicit solution map.
-Potential advantages of an explicit solver over a more general purpose
-iterative solver can include transparency, interpretability, reliability,
-and speed.
+**Important:** Limit parameters with standard CVXPY constraints to keep the number of affine pieces tractable. For example, specify `l <= p, p <= u` where `p` is a CVXPY parameter and `l` and `u` are arrays:
 
-CVXPYgen can generate such explicit solvers.
-To enable this feature, set `solver='explicit'` when generating code.
-By default, only the primal solution is computed. To also compute the dual
-solution, pass `solver_opts={'dual': True}`.
-You can choose to store the explicit solution in half precision (instead of single
-precision), by setting `'fp16': True` in `solver_opts`.
-Limits on parameters are encouraged and can be represented as standard CVXPY constraints.
-As of now, we support simple bounds of the form `[l <= p, p <= u]` where
-`p` is a `cp.Parameter()` and `l` and `u` are constants.
+```python
+prob = cp.Problem(obj, constr + [l <= p, p <= u])
+cpg.generate_code(prob, code_dir='code_explicit', solver='explicit')
+```
 
-See our [manuscript](https://stanford.edu/~boyd/papers/cvxpygen_mpqp.html) for more details.
-You can control the maximum number of floating point numbers in the explicit solution
-via `'max_floats'` (default is `1e6`) and the maximum number of regions
-via `'max_regions'` (default is `500`) in the `solver_opts` dict.
+To enable the computation of dual variables, set `solver_opts={'dual': True}`.
+Control complexity via `'max_floats'` (number of floating point numbers in the explicit solution, default `1e6`) and `'max_regions'` (maximum number of affine pieces, default `500`) in `solver_opts`.
+Store the explicit solution in half precision (instead of single precision) by setting `'fp16': True` in `solver_opts`.
 
-CVXPYgen uses [PDAQP](https://github.com/darnstrom/pdaqp) to construct explicit solutions.
+For more details, see our [slides and manuscript on explicit solutions for QPs](https://stanford.edu/~boyd/papers/cvxpygen_mpqp.html). If you use this feature, please cite
+```
+@article{schaller2025automatic,
+  title={Automatic generation of explicit quadratic programming solvers},
+  author={Schaller, Maximilian and Arnstr{\"o}m, Daniel and Bemporad, Alberto and Boyd, Stephen},
+  journal={arXiv preprint arXiv:2506.11513},
+  year={2025}
+}
+```
+CVXPYgen 1.0 supports `gradient=True` along with `solver='explicit'`.
 
 ## Tests
 
-To run tests, install ``pytest`` via
-
 ```bash
-conda install pytest
-```
-
-and execute:
-
-```bash
+pip install pytest
 cd tests
 pytest
 ```
+
+## License
+
+[Apache 2.0](LICENSE)

@@ -14,7 +14,7 @@ limitations under the License.
 from cvxpygen.generator import Generator
 
 
-def generate_code(problem, code_dir='cpg_code', solver=None, solver_opts=None,
+def generate_code(problem, code_dir='cpg_code', solver=None, solver_opts={},
                   enable_settings=[], prefix='', gradient=False, wrapper=True):
     """
     Generate C code to solve a CVXPY problem.
