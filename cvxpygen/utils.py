@@ -35,7 +35,8 @@ def render_template(template_name: str, context: dict) -> str:
 def render_template_to_file(template_name: str, output_dir: str, context: dict = {}, ) -> None:
     """Render a Jinja2 template and write the result to output_path."""
     content = render_template(template_name, context)
-    with open(os.path.join(output_dir, template_name.replace('.jinja2', '')), 'w', encoding='utf-8') as f:
+    output_filename = template_name.split('-')[-1].replace('.jinja2', '')
+    with open(os.path.join(output_dir, output_filename), 'w', encoding='utf-8') as f:
         f.write(content)
 
 
@@ -1454,10 +1455,6 @@ def cmake_context(config):
         'gradient_two_stage': config.gradient_two_stage,
     }
 
-
-def setup_context():
-    """Context dict for setup.py.jinja2."""
-    return {'date': datetime.now().strftime("on %B %d, %Y at %H:%M:%S")}
 
 
 def readme_context(config, variable_info, dual_variable_info, parameter_info, solver_interface):

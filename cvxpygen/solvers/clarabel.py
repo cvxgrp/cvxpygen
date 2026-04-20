@@ -249,15 +249,15 @@ class ClarabelInterface(SolverInterface):
 
         # adjust Clarabel.cpp/rust_wrapper/CMakeLists.txt
         replacements = [
-            ('${CMAKE_SOURCE_DIR}/', '${CMAKE_SOURCE_DIR}/solver_code/'),
+            ('${CMAKE_SOURCE_DIR}/', '${CMAKE_SOURCE_DIR}/c/solver_code/'),
             ('/libclarabel_c.lib', '/clarabel_c.lib'),  # until fixed on Clarabel side
             (
-                'set(clarabel_c_output_directory "${CMAKE_SOURCE_DIR}/solver_code/rust_wrapper/target/release")',
+                'set(clarabel_c_output_directory "${CMAKE_SOURCE_DIR}/c/solver_code/rust_wrapper/target/release")',
                 'if (ARM64)\n'
                 '        message(STATUS "ARM64 detected")\n'
-                '        set(clarabel_c_output_directory "${CMAKE_SOURCE_DIR}/solver_code/rust_wrapper/target/aarch64-apple-darwin/release")\n'
+                '        set(clarabel_c_output_directory "${CMAKE_SOURCE_DIR}/c/solver_code/rust_wrapper/target/aarch64-apple-darwin/release")\n'
                 '    else()\n'
-                '        set(clarabel_c_output_directory "${CMAKE_SOURCE_DIR}/solver_code/rust_wrapper/target/release")\n'
+                '        set(clarabel_c_output_directory "${CMAKE_SOURCE_DIR}/c/solver_code/rust_wrapper/target/release")\n'
                 '    endif()'
             ),
             (

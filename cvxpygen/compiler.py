@@ -22,11 +22,19 @@ class PythonModuleCompiler:
         self.problem = problem
 
     def compile(self) -> None:
-        """Build the C extension via setup.py build_ext --inplace."""
+        """Build and install the C extension via scikit-build-core."""
         sys.stdout.write('Compiling python wrapper with CVXPYgen ... \n')
         p_dir = os.getcwd()
         os.chdir(self.code_dir)
-        call([sys.executable, 'setup.py', '--quiet', 'build_ext', '--inplace'])
+        call([
+            sys.executable, '-m', 'pip', 'install',
+            '--no-build-isolation',
+            '--no-deps',
+            '--no-compile',
+            '--quiet',
+            '--target', '.',
+            '.',
+        ])
         os.chdir(p_dir)
         sys.stdout.write('CVXPYgen finished compiling python wrapper.\n')
 
