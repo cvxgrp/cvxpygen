@@ -112,7 +112,7 @@ You may pass `updated_params` to tell the solver which parameters changed (omit 
 | Model predictive control | [mpc.py](examples/mpc.py) |
 | Portfolio construction | [portfolio.py](examples/portfolio.py) |
 | Resource allocation | [resource.py](examples/resource.py) |
-| Energy management | [charging.py](examples/charging.py) |
+| Energy management | [energy.py](examples/energy.py) |
 | Network flow optimization | [network.py](examples/network.py) |
 
 Run any marimo notebook as:
