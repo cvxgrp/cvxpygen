@@ -5,8 +5,6 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-green)](LICENSE)
 [![CI](https://github.com/cvxgrp/cvxpygen/actions/workflows/CI.yml/badge.svg)](https://github.com/cvxgrp/cvxpygen/actions/workflows/CI.yml)
 
----
-
 CVXPYgen takes a parametrized [CVXPY](https://www.cvxpy.org/) convex optimization problem and generates a custom C solver tailored to that problem family. The generated code provides interfaces in C/C++ (for embedded applications) and Python/CVXPY (for prototyping and desktop applications).
 
 - **Problem types:** LP, QP, SOCP
@@ -47,10 +45,12 @@ x = cp.Variable(n, name='x')
 problem = cp.Problem(cp.Minimize(cp.sum_squares(A @ x - b)), [x >= 0])
 
 # generate code
-cpg.generate_code(problem, code_dir='nonneg_ls', solver=cp.OSQP)
+cpg.generate_code(problem, code_dir='nonneg_ls')
 ```
 
-**Important:** Set `name=` on variables and parameters. You'll identify them with these names after code generation. An HTML summary of the generated code is written to `nonneg_ls/README.html`, with instructions for using the generated code.
+**Important:** Set `name=` on variables and parameters. You'll identify them with these names after code generation.
+An extended version of this example is available under [quick_start.py](quick_start.py).
+An HTML summary of the generated code is written to `nonneg_ls/README.html`, with instructions for using the generated code.
 
 <details>
 <summary>C interface</summary>
@@ -102,6 +102,23 @@ You may pass `updated_params` to tell the solver which parameters changed (omit 
 | `prefix` | `str` | `''` | Symbol prefix for multi-problem codegen |
 | `gradient` | `bool` | `False` | Enable gradient computation (QPs only) |
 | `wrapper` | `bool` | `True` | Compile Python wrapper |
+
+## Examples
+
+| Domain | Marimo notebook |
+|---| --|
+| Actuator allocation | [actuator.py](examples/actuator.py) |
+| Approximate dynamic programming | [adp.py](examples/adp.py) |
+| Model predictive control | [mpc.py](examples/mpc.py) |
+| Portfolio construction | [portfolio.py](examples/portfolio.py) |
+| Resource allocation | [resource.py](examples/resource.py) |
+| Energy management | [charging.py](examples/charging.py) |
+| Network flow optimization | [network.py](examples/network.py) |
+
+Run any marimo notebook as:
+```
+marimo edit actuator.py
+```
 
 ## Differentiable QPs
 
