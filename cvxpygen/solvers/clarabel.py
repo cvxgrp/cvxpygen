@@ -266,6 +266,11 @@ class ClarabelInterface(SolverInterface):
                 'if(ARM64)\n'
                 '   set(clarabel_c_build_flags "${clarabel_c_build_flags};--target;aarch64-apple-darwin")\n'
                 'endif()'
+            ),
+            (
+                'COMMAND cargo build ${clarabel_c_build_flags}',
+                'BYPRODUCTS ${clarabel_c_output_directory}/libclarabel_c.a\n'
+                '    COMMAND cargo build ${clarabel_c_build_flags}'
             )
         ]
         utils.read_write_file(os.path.join(code_dir, 'c', 'solver_code', 'rust_wrapper', 'CMakeLists.txt'),
