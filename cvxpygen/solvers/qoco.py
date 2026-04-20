@@ -27,6 +27,7 @@ class QOCOGENInterface(SolverInterface):
     header_files = ['"qoco_custom.h"']
     cmake_headers = ['${qoco_custom_headers}']
     cmake_sources = ['${qoco_custom_sources}']
+    has_qdldl = False
 
     # preconditioning of problem data happening in-memory
     inmemory_preconditioning = False
@@ -163,13 +164,6 @@ class QOCOGENInterface(SolverInterface):
             'solver_code_cmake_include_dir': '${CMAKE_CURRENT_SOURCE_DIR}/solver_code',
         }
 
-    def setup_py_context(self) -> dict:
-        return {
-            **super().setup_py_context(),
-            'solver_code_include_dir': "os.path.join('c', 'solver_code')",
-            'license': 'BSD 3-Clause',
-        }
-
     def declare_workspace(self, f, prefix, parameter_canon) -> None:
         if self.canon_constants['nsoc'] > 0:
             f.write('\n// qoco_custom array of SOC dimensions\n')
@@ -201,6 +195,7 @@ class QOCOInterface(SolverInterface):
     header_files = ['"qoco.h"']
     cmake_headers = ['${qoco_headers}']
     cmake_sources = ['${qoco_sources}']
+    has_qdldl = False
 
     # preconditioning of problem data happening in-memory
     inmemory_preconditioning = True
@@ -385,19 +380,6 @@ class QOCOInterface(SolverInterface):
             **super().cmake_context_extra(),
             'extra_cmake_include_dirs': [sdir + 'lib/amd', sdir + 'lib/qdldl/include'],
             'cmake_target_link_libs': ['qocostatic'],
-        }
-
-    def setup_py_context(self) -> dict:
-        return {
-            **super().setup_py_context(),
-            'extra_solver_include_dirs': [
-                "os.path.join('c', 'solver_code', 'lib', 'amd')",
-                "os.path.join('c', 'solver_code', 'lib', 'qdldl', 'include')",
-            ],
-            'license': 'BSD 3-Clause',
-            'extra_lib_names_windows': "libqoco_name = os.path.join('Release', 'qocostatic.lib')",
-            'extra_lib_names_unix': "libqoco_name = 'libqocostatic.a'",
-            'extra_objects': ["os.path.join(cpg_dir, 'build', 'out', libqoco_name)"],
         }
 
     def declare_workspace(self, f, prefix, parameter_canon) -> None:

@@ -26,6 +26,7 @@ class ECOSInterface(SolverInterface):
     header_files = ['"ecos.h"']
     cmake_headers = ['${ecos_headers}']
     cmake_sources = ['${ecos_sources}']
+    has_qdldl = False
 
     # preconditioning of problem data happening in-memory
     inmemory_preconditioning = True
@@ -165,17 +166,6 @@ class ECOSInterface(SolverInterface):
                 sdir + 'external/amd/include',
                 sdir + 'external/ldl/include',
             ],
-        }
-
-    def setup_py_context(self) -> dict:
-        return {
-            **super().setup_py_context(),
-            'extra_solver_include_dirs': [
-                "os.path.join('c', 'solver_code', 'external', 'SuiteSparse_config')",
-                "os.path.join('c', 'solver_code', 'external', 'amd', 'include')",
-                "os.path.join('c', 'solver_code', 'external', 'ldl', 'include')",
-            ],
-            'license': 'GPL 3.0',
         }
 
     def declare_workspace(self, f, prefix, parameter_canon) -> None:

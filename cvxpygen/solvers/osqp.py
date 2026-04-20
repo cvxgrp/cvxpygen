@@ -69,6 +69,7 @@ class OSQPInterface(QPCanonMixin, SolverInterface):
         '${CMAKE_CURRENT_SOURCE_DIR}/inc/private/*.h'
     ]
     cmake_sources = ['${OSQP_SOURCES}',  '${CMAKE_CURRENT_SOURCE_DIR}/workspace.c']
+    has_qdldl = True
 
     # preconditioning of problem data happening in-memory
     inmemory_preconditioning = False
@@ -154,16 +155,6 @@ class OSQPInterface(QPCanonMixin, SolverInterface):
                 ['add_definitions(-DOSQP_ENABLE_PRINTING)']
                 if 'verbose' in self.enable_settings else []
             ),
-        }
-
-    def setup_py_context(self) -> dict:
-        return {
-            **super().setup_py_context(),
-            'extra_cpp_include_dirs': [
-                "os.path.join('c', 'solver_code')",
-                "os.path.join('c', 'solver_code', 'inc', 'public')",
-                "os.path.join('c', 'solver_code', 'inc', 'private')",
-            ],
         }
         
     def special_settings(self, config) -> dict:

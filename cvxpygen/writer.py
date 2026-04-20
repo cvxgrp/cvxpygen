@@ -645,11 +645,7 @@ class CCodeWriter:
             )
 
         if cfg.gradient_two_stage:
-            from glob import glob as _glob
-            solver_has_qdldl = bool(_glob(
-                os.path.join(self._solver_code_dir, '**/qdldl.c'), recursive=True
-            ))
-            if solver_has_qdldl:
+            if self.solver_interface.has_qdldl:
                 # Solver already provides qdldl.c; use set() to list explicit
                 # files and avoid the duplicate symbol from file(GLOB *.c)
                 osqp_src_replacement = (

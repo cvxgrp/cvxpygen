@@ -59,6 +59,7 @@ class SCSInterface(SolverInterface):
         '${EXTERNAL}/qdldl/qdldl.c',
         '${${PROJECT_NAME}_AMD_EXTERNAL_SRC}'
         ]
+    has_qdldl = True
 
     # preconditioning of problem data happening in-memory
     inmemory_preconditioning = False
@@ -172,14 +173,6 @@ class SCSInterface(SolverInterface):
         return {
             **super().cmake_context_extra(),
             'extra_cmake_include_dirs': [sdir + 'linsys'],
-        }
-
-    def setup_py_context(self) -> dict:
-        return {
-            **super().setup_py_context(),
-            'extra_solver_include_dirs': [
-                "os.path.join('c', 'solver_code', 'linsys')",
-            ],
         }
 
     def declare_workspace(self, f, prefix, parameter_canon) -> None:

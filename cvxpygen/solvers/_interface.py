@@ -216,21 +216,6 @@ class SolverInterface(ABC):
             'cmake_definitions': [],
         }
 
-    def setup_py_context(self) -> dict:
-        """Context dict merged into setup.py.jinja2 rendering.
-
-        Solvers override this to express solver-specific include directories, extra library names, etc.
-        """
-        return {
-            'solver_code_include_dir': "os.path.join('c', 'solver_code', 'include')",
-            'extra_solver_include_dirs': [],
-            'extra_cpp_include_dirs': [],
-            'extra_lib_names_windows': None,
-            'extra_lib_names_unix': None,
-            'extra_objects': [],
-            'license': 'Apache 2.0',
-        }
-
     @abstractmethod
     def generate_code(self, configuration, code_dir, solver_code_dir, cvxpygen_directory,
                       parameter_canon: ParameterCanon, gradient, prefix) -> None:

@@ -28,6 +28,7 @@ class ClarabelInterface(SolverInterface):
     # header and source files
     header_files = ['<Clarabel>']
     cmake_headers, cmake_sources = [], []
+    has_qdldl = False
 
     # preconditioning of problem data happening in-memory
     inmemory_preconditioning = True
@@ -290,15 +291,6 @@ class ClarabelInterface(SolverInterface):
             **super().cmake_context_extra(),
             'packages': packages,
             'cmake_target_link_libs': cmake_target_link_libs,
-        }
-
-    def setup_py_context(self) -> dict:
-        release_dir = "'aarch64-apple-darwin/release'" if platform.system() == "Darwin" and platform.machine() == "arm64" else "'release'"
-        return {
-            **super().setup_py_context(),
-            'extra_objects': [
-                f"os.path.join(cpg_dir, 'solver_code', 'rust_wrapper', 'target', {release_dir}, 'libclarabel_c.a')",
-            ],
         }
 
     def declare_workspace(self, f, prefix, parameter_canon) -> None:
