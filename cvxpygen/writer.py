@@ -5,6 +5,7 @@ Licensed under the Apache License, Version 2.0
 
 import os
 import shutil
+from datetime import datetime
 from typing import Optional
 
 import numpy as np
@@ -97,8 +98,12 @@ class CCodeWriter:
             cmake_ctx
         )
         utils.render_template_to_file(
-            'setup.py.jinja2', self.configuration.code_dir,
-            {**utils.setup_context(), **si.setup_py_context()}
+            'pyproject.toml.jinja2', self.configuration.code_dir,
+            {'date': datetime.now().strftime("on %B %d, %Y at %H:%M:%S")}
+        )
+        utils.render_template_to_file(
+            'root-CMakeLists.txt.jinja2', self.configuration.code_dir,
+            cmake_ctx
         )
 
     def _write_workspace(self) -> None:
@@ -640,12 +645,27 @@ class CCodeWriter:
             )
 
         if cfg.gradient_two_stage:
+            if self.solver_interface.has_qdldl:
+                # Solver already provides qdldl.c; use set() to list explicit
+                # files and avoid the duplicate symbol from file(GLOB *.c)
+                osqp_src_replacement = (
+                    'set(OSQP_SOURCES\n'
+                    '  ${CMAKE_CURRENT_SOURCE_DIR}/src/qdldl_interface.c\n'
+                    '  ${CMAKE_CURRENT_SOURCE_DIR}/src/kkt.c)'
+                )
+                old_block = (
+                    'file(\n  GLOB\n  OSQP_SOURCES\n'
+                    '  ${CMAKE_CURRENT_SOURCE_DIR}/src/*.c)'
+                )
+            else:
+                osqp_src_replacement = (
+                    '${CMAKE_CURRENT_SOURCE_DIR}/src/qdldl*.c\n'
+                    '  ${CMAKE_CURRENT_SOURCE_DIR}/src/kkt.c'
+                )
+                old_block = '${CMAKE_CURRENT_SOURCE_DIR}/src/*.c'
             utils.read_write_file(
                 os.path.join(self._osqp_code_dir, 'CMakeLists.txt'),
-                lambda x: x.replace(
-                    '${CMAKE_CURRENT_SOURCE_DIR}/src/*.c',
-                    '${CMAKE_CURRENT_SOURCE_DIR}/src/qdldl*.c'
-                ),
+                lambda x: x.replace(old_block, osqp_src_replacement),
             )
             utils.write_file(
                 os.path.join(self._osqp_code_dir, 'CMakeLists.txt'), 'a',

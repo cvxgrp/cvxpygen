@@ -268,7 +268,8 @@
           </li>
         </ul>
       </li>
-      <li><span class="tree-row tree-file" data-panel="f-setup">setup.py</span></li>
+      <li><span class="tree-row tree-file" data-panel="f-root-cmake">CMakeLists.txt</span></li>
+      <li><span class="tree-row tree-file" data-panel="f-setup">pyproject.toml</span></li>
       <li><span class="tree-row tree-file" data-panel="f-solver-py">cpg_solver.py</span></li>
       <li><span class="tree-row tree-static">LICENSE</span></li>
       <li><span class="tree-row tree-static">README.html</span></li>
@@ -412,16 +413,28 @@
       <div class="file-panel" id="f-module-cpp">
         <div class="file-path-badge">cpp/src/cpg_module.cpp</div>
         <p>Implements the pybind11 bindings declared in <code>cpg_module.hpp</code>.
-           Compiled together with the <code>cpg</code> static library via <code>setup.py</code>
-           into a Python extension module.</p>
+           Compiled together with the <code>cpg</code> static library via CMake
+           (<code>pybind11_add_module</code>) into a Python extension module.</p>
       </div>
 
-      <!-- setup.py -->
+      <!-- root CMakeLists.txt -->
+      <div class="file-panel" id="f-root-cmake">
+        <div class="file-path-badge">CMakeLists.txt</div>
+        <p>Root CMake entry point for the generated solver package. Orchestrates the build by
+           adding the <code>c/</code> subdirectory (C solver and static library) and then
+           directly building the <a href="https://github.com/pybind/pybind11" target="_blank">pybind11</a>
+           Python extension module from <code>cpp/src/cpg_module.cpp</code>.
+           Invoked by <code>pyproject.toml</code> via scikit-build-core.</p>
+      </div>
+
+      <!-- pyproject.toml -->
       <div class="file-panel" id="f-setup">
-        <div class="file-path-badge">setup.py</div>
-        <p>Python package build script that compiles the pybind11 extension module wrapping
-           the generated C code. Invoked automatically by CVXPYgen; can also be run manually via
-           <code>python setup.py build_ext --inplace</code>.</p>
+        <div class="file-path-badge">pyproject.toml</div>
+        <p>Build configuration for
+           <a href="https://scikit-build-core.readthedocs.io" target="_blank">scikit-build-core</a>.
+           Drives CMake to compile the pybind11 extension module.
+           Invoked automatically by CVXPYgen; can also be run manually via
+           <code>pip install --no-build-isolation --no-deps .</code>.</p>
       </div>
 
       <!-- cpg_solver.py -->

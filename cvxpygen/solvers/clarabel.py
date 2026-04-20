@@ -28,6 +28,7 @@ class ClarabelInterface(SolverInterface):
     # header and source files
     header_files = ['<Clarabel>']
     cmake_headers, cmake_sources = [], []
+    has_qdldl = False
 
     # preconditioning of problem data happening in-memory
     inmemory_preconditioning = True
@@ -249,15 +250,15 @@ class ClarabelInterface(SolverInterface):
 
         # adjust Clarabel.cpp/rust_wrapper/CMakeLists.txt
         replacements = [
-            ('${CMAKE_SOURCE_DIR}/', '${CMAKE_SOURCE_DIR}/solver_code/'),
+            ('${CMAKE_SOURCE_DIR}/', '${CMAKE_SOURCE_DIR}/c/solver_code/'),
             ('/libclarabel_c.lib', '/clarabel_c.lib'),  # until fixed on Clarabel side
             (
-                'set(clarabel_c_output_directory "${CMAKE_SOURCE_DIR}/solver_code/rust_wrapper/target/release")',
+                'set(clarabel_c_output_directory "${CMAKE_SOURCE_DIR}/c/solver_code/rust_wrapper/target/release")',
                 'if (ARM64)\n'
                 '        message(STATUS "ARM64 detected")\n'
-                '        set(clarabel_c_output_directory "${CMAKE_SOURCE_DIR}/solver_code/rust_wrapper/target/aarch64-apple-darwin/release")\n'
+                '        set(clarabel_c_output_directory "${CMAKE_SOURCE_DIR}/c/solver_code/rust_wrapper/target/aarch64-apple-darwin/release")\n'
                 '    else()\n'
-                '        set(clarabel_c_output_directory "${CMAKE_SOURCE_DIR}/solver_code/rust_wrapper/target/release")\n'
+                '        set(clarabel_c_output_directory "${CMAKE_SOURCE_DIR}/c/solver_code/rust_wrapper/target/release")\n'
                 '    endif()'
             ),
             (
@@ -266,6 +267,11 @@ class ClarabelInterface(SolverInterface):
                 'if(ARM64)\n'
                 '   set(clarabel_c_build_flags "${clarabel_c_build_flags};--target;aarch64-apple-darwin")\n'
                 'endif()'
+            ),
+            (
+                'COMMAND cargo build ${clarabel_c_build_flags}',
+                'BYPRODUCTS ${clarabel_c_output_directory}/libclarabel_c.a\n'
+                '    COMMAND cargo build ${clarabel_c_build_flags}'
             )
         ]
         utils.read_write_file(os.path.join(code_dir, 'c', 'solver_code', 'rust_wrapper', 'CMakeLists.txt'),
@@ -285,15 +291,6 @@ class ClarabelInterface(SolverInterface):
             **super().cmake_context_extra(),
             'packages': packages,
             'cmake_target_link_libs': cmake_target_link_libs,
-        }
-
-    def setup_py_context(self) -> dict:
-        release_dir = "'aarch64-apple-darwin/release'" if platform.system() == "Darwin" and platform.machine() == "arm64" else "'release'"
-        return {
-            **super().setup_py_context(),
-            'extra_objects': [
-                f"os.path.join(cpg_dir, 'solver_code', 'rust_wrapper', 'target', {release_dir}, 'libclarabel_c.a')",
-            ],
         }
 
     def declare_workspace(self, f, prefix, parameter_canon) -> None:

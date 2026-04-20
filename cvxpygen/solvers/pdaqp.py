@@ -39,6 +39,7 @@ class PDAQPInterface(QPCanonMixin, SolverInterface):
     header_files = ['"pdaqp.h"']
     cmake_headers = ['${CMAKE_CURRENT_SOURCE_DIR}/include/pdaqp.h']
     cmake_sources = ['${CMAKE_CURRENT_SOURCE_DIR}/src/pdaqp.c']
+    has_qdldl = False
 
     inmemory_preconditioning = False
 

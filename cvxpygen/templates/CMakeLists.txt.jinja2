@@ -29,9 +29,9 @@ set (CMAKE_POSITION_INDEPENDENT_CODE ON)  # -fPIC
 set (LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/out)
 
 # subdirectory with canonical solver code
-add_subdirectory (solver_code)
+add_subdirectory (solver_code EXCLUDE_FROM_ALL)
 {% if gradient_two_stage %}
-add_subdirectory (osqp_code)
+add_subdirectory (osqp_code EXCLUDE_FROM_ALL)
 {% endif %}
 
 # list with all directories including header files, passed to parent scope

@@ -62,9 +62,9 @@ int main(int argc, char *argv[]){
   // Update first entry of every user-defined solution gradient
 {% for name, size in prim_name_to_size %}
 {% if size == 1 %}
-  {{ prefix }}cpg_update_d{{ name }}(CPG_Result.prim->{{ name }}[i] / 10.0);
+  {{ prefix }}cpg_update_d{{ name }}({{ prefix }}CPG_Result.prim->{{ name }} / 10.0);
 {% else %}
-  {{ prefix }}cpg_update_d{{ name }}(0, CPG_Result.prim->{{ name }}[0] / 10.0);
+  {{ prefix }}cpg_update_d{{ name }}(0, {{ prefix }}CPG_Result.prim->{{ name }}[0] / 10.0);
 {% endif %}
 {% endfor %}
 

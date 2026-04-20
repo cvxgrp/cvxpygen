@@ -48,7 +48,7 @@ def test_readme_no_gradient():
     # Core files present in the tree / panels
     for fname in ('cpg_workspace.h', 'cpg_solve.h', 'cpg_workspace.c',
                   'cpg_solve.c', 'cpg_example.c', 'CMakeLists.txt',
-                  'cpg_solver.py', 'setup.py'):
+                  'cpg_solver.py', 'pyproject.toml'):
         assert fname in html, f'{fname} missing from README'
 
     # CVXPY Interface section (no tabs when gradient=False)
