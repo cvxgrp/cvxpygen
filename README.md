@@ -183,7 +183,3 @@ pip install pytest
 cd tests
 pytest
 ```
-
-## License
-
-[Apache 2.0](LICENSE)
