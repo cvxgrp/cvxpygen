@@ -1,10 +1,9 @@
 """
-Copyright 2026 Maximilian Schaller
+Copyright 2021-2026 Maximilian Schaller and the CVXPYgen contributors
 Licensed under the Apache License, Version 2.0
 """
 
 import os
-import shutil
 from datetime import datetime
 from typing import Optional
 
@@ -551,7 +550,8 @@ class CCodeWriter:
             utils.grad_compute_context(cfg, gi)
         )
         utils.render_template_to_file(
-            'cpg_osqp_grad_compute.h.jinja2', self._include_dir
+            'cpg_osqp_grad_compute.h.jinja2', self._include_dir,
+            utils.grad_compute_h_context()
         )
         utils.render_template_to_file(
             'cpg_osqp_grad_workspace.h.jinja2', self._include_dir,

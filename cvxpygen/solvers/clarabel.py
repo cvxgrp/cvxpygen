@@ -1,12 +1,11 @@
 """
-Copyright 2023-2026 Maximilian Schaller
+Copyright 2023-2026 Maximilian Schaller and the CVXPYgen contributors
 Licensed under the Apache License, Version 2.0
 """
 
 import os
 import sys
 import shutil
-import platform
 
 import numpy as np
 

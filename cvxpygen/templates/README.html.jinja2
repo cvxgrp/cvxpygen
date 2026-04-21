@@ -49,7 +49,7 @@
       border-left: 1px solid rgba(255,255,255,.35);
       padding-left: 14px;
     }
-    .topbar-date { font-size: 11px; opacity: .6; }
+    .topbar-date { font-size: 11px; opacity: .6; text-align: right; }
 
     /* ── Page layout ── */
     .layout { display: flex; min-height: calc(100vh - 52px); }
@@ -210,7 +210,10 @@
     <span class="topbar-logo"><a href="https://github.com/cvxgrp/cvxpygen" target="_blank">CVXPYgen</a></span>
     <span class="topbar-sub">Generated code documentation</span>
   </div>
-  <span class="topbar-date">{{ date }}</span>
+  <span class="topbar-date">
+  Copyright 2021-2026 Maximilian Schaller and the CVXPYgen contributors. Licensed under the Apache License, Version 2.0
+  <br>Generated {{ date }}
+  </span>
 </header>
 
 <div class="layout">

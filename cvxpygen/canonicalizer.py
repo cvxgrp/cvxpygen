@@ -1,11 +1,11 @@
 """
-Copyright 2026 Maximilian Schaller
+Copyright 2021-2026 Maximilian Schaller and the CVXPYgen contributors
 Licensed under the Apache License, Version 2.0
 """
 
 import copy
 import platform
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 import numpy as np
 from scipy import sparse
