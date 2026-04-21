@@ -77,7 +77,7 @@ class PreSolver:
         pc.p_id_to_size['u'] = len(pc.p['u'])
 
         # update index book-keeping for variable retrieval
-        new_ind = np.cumsum(col_mask) - 1
+        new_ind = np.cumsum(col_mask).astype(int) - 1
         for name in list(pvi.name_to_offset):
             pvi.name_to_offset[name] = new_ind[pvi.name_to_offset[name]]
             pvi.name_to_indices[name] = new_ind[pvi.name_to_indices[name]]
