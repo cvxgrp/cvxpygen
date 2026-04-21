@@ -22,6 +22,7 @@ from cvxpygen.canonicalizer import Canonicalizer
 from cvxpygen.writer import CCodeWriter
 from cvxpygen.compiler import PythonModuleCompiler
 from cvxpygen.mappings import Configuration
+from cvxpygen.presolver import PreSolver
 
 
 class Generator:
@@ -78,20 +79,23 @@ class Generator:
         self.config = self._build_config(code_dir, solver, gradient_two_stage, explicit)
 
         self._run_canonicalization(problem, solver, gradient_two_stage)
-        self._setup_folder(code_dir)
-        self._run_solver_code_generation(problem, code_dir, explicit)
-        self._run_code_writing(problem)
+        if explicit:
+            self._run_presolve()
+        self._run_folder_setup()
+        self._run_solver_code_generation()
+        self._run_canon_code_generation()
 
         sys.stdout.write('CVXPYgen finished generating code.\n')
 
         if wrapper:
-            self._run_compilation(code_dir, problem)
+            self._run_compilation(problem)
 
     # ── private pipeline stages ───────────────────────────────────────────────
 
-    def _setup_folder(self, code_dir: str) -> None:
+    def _run_folder_setup(self) -> None:
 
-        shutil.rmtree(code_dir, ignore_errors=True)
+        code_dir = self.config.code_dir
+        shutil.rmtree(self.config.code_dir, ignore_errors=True)
         os.mkdir(code_dir)
 
         os.makedirs(os.path.join(code_dir, 'c', 'src'))
@@ -116,9 +120,14 @@ class Generator:
             self.gradient_interface = self.solver_interface
             self.canon_gradient = self.canon
             self.canon_solver = self.canon
+            
+    def _run_presolve(self) -> None:
+        presolver = PreSolver()
+        presolver.solve(self.canon, self.solver_interface)
 
-    def _run_solver_code_generation(self, problem: cp.Problem, code_dir: str, explicit: int) -> None:
+    def _run_solver_code_generation(self) -> None:
         """Call solver_interface.generate_code() to write solver-specific C files."""
+        code_dir = self.config.code_dir
         cvxpygen_dir = os.path.dirname(os.path.realpath(__file__))
         solver_code_dir = os.path.join(code_dir, 'c', 'solver_code')
         osqp_code_dir = os.path.join(code_dir, 'c', 'osqp_code')
@@ -139,9 +148,8 @@ class Generator:
                 self.canon, self._gradient, cfg.prefix,
             )
 
-    def _run_code_writing(self, problem: cp.Problem) -> None:
+    def _run_canon_code_generation(self) -> None:
         writer = CCodeWriter(
-            problem=problem,
             configuration=self.config,
             canon=self.canon,
             solver_interface=self.solver_interface,
@@ -151,8 +159,8 @@ class Generator:
         )
         writer.write()
 
-    def _run_compilation(self, code_dir: str, problem: cp.Problem) -> None:
-        compiler = PythonModuleCompiler(code_dir=code_dir, problem=problem)
+    def _run_compilation(self, problem: cp.Problem) -> None:
+        compiler = PythonModuleCompiler(problem=problem, code_dir=self.config.code_dir)
         compiler.compile()
         compiler.register()
 

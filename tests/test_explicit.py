@@ -1,4 +1,5 @@
 
+import pytest
 import cvxpy as cp
 import numpy as np
 import scipy.linalg as la
@@ -100,7 +101,8 @@ def test_power():
     assert np.allclose(obj.value, obj_ref, rtol=rtol)
 
 
-def test_control():
+@pytest.mark.parametrize('constr_type', ['bounds', 'abs', 'norm'])
+def test_control(constr_type, capsys):
     
     np.random.seed(1)
     
@@ -126,15 +128,23 @@ def test_control():
     obj = cp.quad_form(X[:, H], P) + cp.sum_squares(X[:, :-1]) + 0.1 * cp.sum_squares(U)
     constr = [
         X[:, 1:] == A @ X[:, :-1] + B @ U,
-        -1 <= U, U <= 1,  # TODO: Test use of cp.norm and cp.abs
         X[:, 0] == xinit,
         -1 <= xinit, xinit <= 1
     ]
+    if constr_type == 'bounds':
+        constr += [-1 <= U, U <= 1]
+    elif constr_type == 'abs':
+        constr += [cp.abs(U) <= 1]
+    elif constr_type == 'norm':
+        constr += [cp.norm(U, 'inf', axis=0) <= 1]
 
     problem = cp.Problem(cp.Minimize(obj), constr)
     
     # generate code
     cpg.generate_code(problem, code_dir='explicit_MPC', solver='explicit', prefix='ex_mpc')
+    captured = capsys.readouterr()
+    assert '10 linear inequality constraints' in captured.out
+    
     from explicit_MPC.cpg_solver import cpg_solve
     problem.register_solve('cpg_explicit', cpg_solve)
 
@@ -345,7 +355,6 @@ def test_dual():
     obj_ref = obj.value
     
     problem.solve(method='gen_explicit')
-    print(v.value, v_ref)
     assert np.allclose(v.value, v_ref)
     assert np.allclose(beta.value, beta_ref)
     assert np.allclose(constr[0].dual_value, dual_ref)
