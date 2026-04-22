@@ -9,9 +9,11 @@ def _(mo):
     mo.md(r"""
     ## Actuator Allocation
 
-    When controlling dynamical systems like spacecraft or automobiles, the controller commands a desired control input $w \in \mathbf{R}^m$. Here, we consider a wrench vector, containg forces and torques in 3D ($m=6$).
+    When controlling dynamical systems like spacecraft or automobiles, the controller commands a desired control input $w \in \mathbf{R}^m$.
+    Here, we consider a wrench vector, containing forces and torques in 3D ($m=6$).
 
-    Usually, multiple atuators are available to produce this control input. For $n$ actuators, the vector $u \in \mathbf{R}^n$ contains the respective actuation values.
+    Usually, multiple actuators are available to produce this control input.
+    For $n$ actuators, the vector $u \in \mathbf{R}^n$ contains the respective actuation values.
     If $n > m$ and the actuators are in general position, we call the system *over-actuated*, since there are many realizations of $u$ that result in the same value of $w$, via a linear mapping, denoted by $A$.
 
     Having this freedom of choice, we want to minimize energy consumption, modeled as $\kappa^T | u |$ (with $\kappa \succeq 0$), while discouraging rapid changes of the actuation values, *i.e.*, $\lambda^\mathrm{sm} \Vert u-u^\mathrm{prev} \Vert_2^2$ with $\lambda^\mathrm{sm} \geq 0$ and $u^\mathrm{prev}$ being the actuation of the previous time step.
@@ -24,7 +26,7 @@ def _(mo):
     \text{subject to} \quad &u^\mathrm{min} \preceq u \preceq u^\mathrm{max},
     \end{array}
     \]
-    with variable $u \in \mathbf{R}^n$, and the remaining symbols being parameters.
+    with variable $u \in \mathbf{R}^n$. The remaining symbols are parameters.
     To make the problem [DPP-compliant](https://www.cvxpy.org/tutorial/dpp/index.html), we introduce the additional variable $\Delta u = u - u^\mathrm{prev}$ and solve
     \[
     \begin{array}{ll}
