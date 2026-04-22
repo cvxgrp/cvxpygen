@@ -141,7 +141,7 @@ class Canonicalizer:
                 (_, col) = fill_coefficient.nonzero()
                 var_name_to_indices[var_name] = offset + col
             else:
-                var_name_to_indices[var_name] = np.arange(offset, offset + np.prod(shape))
+                var_name_to_indices[var_name] = np.arange(offset, offset + np.prod(shape).astype(int))
         var_name_to_size = {var.name(): var.size for var in variables}
         var_name_to_shape = {var.name(): var.shape for var in variables}
         var_name_to_init = {}

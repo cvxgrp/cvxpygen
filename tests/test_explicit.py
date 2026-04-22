@@ -1,4 +1,6 @@
 
+import pytest
+import importlib
 import cvxpy as cp
 import numpy as np
 import scipy.linalg as la
@@ -20,9 +22,10 @@ def test_regression():
     problem = cp.Problem(cp.Minimize(obj), constr)
 
     # generate code
-    cpg.generate_code(problem, code_dir='explicit_regression', solver='explicit', prefix='ex_regression')
-    from explicit_regression.cpg_solver import cpg_solve
-    problem.register_solve('cpg_explicit', cpg_solve)
+    identifier = 'explicit_regression'
+    cpg.generate_code(problem, code_dir=identifier, prefix=identifier, solver='explicit')
+    mod = importlib.import_module(f'{identifier}.cpg_solver')
+    problem.register_solve('cpg_explicit', mod.cpg_solve)
     
     np.random.seed(2)
 
@@ -73,9 +76,10 @@ def test_power():
     problem = cp.Problem(cp.Minimize(obj), constr)
 
     # generate code
-    cpg.generate_code(problem, code_dir='explicit_power', solver='explicit', prefix='ex_power')
-    from explicit_power.cpg_solver import cpg_solve
-    problem.register_solve('cpg_explicit', cpg_solve)
+    identifier = 'explicit_power'
+    cpg.generate_code(problem, code_dir=identifier, prefix=identifier, solver='explicit')
+    mod = importlib.import_module(f'{identifier}.cpg_solver')
+    problem.register_solve('cpg_explicit', mod.cpg_solve)
 
     np.random.seed(2)
 
@@ -100,7 +104,11 @@ def test_power():
     assert np.allclose(obj.value, obj_ref, rtol=rtol)
 
 
-def test_control():
+@pytest.mark.parametrize(
+    'constr_type, compute_dual',
+    [('bounds', False), ('abs', False), ('norm', False), ('bounds', True), ('norm', True)]
+    )
+def test_control(constr_type, compute_dual, capsys):
     
     np.random.seed(1)
     
@@ -126,17 +134,27 @@ def test_control():
     obj = cp.quad_form(X[:, H], P) + cp.sum_squares(X[:, :-1]) + 0.1 * cp.sum_squares(U)
     constr = [
         X[:, 1:] == A @ X[:, :-1] + B @ U,
-        -1 <= U, U <= 1,  # TODO: Test use of cp.norm and cp.abs
         X[:, 0] == xinit,
         -1 <= xinit, xinit <= 1
     ]
+    if constr_type == 'bounds':
+        constr += [-1 <= U, U <= 1]
+    elif constr_type == 'abs':
+        constr += [cp.abs(U) <= 1]
+    elif constr_type == 'norm':
+        constr += [cp.norm(U, 'inf', axis=0) <= 1]
 
     problem = cp.Problem(cp.Minimize(obj), constr)
     
     # generate code
-    cpg.generate_code(problem, code_dir='explicit_MPC', solver='explicit', prefix='ex_mpc')
-    from explicit_MPC.cpg_solver import cpg_solve
-    problem.register_solve('cpg_explicit', cpg_solve)
+    identifier = f'explicit_control_{constr_type}_{"dual" if compute_dual else "nodual"}'
+    cpg.generate_code(problem, code_dir=identifier, prefix=identifier, solver='explicit',
+                      solver_opts={'dual': compute_dual})
+    captured = capsys.readouterr()
+    assert '10 linear inequality constraints' in captured.out
+    
+    mod = importlib.import_module(f'{identifier}.cpg_solver')
+    problem.register_solve('cpg_explicit', mod.cpg_solve)
 
     np.random.seed(2)
     
@@ -146,12 +164,16 @@ def test_control():
     X_ref = X.value
     U_ref = U.value
     obj_ref = obj.value
+    dual_ref = constr[-1].dual_value.copy()
     
     problem.solve(method='cpg_explicit')
     rtol = 1e-4
     assert np.allclose(X.value, X_ref, rtol=rtol)
     assert np.allclose(U.value, U_ref, rtol=rtol)
     assert np.allclose(obj.value, obj_ref, rtol=rtol)
+    
+    if compute_dual:
+        assert np.allclose(constr[-1].dual_value, dual_ref, rtol=rtol)
     
     
 def test_control_fp16():
@@ -188,9 +210,10 @@ def test_control_fp16():
     problem = cp.Problem(cp.Minimize(obj), constr)
     
     # generate code
-    cpg.generate_code(problem, code_dir='explicit_MPC_fp16', solver='explicit', solver_opts={'fp16': True}, prefix='ex_mpc_fp16')
-    from explicit_MPC_fp16.cpg_solver import cpg_solve
-    problem.register_solve('cpg_explicit', cpg_solve)
+    identifier = 'explicit_control_fp16'
+    cpg.generate_code(problem, code_dir=identifier, prefix=identifier, solver='explicit', solver_opts={'fp16': True})
+    mod = importlib.import_module(f'{identifier}.cpg_solver')
+    problem.register_solve('cpg_explicit', mod.cpg_solve)
 
     np.random.seed(2)
     
@@ -234,19 +257,19 @@ def test_control_reduced():
     obj = cp.quad_form(X[:, H], P) + cp.sum_squares(X[:, :-1]) + 0.1 * cp.sum_squares(U)
     constr = [
         X[:, 1:] == A @ X[:, :-1] + B @ U,
-        -1 <= U, U <= 1,  # TODO: Test use of cp.norm and cp.abs
+        -1 <= U, U <= 1,
         X[:, 0] == xinit,
         -1 <= xinit, xinit <= 1
     ]
 
     problem = cp.Problem(cp.Minimize(obj), constr)
 
-    solver_opts= {"stored_vars":[U[:,0],X[[1,2],:]]}
     # generate code
-    cpg.generate_code(problem, code_dir='explicit_MPC_reduced', solver='explicit', prefix='ex_mpc_red',
-                      solver_opts=solver_opts)
-    from explicit_MPC_reduced.cpg_solver import cpg_solve
-    problem.register_solve('cpg_explicit', cpg_solve)
+    identifier = 'explicit_control_reduced'
+    cpg.generate_code(problem, code_dir=identifier, prefix=identifier, solver='explicit',
+                      solver_opts={"stored_vars":[U[:,0],X[[1,2],:]]})
+    mod = importlib.import_module(f'{identifier}.cpg_solver')
+    problem.register_solve('cpg_explicit', mod.cpg_solve)
 
     np.random.seed(2)
 
@@ -255,7 +278,6 @@ def test_control_reduced():
     problem.solve(solver='OSQP')
     X_ref = X.value
     U_ref = U.value
-    obj_ref = obj.value
 
     problem.solve(method='cpg_explicit')
     rtol = 1e-4
@@ -280,13 +302,17 @@ def test_stored_vars():
     problem = cp.Problem(cp.Minimize(obj), constr)
 
     # generate code
-    cpg.generate_code(problem, code_dir='ex_store_X', solver='explicit', prefix='ex_store_X', solver_opts = {'stored_vars':[X[0,:,[1]]]})
-    from ex_store_X.cpg_solver import cpg_solve
-    problem.register_solve('cpg_explicit_X', cpg_solve)
+    identifier = 'explicit_stored_vars_X'
+    cpg.generate_code(problem, code_dir=identifier, prefix=identifier, solver='explicit',
+                      solver_opts = {'stored_vars':[X[0,:,[1]]]})
+    mod = importlib.import_module(f'{identifier}.cpg_solver')
+    problem.register_solve('cpg_explicit_X', mod.cpg_solve)
 
-    cpg.generate_code(problem, code_dir='ex_store_xs', solver='explicit', prefix='ex_store_xs', solver_opts = {'stored_vars':[xs]})
-    from ex_store_xs.cpg_solver import cpg_solve
-    problem.register_solve('cpg_explicit_xs', cpg_solve)
+    identifier = 'explicit_stored_vars_xs'
+    cpg.generate_code(problem, code_dir=identifier, prefix=identifier, solver='explicit',
+                      solver_opts = {'stored_vars':[xs]})
+    mod = importlib.import_module(f'{identifier}.cpg_solver')
+    problem.register_solve('cpg_explicit_xs', mod.cpg_solve)
 
     np.random.seed(2)
 
@@ -329,12 +355,11 @@ def test_dual():
 
     problem = cp.Problem(cp.Minimize(obj), constr)
     
-    cpg.generate_code(problem, solver='explicit', solver_opts={'dual': True}, code_dir='explicit_dual', prefix='ex_dual')
-    
-    np.random.seed(0)
-    
-    from explicit_dual.cpg_solver import cpg_solve
-    problem.register_solve('gen_explicit', cpg_solve)
+    # generate code
+    identifier = 'explicit_dual'
+    cpg.generate_code(problem, code_dir=identifier, prefix=identifier, solver='explicit', solver_opts={'dual': True})    
+    mod = importlib.import_module(f'{identifier}.cpg_solver')
+    problem.register_solve('gen_explicit', mod.cpg_solve)
     
     y.value = [0.6, 0.8, 0.2]
     
@@ -345,7 +370,6 @@ def test_dual():
     obj_ref = obj.value
     
     problem.solve(method='gen_explicit')
-    print(v.value, v_ref)
     assert np.allclose(v.value, v_ref)
     assert np.allclose(beta.value, beta_ref)
     assert np.allclose(constr[0].dual_value, dual_ref)

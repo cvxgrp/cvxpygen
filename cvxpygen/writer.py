@@ -26,7 +26,6 @@ class CCodeWriter:
 
     def __init__(
         self,
-        problem: cp.Problem,
         configuration: Configuration,
         canon: Canon,
         solver_interface,
@@ -34,7 +33,6 @@ class CCodeWriter:
         canon_solver: Optional[Canon] = None,
         canon_gradient: Optional[Canon] = None,
     ) -> None:
-        self.problem = problem
         self.configuration = configuration
         self.canon = canon
         self.solver_interface = solver_interface

@@ -17,9 +17,10 @@ class PythonModuleCompiler:
     cpg_solve function with the CVXPY problem instance.
     """
 
-    def __init__(self, code_dir: str, problem: cp.Problem) -> None:
-        self.code_dir = code_dir
+    def __init__(self, problem: cp.Problem, code_dir: str) -> None:
         self.problem = problem
+        self.code_dir = code_dir
+        
 
     def compile(self) -> None:
         """Build and install the C extension via scikit-build-core."""

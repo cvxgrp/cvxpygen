@@ -87,11 +87,6 @@ class PDAQPInterface(QPCanonMixin, SolverInterface):
         # set precision for storing explicit solution
         c_float_store = '_Float16' if self._solver_opts and (self._solver_opts.get('fp16', False) or self._solver_opts.get('FP16', False)) else 'float'
 
-        # check that P and A are constants
-        for p_id in ['P', 'A']:
-            if canon.parameter_canon.p_id_to_changes[p_id]:
-                raise ValueError(f'Explicit mode: Matrices must be constant!')
-
         A = canon.parameter_canon.p['A'].toarray()
         m, n = A.shape
 
@@ -111,6 +106,14 @@ class PDAQPInterface(QPCanonMixin, SolverInterface):
 
         # extract bounds on theta (thmin, thmax) and user-defined params (lower, upper)
         thmin, thmax, lower, upper = self._get_parameter_delta_bounds(self._problem, canon)
+
+        # remap dual variable indices from canonical row space to sol_y row space
+        row_remap = np.cumsum(A_mask) - 1  # canonical_row -> sol_y_row
+        dvi = canon.dual_variable_info
+        for name in list(dvi.name_to_offset):
+            dvi.name_to_offset[name] = row_remap[dvi.name_to_offset[name]]
+            vec, old_indices = dvi.name_to_indices[name]
+            dvi.name_to_indices[name] = (vec, row_remap[old_indices])
 
         # eliminate theta components that are fixed
         th_mask = (thmin != thmax)

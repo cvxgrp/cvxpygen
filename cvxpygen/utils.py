@@ -769,10 +769,10 @@ def write_workspace_prot(f, config, variable_info, dual_variable_info, parameter
             f.write('typedef struct {\n')
             for name, size in dual_variable_info.name_to_size.items():
                 if size == 1:
-                    s = ''
+                    decl = f'{name};'
                 else:
-                    s = '*'
-                f.write(f'  cpg_float    {(s + name + ";").ljust(9)}   // Your dual variable for constraint {name}\n')
+                    decl = f'*{name};'
+                f.write(f'  cpg_float    {decl.ljust(9)}   // Your dual variable for constraint {name}\n')
             f.write('} CPG_Dual_t;\n\n')
 
         if not config.explicit:
@@ -1586,9 +1586,10 @@ def solver_py_context(config, variable_info, dual_variable_info, parameter_info,
 
     dual_save_list = []
     if config.explicit != 1:
-        for i, (name, shape) in enumerate(dual_variable_info.name_to_shape.items()):
+        for name, shape in dual_variable_info.name_to_shape.items():
+            constraint_idx = int(name[1:])  # d0 -> 0, d4 -> 4, etc.
             reshape_str = f".reshape({shape}, order='F')" if shape else ''
-            dual_save_list.append((i, name, shape, reshape_str))
+            dual_save_list.append((constraint_idx, name, shape, reshape_str))
 
     ctx = {
         'date': datetime.now().strftime("on %B %d, %Y at %H:%M:%S"),
