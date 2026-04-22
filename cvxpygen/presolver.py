@@ -23,8 +23,12 @@ class PreSolver:
         solver_interface: SolverInterface
     ) -> None:
         
-        # identify to-eliminate vars
+        # check that P and A are constants
         pc = canon.parameter_canon
+        if pc.p_id_to_changes['P'] or pc.p_id_to_changes['A']:
+            raise ValueError(f'Explicit solver generation: Matrices must be constant!')
+        
+        # identify to-eliminate vars
         P = pc.p['P'].toarray()
         q = pc.p['q']
         A = pc.p['A'].toarray()
@@ -76,12 +80,20 @@ class PreSolver:
         pc.p_id_to_size['q'] = len(pc.p['q'])
         pc.p_id_to_size['u'] = len(pc.p['u'])
 
-        # update index book-keeping for variable retrieval
-        new_ind = np.cumsum(col_mask).astype(int) - 1
+        # index book-keeping for primal variable retrieval
+        new_cols = np.cumsum(col_mask) - 1
         for name in list(pvi.name_to_offset):
-            pvi.name_to_offset[name] = new_ind[pvi.name_to_offset[name]]
-            pvi.name_to_indices[name] = new_ind[pvi.name_to_indices[name]]
-             
+            pvi.name_to_offset[name] = new_cols[pvi.name_to_offset[name]]
+            pvi.name_to_indices[name] = new_cols[pvi.name_to_indices[name]]
+
+        # index book-keeping for dual variable retrieval
+        dvi = canon.dual_variable_info
+        new_rows = np.cumsum(row_mask) - 1
+        for name in list(dvi.name_to_offset):
+            dvi.name_to_offset[name] = new_rows[dvi.name_to_offset[name]]
+            vec, old_indices = dvi.name_to_indices[name]
+            dvi.name_to_indices[name] = (vec, new_rows[old_indices])
+
         # update solver interface   
         solver_interface.n_var = pc.p_id_to_size['q']
         solver_interface.n_ineq -= len(to_eliminate)

@@ -104,8 +104,11 @@ def test_power():
     assert np.allclose(obj.value, obj_ref, rtol=rtol)
 
 
-@pytest.mark.parametrize('constr_type', ['bounds', 'abs', 'norm'])
-def test_control(constr_type, capsys):
+@pytest.mark.parametrize(
+    'constr_type, compute_dual',
+    [('bounds', False), ('abs', False), ('norm', False), ('bounds', True), ('norm', True)]
+    )
+def test_control(constr_type, compute_dual, capsys):
     
     np.random.seed(1)
     
@@ -144,8 +147,9 @@ def test_control(constr_type, capsys):
     problem = cp.Problem(cp.Minimize(obj), constr)
     
     # generate code
-    identifier = f'explicit_control_{constr_type}'
-    cpg.generate_code(problem, code_dir=identifier, prefix=identifier, solver='explicit')
+    identifier = f'explicit_control_{constr_type}_{"dual" if compute_dual else "nodual"}'
+    cpg.generate_code(problem, code_dir=identifier, prefix=identifier, solver='explicit',
+                      solver_opts={'dual': compute_dual})
     captured = capsys.readouterr()
     assert '10 linear inequality constraints' in captured.out
     
@@ -160,12 +164,16 @@ def test_control(constr_type, capsys):
     X_ref = X.value
     U_ref = U.value
     obj_ref = obj.value
+    dual_ref = constr[-1].dual_value.copy()
     
     problem.solve(method='cpg_explicit')
     rtol = 1e-4
     assert np.allclose(X.value, X_ref, rtol=rtol)
     assert np.allclose(U.value, U_ref, rtol=rtol)
     assert np.allclose(obj.value, obj_ref, rtol=rtol)
+    
+    if compute_dual:
+        assert np.allclose(constr[-1].dual_value, dual_ref, rtol=rtol)
     
     
 def test_control_fp16():

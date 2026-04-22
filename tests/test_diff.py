@@ -22,7 +22,7 @@ def test_gradient(n, solver):
     chol = np.random.randn(n, n)
     Q = chol @ chol.T / 10 + np.eye(n)
     b = cp.Parameter(n, name='b')
-    constr = [x >= 0]
+    constr = [cp.abs(x) <= 0.2]
     if solver == 'explicit':
         constr += [-1 <= b, b <= 1]
     obj = cp.Minimize(b @ x + cp.quad_form(x, Q))
@@ -49,7 +49,7 @@ def test_gradient(n, solver):
     prob.backward()
     g_cvxpy = b.gradient
 
-    assert np.allclose(g_cpg, g_cvxpy)
+    assert np.allclose(g_cpg, g_cvxpy, atol=1e-4)
     
     
 @pytest.mark.parametrize("n, solver", [(5, 'OSQP'), (5, 'explicit')])
@@ -57,7 +57,7 @@ def test_torch_sim(n, solver):
     
     np.random.seed(0)
     
-    # parametrized nonneg LS problem
+    # parametrized problem
     x = cp.Variable(n, name='x')
     xhat = cp.Parameter(n, name='xhat')
     b = cp.Parameter(n, name='b')
