@@ -24,7 +24,7 @@ typedef struct {
 // Derivative data
 typedef struct {
   cpg_grad_int      init;       // Initialization flag
-  cpg_grad_int      *a;         // Bound indicator (-1 for lower bound, 1 for upper bound, 0 for no bound)
+  cpg_grad_int      *a;         // Activity indicator for inequality constraints (1 = upper bound active, 0 = inactive)
   cpg_grad_int      *etree;     // elimination tree
   cpg_grad_int      *Lnz;       // number of nonzeros in each column of L
   cpg_grad_int      *iwork;     // integer workspace

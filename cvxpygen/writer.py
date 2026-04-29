@@ -275,7 +275,7 @@ class CCodeWriter:
             f.write(f'    if ({f" || ".join([f"{prefix}Canon_Outdated_Grad.{p_id}" for p_id in changing_matrices])}) {{\n')
             f.write(f'      cpg_ldl_numeric();\n')
             # set all CPG_OSQP_Grad.a[i] to 1
-            f.write(f'      for(i=0; i<{N - n}; i++){{\n')
+            f.write(f'      for(i=0; i<{N - n - nl}; i++){{\n')
             f.write(f'        {osqp_prefix}CPG_OSQP_Grad.a[i] = 1;\n')
             f.write('      }\n')
             f.write('    }\n')
@@ -374,6 +374,7 @@ class CCodeWriter:
         
         n = parameter_canon.p['P'].shape[0]
         N = n + parameter_canon.p['A'].shape[0]
+        nl = self.gradient_interface.n_eq
         
         P_upper = sp.triu(parameter_canon.p['P'], format='csc')
         K = sp.bmat([
@@ -390,7 +391,7 @@ class CCodeWriter:
         f.write('#include "cpg_osqp_grad_workspace.h"\n\n')
         
         workspace = [
-            ('a',       'int',      np.ones(N-n, dtype=int)),
+            ('a',       'int',      np.ones(N-n-nl, dtype=int)),
             ('etree',   'int',      np.zeros(N, dtype=int)),
             ('Lnz',     'int',      np.zeros(N, dtype=int)),
             ('iwork',   'int',      np.zeros(3*N, dtype=int)),
