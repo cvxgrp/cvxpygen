@@ -1627,6 +1627,7 @@ def grad_compute_context(config, gradient_interface):
     return {
         'date': datetime.now().strftime("on %B %d, %Y at %H:%M:%S"),
         'n': gradient_interface.n_var,
+        'nl': gradient_interface.n_eq,
         'N': gradient_interface.n_var + gradient_interface.n_eq + gradient_interface.n_ineq,
         'workspace': f'{config.prefix}CPG_OSQP_Grad',
         'gradient_two_stage': config.gradient_two_stage,

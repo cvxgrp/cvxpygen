@@ -14,6 +14,7 @@ Licensed under the Apache License, Version 2.0
 #include "cpg_osqp_grad_workspace.h"
 
 const cpg_grad_int n = {{ n }};
+const cpg_grad_int nl = {{ nl }};
 const cpg_grad_int N = {{ N }};
 cpg_grad_float cpg_grad_a, cpg_grad_a_bar, cpg_grad_gamma;
 
@@ -99,24 +100,21 @@ void insert_nonzero_and_value(cpg_grad_csc *L, cpg_grad_int row, cpg_grad_int co
     }
 }
 
-// Function to remove a non-zero entry from the sparse matrix
-void remove_nonzero(cpg_grad_csc *L, cpg_grad_int row, cpg_grad_int col) {
-    if (row < col) return; // Ensure lower triangular property
+// Function to remove a non-zero entry from the sparse matrix; returns 1 if removed, 0 otherwise
+cpg_grad_int remove_nonzero(cpg_grad_csc *L, cpg_grad_int row, cpg_grad_int col) {
+    if (row < col) return 0; // Ensure lower triangular property
 
     // Check if the entry exists and find its position
     cpg_grad_int remove_pos = -1;
     for (cpg_grad_int p = L->p[col]; p < L->p[col + 1]; p++) {
         if (L->i[p] == row) {
-            if (fabs(L->x[p]) > 1e-6) {
-                return; // Entry is numerically non-zero, do not remove
-            }
             remove_pos = p;
             break;
         }
     }
 
     if (remove_pos == -1) {
-        return; // Entry does not exist, nothing to remove
+        return 0; // Entry does not exist, nothing to remove
     }
 
     // Shift elements to remove the entry
@@ -132,9 +130,12 @@ void remove_nonzero(cpg_grad_csc *L, cpg_grad_int row, cpg_grad_int col) {
     for (cpg_grad_int j = col + 1; j <= N; j++) {
         L->p[j]--;
     }
+    return 1;
 }
 
-// Function to perform symbolic update
+// Function to perform symbolic update.
+// Lmask == 0: not in L. Lmask == 2: original L entry (never removed).
+// Lcount tracks how many open deletes claim a fill-in entry; Lmask == 1 when Lcount > 0.
 void symbolic_ldl_update(cpg_grad_csc *L, cpg_grad_int *w_indices, cpg_grad_int w_size, cpg_grad_int offset) {
     for (cpg_grad_int k = 0; k < w_size; k++) {
         cpg_grad_int col = w_indices[k] + offset;
@@ -142,20 +143,35 @@ void symbolic_ldl_update(cpg_grad_csc *L, cpg_grad_int *w_indices, cpg_grad_int 
             cpg_grad_int row = w_indices[j] + offset;
             cpg_grad_int ind = (2*N-3-col)*col/2+row-1;
             if ({{ workspace }}.Lmask[ind] == 0) {
+                // First delete to need this fill-in: insert and mark
                 {{ workspace }}.Lmask[ind] = 1;
+                {{ workspace }}.Lcount[ind] = 1;
                 insert_nonzero(L, row, col);
-            } 
+            } else if ({{ workspace }}.Lmask[ind] == 1) {
+                // Another delete also needs this fill-in: increment count
+                {{ workspace }}.Lcount[ind]++;
+            }
         }
     }
 }
 
-// Function to perform symbolic downdate
+// Function to perform symbolic downdate.
+// Decrements the reference count for each fill-in pair; removes the entry from L
+// Removes entry from L when no open deletes claim it (respective Lcount is zero).
 void symbolic_ldl_downdate(cpg_grad_csc *L, cpg_grad_int *w_indices, cpg_grad_int w_size, cpg_grad_int offset) {
     for (cpg_grad_int k = 0; k < w_size; k++) {
         cpg_grad_int col = w_indices[k] + offset;
         for (cpg_grad_int j = k + 1; j < w_size; j++) {
             cpg_grad_int row = w_indices[j] + offset;
-            remove_nonzero(L, row, col);
+            cpg_grad_int ind = (2*N-3-col)*col/2+row-1;
+            if ({{ workspace }}.Lmask[ind] == 1) {
+                {{ workspace }}.Lcount[ind]--;
+                if ({{ workspace }}.Lcount[ind] == 0) {
+                    if (remove_nonzero(L, row, col)) {
+                        {{ workspace }}.Lmask[ind] = 0;
+                    }
+                }
+            }
         }
     }
 }
@@ -216,9 +232,20 @@ void cpg_ldl_delete(cpg_grad_int index) {
         {{ workspace }}.L->x[k] = 0.0;
     }
     
-    // Set index-th entry of D to -1.0
-    {{ workspace }}.D[index] = -1.0;
-    {{ workspace }}.Dinv[index] = -1.0;
+    // Set index-th entry of D to large negative placeholder so that rank-1 updates
+    // of other constraints pass through this deleted row without modifying D[index].
+    // (w[j]^2 / D[index] ≈ 0, so a_bar ≈ a and gamma ≈ 0.)
+    {{ workspace }}.D[index] = -1e20;
+    {{ workspace }}.Dinv[index] = -1e-20;
+
+    // Save wi so cpg_ldl_add can call symbolic_ldl_downdate with the exact same indices
+    if (index >= n + nl) {
+        cpg_grad_int ineq_idx = index - n - nl;
+        {{ workspace }}.widel_sz[ineq_idx] = wsize;
+        for (i = 0; i < wsize; i++) {
+            {{ workspace }}.widel[ineq_idx * (N - n - nl) + i] = {{ workspace }}.wi[i];
+        }
+    }
 
     // Perform symbolic update
     symbolic_ldl_update({{ workspace }}.L, {{ workspace }}.wi, wsize, index + 1);
@@ -325,8 +352,18 @@ void cpg_ldl_add(cpg_grad_int index) {
     // Update D and L, second part
     cpg_rank_1_update(1, index + 1);
 
-    // Perform symbolic update
-    //symbolic_ldl_downdate({{ workspace }}.L, {{ workspace }}.wi, wsize, index + 1);
+    // Remove fill-in introduced during the corresponding delete, using saved wi
+    if (index >= n + nl) {
+        cpg_grad_int ineq_idx = index - n - nl;
+        cpg_grad_int stored_wsize = {{ workspace }}.widel_sz[ineq_idx];
+        if (stored_wsize > 0) {
+            symbolic_ldl_downdate({{ workspace }}.L,
+                                  {{ workspace }}.widel + ineq_idx * (N - n - nl),
+                                  stored_wsize,
+                                  index + 1);
+            {{ workspace }}.widel_sz[ineq_idx] = 0;
+        }
+    }
 
 }
 
@@ -440,22 +477,17 @@ void cpg_osqp_gradient() {
 
     cpg_grad_int i, j, k, l;
 
-    // Check active constraints
-    for (i = 0; i < N - n; i++) {
-        if ({{ sol_y_var }}[i] < -1e-12) {
-            if ({{ workspace }}.a[i] == 0) {
+    // Inequality constraints (upper-bound only): a[i] in {0,1} for i in [0, N-n-nl)
+    for (i = nl; i < N - n; i++) {
+        if ({{ sol_y_var }}[i] > 1e-12) {
+            if ({{ workspace }}.a[i - nl] == 0) {
                 cpg_ldl_add(n + i);
             }
-            {{ workspace }}.a[i] = -1; // lower bound active
-        } else if ({{ sol_y_var }}[i] > 1e-12) {
-            if ({{ workspace }}.a[i] == 0) {
-                cpg_ldl_add(n + i);
-            }
-            {{ workspace }}.a[i] = 1; // upper bound active
+            {{ workspace }}.a[i - nl] = 1;
         } else {
-            if ({{ workspace }}.a[i] != 0) {
+            if ({{ workspace }}.a[i - nl] != 0) {
                 cpg_ldl_delete(n + i);
-                {{ workspace }}.a[i] = 0; // no bound active
+                {{ workspace }}.a[i - nl] = 0;
             }
         }
     }
@@ -470,7 +502,7 @@ void cpg_osqp_gradient() {
         {{ workspace }}.rhs[i] = 0.0;
     }
     QDLDL_solve(N, {{ workspace }}.L->p, {{ workspace }}.L->i, {{ workspace }}.L->x, {{ workspace }}.Dinv, {{ workspace }}.r);
-    
+
     // Three iterations of iterative refinement
     for (l = 0; l < 3; l++) {
         // Compute delta = rhs - K_true @ r
@@ -478,13 +510,13 @@ void cpg_osqp_gradient() {
             {{ workspace }}.delta[i] = {{ workspace }}.rhs[i];
         }
         for (i = 0; i < N; i++) {
-            if (i >= n && {{ workspace }}.a[i - n] == 0) {
+            if (i >= n + nl && {{ workspace }}.a[i - n - nl] == 0) {
                 {{ workspace }}.delta[i] = 0.0;
                 continue;
             }
             for (k = {{ workspace }}.K_true->p[i]; k < {{ workspace }}.K_true->p[i + 1]; k++) {
                 j = {{ workspace }}.K_true->i[k];
-                if (j >= n && {{ workspace }}.a[j - n] == 0) continue;
+                if (j >= n + nl && {{ workspace }}.a[j - n - nl] == 0) continue;
                 {{ workspace }}.delta[i] -= {{ workspace }}.K_true->x[k] * {{ workspace }}.r[j];
             }
         }
@@ -502,17 +534,15 @@ void cpg_osqp_gradient() {
     }
 
     // Fill gradient in l and u
-    for (i = 0; i < N - n; i++) {
-        if ({{ workspace }}.a[i] == -1) {
-            {{ workspace }}.dl[i] = {{ workspace }}.r[n + i];
-            {{ workspace }}.du[i] = 0.0;
-        } else if ({{ workspace }}.a[i] == 1) {
-            {{ workspace }}.dl[i] = 0.0;
-            {{ workspace }}.du[i] = {{ workspace }}.r[n + i];
-        } else {
-            {{ workspace }}.dl[i] = 0.0;
-            {{ workspace }}.du[i] = 0.0;
-        }
+    // Equality constraints (i < nl): always active
+    for (i = 0; i < nl; i++) {
+        {{ workspace }}.dl[i] = 0.5 * {{ workspace }}.r[n + i];
+        {{ workspace }}.du[i] = 0.5 * {{ workspace }}.r[n + i];
+    }
+    // Inequality constraints (i >= nl): upper-bound only, active when a[i-nl] == 1
+    for (i = nl; i < N - n; i++) {
+        {{ workspace }}.dl[i] = 0.0;
+        {{ workspace }}.du[i] = ({{ workspace }}.a[i - nl] == 1) ? {{ workspace }}.r[n + i] : 0.0;
     }
 
     // Fill gradient in P
@@ -527,7 +557,7 @@ void cpg_osqp_gradient() {
     for (j = 0; j < n; j++) {
         for (k = {{ workspace }}.dA->p[j]; k < {{ workspace }}.dA->p[j + 1]; k++) {
             i = {{ workspace }}.dA->i[k];
-            if ({{ workspace }}.a[i] == 0) {
+            if (i >= nl && {{ workspace }}.a[i - nl] == 0) {
                 {{ workspace }}.dA->x[k] = 0.0;
             } else {
                 {{ workspace }}.dA->x[k] = - ({{ workspace }}.r[n + i] * {{ sol_x_var }}[j] + {{ sol_y_var }}[i] * {{ workspace }}.r[j]);
