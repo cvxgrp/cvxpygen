@@ -100,24 +100,21 @@ void insert_nonzero_and_value(cpg_grad_csc *L, cpg_grad_int row, cpg_grad_int co
     }
 }
 
-// Function to remove a non-zero entry from the sparse matrix
-void remove_nonzero(cpg_grad_csc *L, cpg_grad_int row, cpg_grad_int col) {
-    if (row < col) return; // Ensure lower triangular property
+// Function to remove a non-zero entry from the sparse matrix; returns 1 if removed, 0 otherwise
+cpg_grad_int remove_nonzero(cpg_grad_csc *L, cpg_grad_int row, cpg_grad_int col) {
+    if (row < col) return 0; // Ensure lower triangular property
 
     // Check if the entry exists and find its position
     cpg_grad_int remove_pos = -1;
     for (cpg_grad_int p = L->p[col]; p < L->p[col + 1]; p++) {
         if (L->i[p] == row) {
-            if (fabs(L->x[p]) > 1e-6) {
-                return; // Entry is numerically non-zero, do not remove
-            }
             remove_pos = p;
             break;
         }
     }
 
     if (remove_pos == -1) {
-        return; // Entry does not exist, nothing to remove
+        return 0; // Entry does not exist, nothing to remove
     }
 
     // Shift elements to remove the entry
@@ -133,9 +130,12 @@ void remove_nonzero(cpg_grad_csc *L, cpg_grad_int row, cpg_grad_int col) {
     for (cpg_grad_int j = col + 1; j <= N; j++) {
         L->p[j]--;
     }
+    return 1;
 }
 
-// Function to perform symbolic update
+// Function to perform symbolic update.
+// Lmask == 0: not in L. Lmask == 2: original L entry (never removed).
+// Lcount tracks how many open deletes claim a fill-in entry; Lmask == 1 when Lcount > 0.
 void symbolic_ldl_update(cpg_grad_csc *L, cpg_grad_int *w_indices, cpg_grad_int w_size, cpg_grad_int offset) {
     for (cpg_grad_int k = 0; k < w_size; k++) {
         cpg_grad_int col = w_indices[k] + offset;
@@ -143,20 +143,35 @@ void symbolic_ldl_update(cpg_grad_csc *L, cpg_grad_int *w_indices, cpg_grad_int 
             cpg_grad_int row = w_indices[j] + offset;
             cpg_grad_int ind = (2*N-3-col)*col/2+row-1;
             if ({{ workspace }}.Lmask[ind] == 0) {
+                // First delete to need this fill-in: insert and mark
                 {{ workspace }}.Lmask[ind] = 1;
+                {{ workspace }}.Lcount[ind] = 1;
                 insert_nonzero(L, row, col);
-            } 
+            } else if ({{ workspace }}.Lmask[ind] == 1) {
+                // Another delete also needs this fill-in: increment count
+                {{ workspace }}.Lcount[ind]++;
+            }
         }
     }
 }
 
-// Function to perform symbolic downdate
+// Function to perform symbolic downdate.
+// Decrements the reference count for each fill-in pair; removes the entry from L
+// Removes entry from L when no open deletes claim it (respective Lcount is zero).
 void symbolic_ldl_downdate(cpg_grad_csc *L, cpg_grad_int *w_indices, cpg_grad_int w_size, cpg_grad_int offset) {
     for (cpg_grad_int k = 0; k < w_size; k++) {
         cpg_grad_int col = w_indices[k] + offset;
         for (cpg_grad_int j = k + 1; j < w_size; j++) {
             cpg_grad_int row = w_indices[j] + offset;
-            remove_nonzero(L, row, col);
+            cpg_grad_int ind = (2*N-3-col)*col/2+row-1;
+            if ({{ workspace }}.Lmask[ind] == 1) {
+                {{ workspace }}.Lcount[ind]--;
+                if ({{ workspace }}.Lcount[ind] == 0) {
+                    if (remove_nonzero(L, row, col)) {
+                        {{ workspace }}.Lmask[ind] = 0;
+                    }
+                }
+            }
         }
     }
 }
@@ -217,9 +232,20 @@ void cpg_ldl_delete(cpg_grad_int index) {
         {{ workspace }}.L->x[k] = 0.0;
     }
     
-    // Set index-th entry of D to -1.0
-    {{ workspace }}.D[index] = -1.0;
-    {{ workspace }}.Dinv[index] = -1.0;
+    // Set index-th entry of D to large negative placeholder so that rank-1 updates
+    // of other constraints pass through this deleted row without modifying D[index].
+    // (w[j]^2 / D[index] ≈ 0, so a_bar ≈ a and gamma ≈ 0.)
+    {{ workspace }}.D[index] = -1e20;
+    {{ workspace }}.Dinv[index] = -1e-20;
+
+    // Save wi so cpg_ldl_add can call symbolic_ldl_downdate with the exact same indices
+    if (index >= n + nl) {
+        cpg_grad_int ineq_idx = index - n - nl;
+        {{ workspace }}.widel_sz[ineq_idx] = wsize;
+        for (i = 0; i < wsize; i++) {
+            {{ workspace }}.widel[ineq_idx * (N - n - nl) + i] = {{ workspace }}.wi[i];
+        }
+    }
 
     // Perform symbolic update
     symbolic_ldl_update({{ workspace }}.L, {{ workspace }}.wi, wsize, index + 1);
@@ -326,8 +352,18 @@ void cpg_ldl_add(cpg_grad_int index) {
     // Update D and L, second part
     cpg_rank_1_update(1, index + 1);
 
-    // Perform symbolic update
-    //symbolic_ldl_downdate({{ workspace }}.L, {{ workspace }}.wi, wsize, index + 1);
+    // Remove fill-in introduced during the corresponding delete, using saved wi
+    if (index >= n + nl) {
+        cpg_grad_int ineq_idx = index - n - nl;
+        cpg_grad_int stored_wsize = {{ workspace }}.widel_sz[ineq_idx];
+        if (stored_wsize > 0) {
+            symbolic_ldl_downdate({{ workspace }}.L,
+                                  {{ workspace }}.widel + ineq_idx * (N - n - nl),
+                                  stored_wsize,
+                                  index + 1);
+            {{ workspace }}.widel_sz[ineq_idx] = 0;
+        }
+    }
 
 }
 

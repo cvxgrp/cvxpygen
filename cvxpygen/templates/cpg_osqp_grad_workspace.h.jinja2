@@ -31,7 +31,8 @@ typedef struct {
   cpg_grad_int      *bwork;     // boolean workspace
   cpg_grad_float    *fwork;     // float workspace
   cpg_grad_csc      *L;         // Lower triangular factor of K
-  cpg_grad_int      *Lmask;     // Boolean mask for fast nonzero querying
+  cpg_grad_int      *Lmask;     // Entry status: 0=absent, 1=fill-in, 2=original
+  cpg_grad_int      *Lcount;    // Reference count: number of open deletes claiming each fill-in entry
   cpg_grad_float    *D;         // Diagonal factor of K
   cpg_grad_float    *Dinv;      // Inverse of D
   cpg_grad_csc      *K;         // KKT matrix
@@ -41,6 +42,8 @@ typedef struct {
   cpg_grad_float    *c;         // Vector used in update
   cpg_grad_float    *w;         // Vector used in update
   cpg_grad_int      *wi;        // Sparse vector used in update
+  cpg_grad_int      *widel;     // Saved delete wi indices per inequality constraint (n_ineq * n_ineq)
+  cpg_grad_int      *widel_sz;  // Saved delete wsize per inequality constraint (n_ineq)
   cpg_grad_float    *l;         // Vector used in update
   cpg_grad_int      *li;        // Sparse vector used in update
   cpg_grad_float    *lx;        // Sparse vector used in update

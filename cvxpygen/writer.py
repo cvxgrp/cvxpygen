@@ -265,7 +265,7 @@ class CCodeWriter:
         f.write(f'    for (j=0; j<{N-1}; j++){{\n')
         f.write(f'      for (k={osqp_prefix}CPG_OSQP_Grad.L->p[j]; k<{osqp_prefix}CPG_OSQP_Grad.L->p[j+1]; k++){{\n')
         f.write(f'        i = {osqp_prefix}CPG_OSQP_Grad.L->i[k];\n')
-        f.write(f'        {osqp_prefix}CPG_OSQP_Grad.Lmask[({2*N-3}-j)*j/2+i-1] = 1;\n')
+        f.write(f'        {osqp_prefix}CPG_OSQP_Grad.Lmask[({2*N-3}-j)*j/2+i-1] = 2;\n')
         f.write('      }\n')
         f.write('    }\n')
         f.write(f'    {osqp_prefix}CPG_OSQP_Grad.init = 0;\n')
@@ -375,6 +375,7 @@ class CCodeWriter:
         n = parameter_canon.p['P'].shape[0]
         N = n + parameter_canon.p['A'].shape[0]
         nl = self.gradient_interface.n_eq
+        n_ineq = N - n - nl
         
         P_upper = sp.triu(parameter_canon.p['P'], format='csc')
         K = sp.bmat([
@@ -399,6 +400,7 @@ class CCodeWriter:
             ('fwork',   'float',    np.zeros(N)),
             ('L',       'csc_L',    N),
             ('Lmask',   'int',      np.zeros((N-1)*N//2, dtype=int)),
+            ('Lcount',  'int',      np.zeros((N-1)*N//2, dtype=int)),
             ('D',       'float',    np.ones(N)),
             ('Dinv',    'float',    np.ones(N)),
             ('K',       'csc',      K),
@@ -408,6 +410,8 @@ class CCodeWriter:
             ('c',       'float',    np.zeros(N)),
             ('w',       'float',    np.zeros(N)),
             ('wi',      'int',      np.arange(N)),
+            ('widel',   'int',      np.zeros(n_ineq * n_ineq, dtype=int)),
+            ('widel_sz','int',      np.zeros(n_ineq, dtype=int)),
             ('l',       'float',    np.zeros(N)),
             ('li',      'int',      np.arange(N)),
             ('lx',      'float',    np.zeros(N)),
