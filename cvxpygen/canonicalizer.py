@@ -251,7 +251,7 @@ class Canonicalizer:
         user_p_writable = {}
         for p_name, p in zip(user_p_names, param_prob.parameters):
             if p.value is None:
-                p.project_and_assign(np.random.randn(*p.shape))
+                p.project_and_assign(np.ones(p.shape))
                 if type(p.value) in [sparse.dia_matrix, sparse.dia_array]:
                     p.value = p.value.toarray()
             if len(p.shape) < 2:
