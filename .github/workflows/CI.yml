@@ -41,15 +41,19 @@ jobs:
         cd cvxpy
         pip install .
 
+    - name: Install cvxpylayers from source
+      if: runner.os == 'Linux'
+      run: |
+        git clone https://github.com/cvxpy/cvxpylayers.git
+        cd cvxpylayers
+        git checkout custom-solvers  # TO BE REMOVED
+        pip install ".[torch, jax]"
+
     - name: Install dependencies (Linux)
       if: runner.os == 'Linux'
       run: |
         sudo apt update
         sudo apt install libeigen3-dev
-        git clone https://github.com/cvxpy/cvxpylayers.git
-        cd cvxpylayers
-        git checkout custom-solvers  # TO BE REMOVED
-        pip install ".[torch, jax]"
         pip install .[dev]
 
     - name: Install dependencies (macOS)
