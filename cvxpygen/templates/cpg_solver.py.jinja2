@@ -37,7 +37,7 @@ def get_param_value(param):
 
 
 {% if gradient %}
-def cpg_solve_and_gradient_info(prob, updated_params=None, **kwargs):
+def cpg_solve_and_state(prob, updated_params=None, **kwargs):
 {% else %}
 def cpg_solve(prob, updated_params=None, **kwargs):
 {% endif %}
@@ -90,7 +90,7 @@ def cpg_solve(prob, updated_params=None, **kwargs):
 {% endif %}
 
 {% if explicit %}
-    return res.cpg_info.time{% if gradient %}, res.cpg_info.region{% endif %}
+    return None, (res.cpg_info.time{% if gradient %}, res.cpg_info.region{% endif %})
 
 
 {% else %}
@@ -119,29 +119,22 @@ def cpg_solve(prob, updated_params=None, **kwargs):
                     'solve_time': t1 - t0}
     prob._solver_stats = SolverStats.from_dict(results_dict, '{{ solver_name }}')
 
-    return prob.value{% if gradient %}, res.cpg_info.gradient_primal, res.cpg_info.gradient_dual{% endif %}
+    return prob.value{% if gradient %}, (res.cpg_info.gradient_primal, res.cpg_info.gradient_dual){% endif %}
 
 
 {% endif %}
 {% if gradient %}
 def cpg_solve(prob, updated_params=None, **kwargs):
 
-{% if explicit %}
-    val, _ = cpg_solve_and_gradient_info(prob, updated_params, **kwargs)
-{% else %}
-    val, _, _ = cpg_solve_and_gradient_info(prob, updated_params, **kwargs)
-{% endif %}
+    val, _ = cpg_solve_and_state(prob, updated_params, **kwargs)
     return val
 
 
-{% if explicit %}
-def cpg_gradient(prob, region=None):
-{% else %}
-def cpg_gradient(prob, gradient_sol_primal=None, gradient_sol_dual=None):
-{% endif %}
+def cpg_gradient(prob, state=None):
 
     # set solution info if provided
 {% if explicit %}
+    region = state[1] if state is not None else None
     if region is not None:
         use_sol = True
     else:
@@ -149,9 +142,9 @@ def cpg_gradient(prob, gradient_sol_primal=None, gradient_sol_dual=None):
         use_sol = False
 {% else %}
     gradient_sol = cpg_module.{{ prefix }}cpg_gsol()
-    if gradient_sol_primal is not None and gradient_sol_dual is not None:
-        gradient_sol.primal = list(gradient_sol_primal)
-        gradient_sol.dual = list(gradient_sol_dual)
+    if state is not None:
+        gradient_sol.primal = list(state[0])
+        gradient_sol.dual = list(state[1])
         use_sol = True
     else:
         gradient_sol.primal = [0] * {{ n_grad_var }}
@@ -176,44 +169,5 @@ def cpg_gradient(prob, gradient_sol_primal=None, gradient_sol_dual=None):
 {% for name, shape in param_name_to_shape %}
     prob.param_dict['{{ name }}'].gradient = np.array(pdelta.{{ name }}).reshape({{ shape }}, order='F')
 {% endfor %}
-
-
-def forward(params, context):
-
-    info = {}
-    kwargs = context.solver_args.copy()
-    prob = kwargs.pop("problem")
-    parameters = prob.parameters()
-    for pid, val in zip(context.param_ids, params):
-        next(p for p in parameters if p.id == pid).value = val
-    updated_params = kwargs.pop("updated_params", None)
-{% if explicit %}
-    _, info["region"] = cpg_solve_and_gradient_info(prob, updated_params, **kwargs)
-{% else %}
-    _, info["gradient_primal"], info["gradient_dual"] = cpg_solve_and_gradient_info(prob, updated_params, **kwargs)
-{% endif %}
-    info["prob"] = prob
-
-    vars = prob.variables()
-    return [next(v for v in vars if v.id == variable.id).value for variable in context.variables], info
-
-
-def backward(dvars, context):
-
-    prob = context.info["prob"]
-    vars = prob.variables()
-    for variable, dv in zip(context.variables, dvars):
-        next(v for v in vars if v.id == variable.id).gradient = dv
-{% if explicit %}
-    region = context.info["region"]
-    cpg_gradient(prob, region)
-{% else %}
-    gradient_primal = context.info["gradient_primal"]
-    gradient_dual = context.info["gradient_dual"]
-    cpg_gradient(prob, gradient_primal, gradient_dual)
-{% endif %}
-
-    params = prob.parameters()
-    return [next(p for p in params if p.id == pid).gradient for pid in context.param_ids], {}
 
 {% endif %}
