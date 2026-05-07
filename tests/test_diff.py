@@ -8,6 +8,7 @@ import jax
 import jax.numpy as jnp
 from cvxpylayers.torch import CvxpyLayer as LayerTorch
 from cvxpylayers.jax import CvxpyLayer as LayerJax
+from cvxpylayers.interfaces import SolverInterface
 from cvxpygen import cpg
 from utils_test import pgd
 
@@ -78,7 +79,12 @@ def test_torch_sim(n, solver):
     
     # torch function
     layer = LayerTorch(prob, parameters=[xhat, b], variables=[x])
-    layer_gen = LayerTorch(prob, parameters=[xhat, b], variables=[x], custom_method=(mod.forward, mod.backward))
+    layer_gen = LayerTorch(prob, parameters=[xhat, b], variables=[x],
+                           solver=SolverInterface.from_parametric_functions(
+                               solve=mod.cpg_solve,
+                               solve_and_state=mod.cpg_solve_and_state,
+                               gradient=mod.cpg_gradient,
+                           ))
     
     def sim(lyr, xhat0, solver_args={}):
         
@@ -100,7 +106,7 @@ def test_torch_sim(n, solver):
     res.backward()
     grad = xhat0_tch.grad.detach().numpy()
     
-    res_gen = sim(layer_gen, xhat0_tch, solver_args={'problem': prob, 'updated_params': ['xhat', 'b']})
+    res_gen = sim(layer_gen, xhat0_tch, solver_args={'updated_params': ['xhat', 'b']})
     res_gen.backward()
     grad_gen = xhat0_tch.grad.detach().numpy()
     
@@ -162,7 +168,12 @@ def test_torch_pgd(solver):
     layer = LayerTorch(problem, parameters=parameters, variables=variables)
 
     mod = importlib.import_module(f'{identifier}.cpg_solver')
-    layer_gen = LayerTorch(problem, parameters=parameters, variables=variables, custom_method=(mod.forward, mod.backward))
+    layer_gen = LayerTorch(problem, parameters=parameters, variables=variables,
+                           solver=SolverInterface.from_parametric_functions(
+                               solve=mod.cpg_solve,
+                               solve_and_state=mod.cpg_solve_and_state,
+                               gradient=mod.cpg_gradient,
+                           ))
 
     # load and price profiles
     T = 25
@@ -208,7 +219,7 @@ def test_torch_pgd(solver):
         return simulate(
             theta,
             layer_gen,
-            solver_args={'problem': problem, 'updated_params': ['L', 'P_over_alpha', 'qtar', 'q', 'Q', 'S']},
+            solver_args={'updated_params': ['L', 'P_over_alpha', 'qtar', 'q', 'Q', 'S']},
             compute_grad=compute_grad
         )
     
@@ -241,7 +252,12 @@ def test_torch_two_stage(m, n, solver):
     A_tch = torch.tensor(A.value, requires_grad=True)
     b_tch = torch.tensor(b.value, requires_grad=True)
     layer_torch = LayerTorch(prob, parameters=[A, b], variables=[x])
-    layer_torch_gen = LayerTorch(prob, parameters=[A, b], variables=[x], custom_method=(mod.forward, mod.backward))
+    layer_torch_gen = LayerTorch(prob, parameters=[A, b], variables=[x],
+                                 solver=SolverInterface.from_parametric_functions(
+                                     solve=mod.cpg_solve,
+                                     solve_and_state=mod.cpg_solve_and_state,
+                                     gradient=mod.cpg_gradient,
+                                 ))
     
     sol_torch, = layer_torch(A_tch, b_tch)
     sum_torch = 0.1 * sol_torch.sum()
@@ -249,7 +265,7 @@ def test_torch_two_stage(m, n, solver):
     grad_A_torch = A_tch.grad.detach().numpy()
     grad_b_torch = b_tch.grad.detach().numpy()
     
-    solver_args={'problem': prob, 'updated_params': ['A', 'b']}
+    solver_args={'updated_params': ['A', 'b']}
     if solver == 'SCS':
         solver_args['verbose'] = False
     sol_torch_gen, = layer_torch_gen(A_tch, b_tch, solver_args=solver_args)
@@ -271,7 +287,7 @@ def test_torch_two_stage(m, n, solver):
     grad_A_torch = A_tch.grad.detach().numpy()
     grad_b_torch = b_tch.grad.detach().numpy()
     
-    sol_torch_gen, = layer_torch_gen(A_tch, b_tch, solver_args={'problem': prob, 'updated_params': ['A', 'b']})
+    sol_torch_gen, = layer_torch_gen(A_tch, b_tch, solver_args={'updated_params': ['A', 'b']})
     sum_torch_gen = 0.1 * sol_torch_gen.sum()
     sum_torch_gen.backward()
     grad_A_torch_gen = A_tch.grad.detach().numpy()
@@ -296,35 +312,40 @@ def test_jax():
     
     # generate code
     cpg.generate_code(prob, code_dir="code_jax", solver='OSQP', prefix='jax', gradient=True)
-    from code_jax.cpg_solver import forward, backward
-    
+    from code_jax.cpg_solver import cpg_solve, cpg_solve_and_state, cpg_gradient
+
     # jax function
     A_jax = jax.device_put(jnp.array(A.value))
     b_jax = jax.device_put(jnp.array(b.value))
     layer_jax = LayerJax(prob, parameters=[A, b], variables=[x])
-    layer_jax_gen = LayerJax(prob, parameters=[A, b], variables=[x], custom_method=(forward, backward))
-    
+    layer_jax_gen = LayerJax(prob, parameters=[A, b], variables=[x],
+                             solver=SolverInterface.from_parametric_functions(
+                                 solve=cpg_solve,
+                                 solve_and_state=cpg_solve_and_state,
+                                 gradient=cpg_gradient,
+                             ))
+
     def func(A_jax, b_jax):
         sol = layer_jax(A_jax, b_jax)[0]
         return 0.1 * jnp.sum(sol)
-    
+
     def func_gen(A_jax, b_jax):
-        sol = layer_jax_gen(A_jax, b_jax, solver_args={'problem': prob, 'updated_params': ['A', 'b']})[0]
+        sol = layer_jax_gen(A_jax, b_jax, solver_args={'updated_params': ['A', 'b']})[0]
         return 0.1 * jnp.sum(sol)
-    
+
     grad_A_jax, grad_b_jax = jax.grad(func, argnums=(0, 1))(A_jax, b_jax)
     grad_A_jax_gen, grad_b_jax_gen = jax.grad(func_gen, argnums=(0, 1))(A_jax, b_jax)
-        
+
     assert np.allclose(grad_A_jax, grad_A_jax_gen, atol=1e-4)
     assert np.allclose(grad_b_jax, grad_b_jax_gen, atol=1e-4)
-    
+
     # change parameter values
     A_jax = jax.device_put(jnp.array(np.random.rand(m, n)))
     b_jax = jax.device_put(jnp.array(np.random.rand(m)))
-    
+
     grad_A_jax, grad_b_jax = jax.grad(func, argnums=(0, 1))(A_jax, b_jax)
     grad_A_jax_gen, grad_b_jax_gen = jax.grad(func_gen, argnums=(0, 1))(A_jax, b_jax)
-    
+
     assert np.allclose(grad_A_jax, grad_A_jax_gen, atol=1e-4)
     assert np.allclose(grad_b_jax, grad_b_jax_gen, atol=1e-4)
 

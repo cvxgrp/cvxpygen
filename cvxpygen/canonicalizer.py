@@ -86,7 +86,7 @@ class Canonicalizer:
     def _extract(self, problem, solver, solver_opts, enable_settings) -> Tuple[Canon, object]:
         interface_class = self._get_interface_class(solver)
 
-        data, _, inverse_data = problem.get_problem_data(
+        data, chain, inverse_data = problem.get_problem_data(
             solver=interface_class.cvxpy_solver_name,
             gp=False,
             enforce_dpp=True,
@@ -104,7 +104,7 @@ class Canonicalizer:
         solver_interface = interface_class(data, param_prob, enable_settings)
         solver_interface._problem = problem
         solver_interface._solver_opts = solver_opts
-        prim_variable_info = self._get_primal_variable_info(problem, inverse_data)
+        prim_variable_info = self._get_primal_variable_info(problem, inverse_data, chain)
         dual_variable_info = self._get_dual_variable_info(inverse_data, solver_interface)
         parameter_info = self._get_parameter_info(param_prob)
         constraint_info = self._get_constraint_info(solver_interface)
@@ -121,11 +121,13 @@ class Canonicalizer:
 
         return Canon(prim_variable_info, dual_variable_info, parameter_info, parameter_canon), solver_interface
 
-    def _get_primal_variable_info(self, problem, inverse_data) -> PrimalVariableInfo:
+    def _get_primal_variable_info(self, problem, inverse_data, chain) -> PrimalVariableInfo:
         variables = problem.variables()
         var_names = [var.name() for var in variables]
         var_ids = [var.id for var in variables]
-        var_offsets = [inverse_data[-2].var_offsets[var_id] for var_id in var_ids]
+        var_id_map = chain.compose_var_id_map()
+        reduced_ids = [var_id_map.get(vid, [vid])[0] for vid in var_ids]
+        var_offsets = [inverse_data[-2].var_offsets[red_id] for red_id in reduced_ids]
         var_name_to_offset = {n: o for n, o in zip(var_names, var_offsets)}
         var_shapes = [var.shape for var in variables]
         var_sizes = [var.size for var in variables]
