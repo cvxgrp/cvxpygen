@@ -75,7 +75,7 @@ def test_torch_sim(n, solver):
     identifier = f'torch_sim_{n}_{solver}'
     cpg.generate_code(prob, code_dir=identifier, solver=solver, prefix=identifier, gradient=True)
     mod = importlib.import_module(f'{identifier}.cpg_solver')
-    solver_layer = SI.from_codegen(mod.cpg_solve_and_state, mod.cpg_gradient)
+    solver_layer = SI.from_codegen(mod.forward, mod.backward)
     
     # torch function
     layer = LayerTorch(prob, parameters=[xhat, b], variables=[x])
@@ -157,7 +157,7 @@ def test_torch_pgd(solver):
     identifier = f'torch_pgd_{solver}'
     cpg.generate_code(problem, code_dir=identifier, prefix=identifier, solver=solver, gradient=True)
     mod = importlib.import_module(f'{identifier}.cpg_solver')
-    solver_layer = SI.from_codegen(mod.cpg_solve_and_state, mod.cpg_gradient)
+    solver_layer = SI.from_codegen(mod.forward, mod.backward)
 
     # register methods
     parameters = [L, P_over_alpha, qtar, q, Q, S]
@@ -237,7 +237,7 @@ def test_torch_two_stage(m, n, solver):
     identifier = f'torch_two_stage_{m}_{n}_{solver}'
     cpg.generate_code(prob, code_dir=identifier, solver=solver, prefix=identifier, gradient=True)
     mod = importlib.import_module(f'{identifier}.cpg_solver')
-    solver_layer = SI.from_codegen(mod.cpg_solve_and_state, mod.cpg_gradient)
+    solver_layer = SI.from_codegen(mod.forward, mod.backward)
     
     # torch function
     A_tch = torch.tensor(A.value, requires_grad=True)
@@ -298,8 +298,8 @@ def test_jax():
     
     # generate code
     cpg.generate_code(prob, code_dir="code_jax", solver='OSQP', prefix='jax', gradient=True)
-    from code_jax.cpg_solver import cpg_solve_and_state, cpg_gradient
-    solver_layer = SI.from_codegen(cpg_solve_and_state, cpg_gradient)
+    from code_jax.cpg_solver import forward, backward
+    solver_layer = SI.from_codegen(forward, backward)
 
     # jax function
     A_jax = jax.device_put(jnp.array(A.value))

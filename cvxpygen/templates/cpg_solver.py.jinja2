@@ -37,7 +37,7 @@ def get_param_value(param):
 
 
 {% if gradient %}
-def cpg_solve_and_state(prob, updated_params=None, **kwargs):
+def forward(prob, updated_params=None, **kwargs):
 {% else %}
 def cpg_solve(prob, updated_params=None, **kwargs):
 {% endif %}
@@ -88,12 +88,11 @@ def cpg_solve(prob, updated_params=None, **kwargs):
     prob.constraints[{{ i }}].save_dual_value(np.array(res.cpg_dual.{{ name }}){{ reshape_str }})
 {% endfor %}
 {% endif %}
-
 {% if explicit %}
     return None, (res.cpg_info.time{% if gradient %}, res.cpg_info.region{% endif %})
 
-
 {% else %}
+
     # store additional solver information in problem object
 {% if status_is_int %}
     prob._status = "{{ status_int_fmt }}" % res.cpg_info.status
@@ -124,9 +123,10 @@ def cpg_solve(prob, updated_params=None, **kwargs):
 
 {% endif %}
 {% if gradient %}
+
 def cpg_solve(prob, updated_params=None, **kwargs):
 
-    val, _ = cpg_solve_and_state(prob, updated_params, **kwargs)
+    val, _ = forward(prob, updated_params, **kwargs)
     return val
 
 
@@ -170,4 +170,7 @@ def cpg_gradient(prob, state=None):
     prob.param_dict['{{ name }}'].gradient = np.array(pdelta.{{ name }}).reshape({{ shape }}, order='F')
 {% endfor %}
 
+
+def backward(prob, state=None):
+    cpg_gradient(prob, state)
 {% endif %}
