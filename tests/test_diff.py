@@ -8,7 +8,7 @@ import jax
 import jax.numpy as jnp
 from cvxpylayers.torch import CvxpyLayer as LayerTorch
 from cvxpylayers.jax import CvxpyLayer as LayerJax
-from cvxpylayers.interfaces import SolverInterface
+from cvxpylayers.interfaces import SolverInterface as SI
 from cvxpygen import cpg
 from utils_test import pgd
 
@@ -75,16 +75,11 @@ def test_torch_sim(n, solver):
     identifier = f'torch_sim_{n}_{solver}'
     cpg.generate_code(prob, code_dir=identifier, solver=solver, prefix=identifier, gradient=True)
     mod = importlib.import_module(f'{identifier}.cpg_solver')
-    prob.register_solve('cpg', mod.cpg_solve)
+    solver_layer = SI.from_codegen(mod.forward, mod.backward)
     
     # torch function
     layer = LayerTorch(prob, parameters=[xhat, b], variables=[x])
-    layer_gen = LayerTorch(prob, parameters=[xhat, b], variables=[x],
-                           solver=SolverInterface.from_parametric_functions(
-                               solve=mod.cpg_solve,
-                               solve_and_state=mod.cpg_solve_and_state,
-                               gradient=mod.cpg_gradient,
-                           ))
+    layer_gen = LayerTorch(prob, parameters=[xhat, b], variables=[x], solver=solver_layer)
     
     def sim(lyr, xhat0, solver_args={}):
         
@@ -161,19 +156,14 @@ def test_torch_pgd(solver):
     # generate code
     identifier = f'torch_pgd_{solver}'
     cpg.generate_code(problem, code_dir=identifier, prefix=identifier, solver=solver, gradient=True)
+    mod = importlib.import_module(f'{identifier}.cpg_solver')
+    solver_layer = SI.from_codegen(mod.forward, mod.backward)
 
     # register methods
     parameters = [L, P_over_alpha, qtar, q, Q, S]
     variables = [g, s, b, qplus]
     layer = LayerTorch(problem, parameters=parameters, variables=variables)
-
-    mod = importlib.import_module(f'{identifier}.cpg_solver')
-    layer_gen = LayerTorch(problem, parameters=parameters, variables=variables,
-                           solver=SolverInterface.from_parametric_functions(
-                               solve=mod.cpg_solve,
-                               solve_and_state=mod.cpg_solve_and_state,
-                               gradient=mod.cpg_gradient,
-                           ))
+    layer_gen = LayerTorch(problem, parameters=parameters, variables=variables, solver=solver_layer)
 
     # load and price profiles
     T = 25
@@ -247,17 +237,13 @@ def test_torch_two_stage(m, n, solver):
     identifier = f'torch_two_stage_{m}_{n}_{solver}'
     cpg.generate_code(prob, code_dir=identifier, solver=solver, prefix=identifier, gradient=True)
     mod = importlib.import_module(f'{identifier}.cpg_solver')
+    solver_layer = SI.from_codegen(mod.forward, mod.backward)
     
     # torch function
     A_tch = torch.tensor(A.value, requires_grad=True)
     b_tch = torch.tensor(b.value, requires_grad=True)
     layer_torch = LayerTorch(prob, parameters=[A, b], variables=[x])
-    layer_torch_gen = LayerTorch(prob, parameters=[A, b], variables=[x],
-                                 solver=SolverInterface.from_parametric_functions(
-                                     solve=mod.cpg_solve,
-                                     solve_and_state=mod.cpg_solve_and_state,
-                                     gradient=mod.cpg_gradient,
-                                 ))
+    layer_torch_gen = LayerTorch(prob, parameters=[A, b], variables=[x], solver=solver_layer)
     
     sol_torch, = layer_torch(A_tch, b_tch)
     sum_torch = 0.1 * sol_torch.sum()
@@ -312,18 +298,14 @@ def test_jax():
     
     # generate code
     cpg.generate_code(prob, code_dir="code_jax", solver='OSQP', prefix='jax', gradient=True)
-    from code_jax.cpg_solver import cpg_solve, cpg_solve_and_state, cpg_gradient
+    from code_jax.cpg_solver import forward, backward
+    solver_layer = SI.from_codegen(forward, backward)
 
     # jax function
     A_jax = jax.device_put(jnp.array(A.value))
     b_jax = jax.device_put(jnp.array(b.value))
     layer_jax = LayerJax(prob, parameters=[A, b], variables=[x])
-    layer_jax_gen = LayerJax(prob, parameters=[A, b], variables=[x],
-                             solver=SolverInterface.from_parametric_functions(
-                                 solve=cpg_solve,
-                                 solve_and_state=cpg_solve_and_state,
-                                 gradient=cpg_gradient,
-                             ))
+    layer_jax_gen = LayerJax(prob, parameters=[A, b], variables=[x], solver=solver_layer)
 
     def func(A_jax, b_jax):
         sol = layer_jax(A_jax, b_jax)[0]

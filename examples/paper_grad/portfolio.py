@@ -2,6 +2,7 @@
 import cvxpy as cp
 from cvxpygen import cpg
 from cvxpylayers.torch import CvxpyLayer
+from cvxpylayers.interfaces import SolverInterface as SI
 import torch
 import pandas as pd
 import numpy as np
@@ -95,8 +96,8 @@ from diff_portfolio.cpg_solver import forward, backward
 
 # project gradient descent
 
-layer = CvxpyLayer(problem, parameters=[mu, grisk, ghold, gtc, L, w_pre], variables=[w, w_delta], custom_method=(forward, backward))
-solver_args = {'problem': problem, 'warm_start': True, 'eps_abs': 1e-5, 'eps_rel': 1e-5}
+layer = CvxpyLayer(problem, parameters=[mu, grisk, ghold, gtc, L, w_pre], variables=[w, w_delta], solver=SI.from_codegen(forward, backward))
+solver_args = {'warm_start': True, 'eps_abs': 1e-5, 'eps_rel': 1e-5}
 
 
 # backtest

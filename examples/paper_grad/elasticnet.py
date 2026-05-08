@@ -2,6 +2,7 @@
 import cvxpy as cp
 from cvxpygen import cpg
 from cvxpylayers.torch import CvxpyLayer
+from cvxpylayers.interfaces import SolverInterface as SI
 import torch
 import numpy as np
 import numpy.linalg as la
@@ -48,8 +49,8 @@ from diff_ML.cpg_solver import forward, backward
 
 # projected gradient descent
 
-layer = CvxpyLayer(problem, parameters=[G, h, la, om], variables=[x], custom_method=(forward, backward))
-solver_args = {'problem': problem, 'warm_start': True, 'eps_abs': 1e-5, 'eps_rel': 1e-5}
+layer = CvxpyLayer(problem, parameters=[G, h, la, om], variables=[x], solver=SI.from_codegen(forward, backward))
+solver_args = {'warm_start': True, 'eps_abs': 1e-5, 'eps_rel': 1e-5}
 
 def get_perf_grad(w_value, logla_value, logom_value, get_grad=True):
 
