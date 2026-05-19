@@ -41,4 +41,3 @@ dev = ["pytest == 6.2.4"]
 [tool.setuptools]
 packages = ["cvxpygen", "cvxpygen.solvers"]
 include-package-data = true
-py-modules = ["canonicalizer", "compiler", "cpg", "generator", "mappings", "utils", "writer"]
