@@ -139,7 +139,7 @@ layer = CvxpyLayer(problem, parameters=[A, b], variables=[x],
 
 As long as the problem is a QP, also conic solvers such as QOCOGEN or CLARABEL are supported.
 For more details, see our [manuscript on differentiable QPs](https://stanford.edu/~boyd/papers/cvxpygen_grad.html) and [examples/paper_grad](examples/paper_grad) for examples from the manuscript.
-Also see [power.py](examples/power.py) and [alpha.py](examples/alpha.py).
+Also see the example notebooks [power.py](examples/power.py) and [alpha.py](examples/alpha.py).
 If you use this feature, please cite
 ```
 @article{schaller2025code,
