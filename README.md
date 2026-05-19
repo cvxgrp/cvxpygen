@@ -117,7 +117,7 @@ You may pass `updated_params` to tell the solver which parameters changed (omit 
 | Tuning PV system design | [power.py](examples/power.py) (requires `cvxpylayers>=1.2` and `torch`) |
 | Learning alpha | [alpha.py](examples/alpha.py) (requires `cvxpylayers>=1.2`, `torch`, and `pandas`) |
 
-Run any marimo notebook as:
+All examples require `marimo` and `matplotlib`. Run any marimo notebook as:
 ```
 marimo edit actuator.py
 ```
