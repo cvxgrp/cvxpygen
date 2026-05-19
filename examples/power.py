@@ -7,7 +7,7 @@ app = marimo.App(width="medium")
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Optimal power split
+    ## Tuning the design of a PV system
 
     We consider a variant of the power management problem in [1]. Suppose a nonnegative electric power load $L$ is served by a PV (photovoltaic solar panel) system, a storage battery, and a grid connection.
     We denote the solar power as $s$, the battery power as $b$, and the grid power as $g$, all of which have unit kW.

@@ -114,6 +114,8 @@ You may pass `updated_params` to tell the solver which parameters changed (omit 
 | Resource allocation | [resource.py](examples/resource.py) |
 | Energy management | [energy.py](examples/energy.py) |
 | Network flow optimization | [network.py](examples/network.py) |
+| Tuning PV system | [power.py](examples/power.py) |
+| Learning alpha | [alpha.py](examples/alpha.py) |
 
 Run any marimo notebook as:
 ```
@@ -122,20 +124,23 @@ marimo edit actuator.py
 
 ## Differentiable QPs
 
-CVXPYgen supports differentiating through quadratic programs, with an interface to [CVXPYlayers](https://github.com/cvxgrp/cvxpylayers) (≤ 0.1.9):
+CVXPYgen supports differentiating through quadratic programs, with an interface to [CVXPYlayers](https://github.com/cvxgrp/cvxpylayers) (>= 1.2.0):
 
 ```python
 cpg.generate_code(problem, code_dir='nonneg_ls_diff', gradient=True)
 
 from nonneg_ls_diff.cpg_solver import forward, backward
 from cvxpylayers.torch import CvxpyLayer
+from cvxpylayers.interfaces import SolverInterface
 
 layer = CvxpyLayer(problem, parameters=[A, b], variables=[x],
-                   custom_method=(forward, backward))
+                   solver=SolverInterface.from_codegen(forward, backward))
 ```
 
 As long as the problem is a QP, also conic solvers such as QOCOGEN or CLARABEL are supported.
-For more details, see our [manuscript on differentiable QPs](https://stanford.edu/~boyd/papers/cvxpygen_grad.html) and [examples/paper_grad](examples/paper_grad) for examples from the manuscript. If you use this feature, please cite
+For more details, see our [manuscript on differentiable QPs](https://stanford.edu/~boyd/papers/cvxpygen_grad.html) and [examples/paper_grad](examples/paper_grad) for examples from the manuscript.
+Also see [power.py](examples/power.py) and [alpha.py](examples/alpha.py).
+If you use this feature, please cite
 ```
 @article{schaller2025code,
   title={Code generation for solving and differentiating through convex optimization problems},
@@ -165,7 +170,9 @@ To enable the computation of dual variables, set `solver_opts={'dual': True}`.
 Control complexity via `'max_floats'` (number of floating point numbers in the explicit solution, default `1e6`) and `'max_regions'` (maximum number of affine pieces, default `500`) in `solver_opts`.
 Store the explicit solution in half precision (instead of single precision) by setting `'fp16': True` in `solver_opts`.
 
-For more details, see our [slides and manuscript on explicit solutions for QPs](https://stanford.edu/~boyd/papers/cvxpygen_mpqp.html). If you use this feature, please cite
+For more details, see our [slides and manuscript on explicit solutions for QPs](https://stanford.edu/~boyd/papers/cvxpygen_mpqp.html).
+For practical examples, see [power.py](examples/power.py) and [alpha.py](examples/alpha.py).
+If you use this feature, please cite
 ```
 @article{schaller2025automatic,
   title={Automatic generation of explicit quadratic programming solvers},
