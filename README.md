@@ -114,8 +114,8 @@ You may pass `updated_params` to tell the solver which parameters changed (omit 
 | Resource allocation | [resource.py](examples/resource.py) |
 | Energy management | [energy.py](examples/energy.py) |
 | Network flow optimization | [network.py](examples/network.py) |
-| Tuning PV system | [power.py](examples/power.py) |
-| Learning alpha | [alpha.py](examples/alpha.py) |
+| Tuning PV system design | [power.py](examples/power.py) (requires `cvxpylayers>=1.2` and `torch`) |
+| Learning alpha | [alpha.py](examples/alpha.py) (requires `cvxpylayers>=1.2`, `torch`, and `pandas`) |
 
 Run any marimo notebook as:
 ```
@@ -124,7 +124,7 @@ marimo edit actuator.py
 
 ## Differentiable QPs
 
-CVXPYgen supports differentiating through quadratic programs, with an interface to [CVXPYlayers](https://github.com/cvxgrp/cvxpylayers) (>= 1.2.0):
+CVXPYgen can generate code for differentiating the parameter-solution map of quadratic programs, with an interface to [CVXPYlayers](https://github.com/cvxgrp/cvxpylayers) (version 1.2 or newer):
 
 ```python
 cpg.generate_code(problem, code_dir='nonneg_ls_diff', gradient=True)
