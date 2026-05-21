@@ -1,0 +1,14 @@
+// Memory initialization file for: pdaqp_jump_list
+// Format: Integer (8-bit)
+// Size: 5 elements
+// Range: [0, 2]
+// Generated: 2026-02-25 12:06:01
+//
+// Format: One hex value per line (no 0x prefix)
+//============================================
+
+01
+02
+00
+00
+00

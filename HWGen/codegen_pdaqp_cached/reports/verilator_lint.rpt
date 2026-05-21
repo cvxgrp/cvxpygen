@@ -1,0 +1,28 @@
+%Error: rtl/pdaqp_top.v:36:11: Define or directive not defined: '`PDAQP_PARAM_0_WIDTH'
+   36 |     wire [`PDAQP_PARAM_0_WIDTH-1:0] bst_param_in_0;
+      |           ^~~~~~~~~~~~~~~~~~~~
+%Error: rtl/pdaqp_top.v:37:11: Define or directive not defined: '`PDAQP_PARAM_1_WIDTH'
+   37 |     wire [`PDAQP_PARAM_1_WIDTH-1:0] bst_param_in_1;
+      |           ^~~~~~~~~~~~~~~~~~~~
+%Error: rtl/pdaqp_top.v:41:11: Define or directive not defined: '`PDAQP_SOL_0_WIDTH'
+   41 |     wire [`PDAQP_SOL_0_WIDTH-1:0] bst_solution_0;
+      |           ^~~~~~~~~~~~~~~~~~
+%Error: rtl/pdaqp_top.v:42:11: Define or directive not defined: '`PDAQP_SOL_1_WIDTH'
+   42 |     wire [`PDAQP_SOL_1_WIDTH-1:0] bst_solution_1;
+      |           ^~~~~~~~~~~~~~~~~~
+%Error: rtl/pdaqp_top.v:43:11: Define or directive not defined: '`PDAQP_SOL_2_WIDTH'
+   43 |     wire [`PDAQP_SOL_2_WIDTH-1:0] bst_solution_2;
+      |           ^~~~~~~~~~~~~~~~~~
+%Error: rtl/pdaqp_top.v:80:10: Define or directive not defined: '`PDAQP_PARAM_0_WIDTH'
+   80 |     reg [`PDAQP_PARAM_0_WIDTH-1:0] param_buf_0;
+      |          ^~~~~~~~~~~~~~~~~~~~
+%Error: rtl/pdaqp_top.v:81:10: Define or directive not defined: '`PDAQP_PARAM_1_WIDTH'
+   81 |     reg [`PDAQP_PARAM_1_WIDTH-1:0] param_buf_1;
+      |          ^~~~~~~~~~~~~~~~~~~~
+%Error: rtl/pdaqp_top.v:85:28: Define or directive not defined: '`PDAQP_PARAM_0_WIDTH'
+   85 |             param_buf_0 <= `PDAQP_PARAM_0_WIDTH'b0;
+      |                            ^~~~~~~~~~~~~~~~~~~~
+%Error: rtl/pdaqp_top.v:86:28: Define or directive not defined: '`PDAQP_PARAM_1_WIDTH'
+   86 |             param_buf_1 <= `PDAQP_PARAM_1_WIDTH'b0;
+      |                            ^~~~~~~~~~~~~~~~~~~~
+%Error: Exiting due to 9 error(s)

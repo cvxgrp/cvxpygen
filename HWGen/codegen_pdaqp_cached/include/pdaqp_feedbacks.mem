@@ -1,0 +1,35 @@
+// Memory initialization file for: pdaqp_feedbacks
+// Format: FIX16
+// Size: 27 elements
+// Generated: 2026-02-25 12:06:01
+//
+// Format: One hex value per line (no 0x prefix)
+//============================================
+
+1200
+EE00
+1300
+FF55
+00AB
+41AB
+EEAB
+1155
+2B55
+199A
+FAB5
+0000
+199A
+2C95
+0000
+0000
+2E50
+0000
+0000
+0000
+0000
+0C31
+F3CF
+4F3D
+F3CF
+0C31
+30C3

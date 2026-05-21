@@ -1,0 +1,14 @@
+// Memory initialization file for: pdaqp_halfplanes
+// Format: FIX16
+// Size: 6 elements
+// Generated: 2026-02-25 12:06:01
+//
+// Format: One hex value per line (no 0x prefix)
+//============================================
+
+20DA
+36ED
+5221
+2D41
+D2BF
+D03B

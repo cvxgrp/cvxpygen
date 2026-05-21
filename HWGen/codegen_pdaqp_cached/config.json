@@ -1,0 +1,18 @@
+{
+  "n_parameters": 2,
+  "n_halfplanes": 5,
+  "n_coefficients": 3,
+  "data_width": 16,
+  "halfplane_stride": 3,
+  "bst_structure": {
+    "n_regions": 3,
+    "tree_depth": 2
+  },
+  "cache": {
+    "l1_lines": 32,
+    "l2_lines": 128,
+    "l2_ways": 4,
+    "prefetch_enable": true,
+    "max_neighbors": 4
+  }
+}
