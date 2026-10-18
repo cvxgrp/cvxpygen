@@ -17,18 +17,14 @@ jobs:
 
     steps:
     - name: Checkout repository and submodules
-      uses: actions/checkout@v2
+      uses: actions/checkout@v5
       with:
         submodules: recursive
 
-    - name: Set up Python 3.11
-      uses: actions/setup-python@v2
+    - name: Set up Python 3.14
+      uses: actions/setup-python@v6
       with:
-        python-version: "3.11"
-
-    - name: Add conda to system path
-      run: |
-        echo $CONDA/bin >> $GITHUB_PATH
+        python-version: "3.14"
 
     - name: Install Python build system
       run: |
@@ -71,7 +67,7 @@ jobs:
       if: runner.os == 'Linux'
       run: |
         cd tests
-        $CONDA/bin/pytest test_readme.py test_invalid_input.py test_E2E_LP.py test_E2E_QP.py test_E2E_SOCP.py test_explicit.py test_diff.py
+        python -m pytest test_readme.py test_invalid_input.py test_E2E_LP.py test_E2E_QP.py test_E2E_SOCP.py test_explicit.py test_diff.py
 
     - name: Test with pytest (macOS)
       if: runner.os == 'macOS'

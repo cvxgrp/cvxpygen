@@ -36,7 +36,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest == 6.2.4"]
+dev = ["pytest >= 8"]
 
 [tool.setuptools]
 packages = ["cvxpygen", "cvxpygen.solvers"]
