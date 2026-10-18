@@ -127,7 +127,7 @@ class OSQPInterface(QPCanonMixin, SolverInterface):
         osqp_obj = osqp.OSQP()
         osqp_obj.setup(P=parameter_canon.p['P'], q=parameter_canon.p['q'],
                        A=parameter_canon.p['A'], l=parameter_canon.p['l'],
-                       u=parameter_canon.p['u'])
+                       u=parameter_canon.p['u'], **self._solver_opts)
 
         osqp_obj.codegen(solver_code_dir, parameters='matrices', force_rewrite=True)
         
