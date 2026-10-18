@@ -127,7 +127,9 @@ class Canonicalizer:
         var_ids = [var.id for var in variables]
         var_id_map = chain.compose_var_id_map()
         reduced_ids = [var_id_map.get(vid, [vid])[0] for vid in var_ids]
-        var_offsets = [inverse_data[-2].var_offsets[red_id] for red_id in reduced_ids]
+        # skip reductions without inverse data (e.g., ConeFormat in CVXPY >= 1.10)
+        stuffing_inverse_data = next(inv for inv in reversed(inverse_data[:-1]) if inv is not None)
+        var_offsets = [stuffing_inverse_data.var_offsets[red_id] for red_id in reduced_ids]
         var_name_to_offset = {n: o for n, o in zip(var_names, var_offsets)}
         var_shapes = [var.shape for var in variables]
         var_sizes = [var.size for var in variables]
