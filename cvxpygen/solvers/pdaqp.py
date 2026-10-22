@@ -11,7 +11,6 @@ import numpy as np
 import scipy.sparse as sp
 
 import cvxpy as cp
-from pdaqp import MPQP
 from itertools import product
 from cvxpy.utilities import key_utils as ku
 
@@ -204,6 +203,9 @@ class PDAQPInterface(QPCanonMixin, SolverInterface):
 
         # construct explicit solution
         store_dual = (configuration.explicit == 2)
+        # Imported here: pdaqp starts Julia (juliacall) on import.
+        from pdaqp import MPQP
+
         mpqp = MPQP(H, f, F, A, b, B, thmin, thmax, eq_inds=eq_inds, out_inds=out_inds)
         mpqp.solve(settings={'region_limit': max_regions, 'store_dual': store_dual})
         if str(mpqp.solution_info.status) != 'Solved':
